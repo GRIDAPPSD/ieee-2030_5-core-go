@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 
+	"reflect"
+
 	"gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/pkg/sep2"
 	"gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/pkg/sep2srv/assembly"
 	coreedev "gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/pkg/sep2srv/handlers/enddevice"
@@ -529,14 +531,18 @@ func TestAssembly_PatternListNonEmpty(t *testing.T) {
 	}
 }
 
-// TestResourceNotifierAliasIdentity proves assembly.ResourceNotifier is the
-// SAME type as coreedev.ResourceNotifier (an alias, not a distinct interface).
-// The bidirectional var _ assignment compiles only when both names denote the
-// identical type; a distinct-but-method-compatible wrapper would also compile
-// here, but the alias guarantee is the relevant contract: a value typed as one
-// can be passed where the other is named without any conversion. (IEEECORE-002)
+// TestResourceNotifierAliasIdentity proves true type identity between
+// assembly.ResourceNotifier and coreedev.ResourceNotifier. The compile-time
+// bidirectional var _ pair is kept as a cheap guard, but is insufficient on
+// its own because it also compiles for method-compatible distinct interfaces.
+// The reflect.TypeOf assertion is the runtime proof: pointer-to-interface
+// types are equal only when the two names denote exactly the same type (a
+// true alias), not merely compatible method sets. (IEEECORE-002)
 func TestResourceNotifierAliasIdentity(t *testing.T) {
 	t.Parallel()
 	var _ assembly.ResourceNotifier = (coreedev.ResourceNotifier)(nil)
 	var _ coreedev.ResourceNotifier = (assembly.ResourceNotifier)(nil)
+	if reflect.TypeOf((*assembly.ResourceNotifier)(nil)) != reflect.TypeOf((*coreedev.ResourceNotifier)(nil)) {
+		t.Fatal("assembly.ResourceNotifier is not the same type as coreedev.ResourceNotifier")
+	}
 }

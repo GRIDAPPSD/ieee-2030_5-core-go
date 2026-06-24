@@ -155,10 +155,9 @@ type AuthPolicy struct {
 	SFDIPrefix func(sfdi string) (string, error)
 }
 
-// ResourceNotifier is the published notifier-parameter surface for
-// BuildProtocolRouter, aliased from the enddevice consumer that defines the
-// interface. Consumers can name assembly.ResourceNotifier without importing
-// the enddevice subpackage. (IEEECORE-002)
+// ResourceNotifier is aliased from the enddevice package so consumers can
+// name assembly.ResourceNotifier without importing the enddevice subpackage.
+// (IEEECORE-002)
 type ResourceNotifier = coreedev.ResourceNotifier
 
 // BuildProtocolRouter creates the HTTP router for the protocol listener
