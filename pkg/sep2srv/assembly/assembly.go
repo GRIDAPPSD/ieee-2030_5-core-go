@@ -155,6 +155,11 @@ type AuthPolicy struct {
 	SFDIPrefix func(sfdi string) (string, error)
 }
 
+// ResourceNotifier is aliased from the enddevice package so consumers can
+// name assembly.ResourceNotifier without importing the enddevice subpackage.
+// (IEEECORE-002)
+type ResourceNotifier = coreedev.ResourceNotifier
+
 // BuildProtocolRouter creates the HTTP router for the protocol listener
 // and returns the canonical pattern list mounted on its protocol mux.
 // The notifier is invoked on resource state changes that drive subscription
@@ -163,13 +168,16 @@ type AuthPolicy struct {
 //
 // The admin surface (AdminCertService, admin_* routes) and the test-mutation
 // surface (RegisterMutationHandlers) are NOT included: they are
-// server-config-specific and not part of the core export.
+// server-config-specific and not part of the core export. Admin FSA create
+// (HandleCreateFSA in the fsa handler package) is one such consumer-wired
+// admin handler: it is wired by the consuming server on its own admin mux,
+// not here.
 func BuildProtocolRouter(
 	cfg RouterConfig,
 	stores *Stores,
 	authPolicy AuthPolicy,
 	serverSFDI, serverLFDI string,
-	notifier coreedev.ResourceNotifier,
+	notifier ResourceNotifier,
 ) (http.Handler, []string) {
 	// F1: substitute deny-all stubs for nil func fields so zero-value
 	// AuthPolicy is safe and fail-closed, never a nil-panic at request time.
@@ -290,7 +298,7 @@ type notifyRemover interface {
 // notifyRemover, or returns nil. Keeps the router free of a hard import on
 // the subscription package: ResourceNotifier is the published parameter surface
 // and the production *subscription.Manager satisfies both interfaces.
-func asNotifyRemoved(n coreedev.ResourceNotifier) func(context.Context, sep2.Subscription) error {
+func asNotifyRemoved(n ResourceNotifier) func(context.Context, sep2.Subscription) error {
 	if n == nil {
 		return nil
 	}
@@ -300,7 +308,7 @@ func asNotifyRemoved(n coreedev.ResourceNotifier) func(context.Context, sep2.Sub
 	return nil
 }
 
-func registerEndDeviceRoutes(mux routeRegistrar, stores *Stores, authPolicy AuthPolicy, notifier coreedev.ResourceNotifier) {
+func registerEndDeviceRoutes(mux routeRegistrar, stores *Stores, authPolicy AuthPolicy, notifier ResourceNotifier) {
 	mux.HandleFunc("GET /edev", corelisthandler.ListHandler[sep2.EndDevice, sep2.EndDeviceList](
 		stores.EndDevices, coreedev.BuildEndDeviceList, 900,
 	))
