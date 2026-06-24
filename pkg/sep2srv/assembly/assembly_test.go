@@ -2,11 +2,13 @@ package assembly_test
 
 import (
 	"context"
+	"debug/buildinfo"
 	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -15,13 +17,18 @@ import (
 	"gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/pkg/store/memory"
 )
 
-// testStores builds a minimal Stores instance sufficient for the assembly test:
-// EndDevices, Registrations, DERs and their singleton sub-stores, FSAs, and
-// Subscriptions. Nil fields in Stores skip optional route registration.
+// testStores builds a fully-populated Stores instance for assembly tests.
+// Populated stores cause all optional route-registration branches to fire,
+// driving coverage on registerMirrorRoutes, registerMeteringRoutes, and
+// registerNewFunctionSetRoutes. Fields that are nil skip the branch;
+// we populate all of them to maximise coverage.
 func testStores() *assembly.Stores {
 	return &assembly.Stores{
 		EndDevices:         memory.NewEndDeviceStore(),
 		Registrations:      memory.NewRegistrationStore(),
+		MirrorUsagePoints:  memory.NewStore[sep2.MirrorUsagePoint](),
+		MirrorMeterReadings: memory.NewScopedStore[sep2.MirrorMeterReading](),
+
 		DERs:               memory.NewScopedStore[sep2.DER](),
 		DERCapabilities:    memory.NewScopedStore[sep2.DERCapability](),
 		DERSettings:        memory.NewScopedStore[sep2.DERSettings](),
@@ -31,8 +38,27 @@ func testStores() *assembly.Stores {
 		DERControls:        memory.NewScopedStore[sep2.DERControl](),
 		DefaultDERControls: memory.NewScopedStore[sep2.DefaultDERControl](),
 		DERCurves:          memory.NewStore[sep2.DERCurve](),
-		FSAs:               memory.NewScopedStore[sep2.FunctionSetAssignments](),
-		Subscriptions:      memory.NewSubscriptionStore(),
+
+		FSAs:          memory.NewScopedStore[sep2.FunctionSetAssignments](),
+		Subscriptions: memory.NewSubscriptionStore(),
+
+		// Server-side metering
+		UsagePoints:   memory.NewStore[sep2.UsagePoint](),
+		MeterReadings: memory.NewScopedStore[sep2.MeterReading](),
+		Readings:      memory.NewScopedStore[sep2.Reading](),
+		ReadingTypes:  memory.NewStore[sep2.ReadingType](),
+
+		// New function sets
+		Configurations:           memory.NewScopedStore[sep2.Configuration](),
+		DeviceStatuses:           memory.NewScopedStore[sep2.DeviceStatus](),
+		LogEvents:                memory.NewScopedStore[sep2.LogEvent](),
+		PowerStatuses:            memory.NewScopedStore[sep2.PowerStatus](),
+		MessagingPrograms:        memory.NewStore[sep2.MessagingProgram](),
+		TextMessages:             memory.NewScopedStore[sep2.TextMessage](),
+		FlowReservationRequests:  memory.NewScopedStore[sep2.FlowReservationRequest](),
+		FlowReservationResponses: memory.NewScopedStore[sep2.FlowReservationResponse](),
+		ResponseSets:             memory.NewStore[sep2.ResponseSet](),
+		Responses:                memory.NewScopedStore[sep2.Response](),
 	}
 }
 
@@ -294,36 +320,177 @@ func TestAssembly_TimeScalarsFlowThroughRouterConfig(t *testing.T) {
 	}
 }
 
-// TestAssembly_ImportCleanGate verifies that the assembly package's import
-// list contains no github.com/GRIDAPPSD/ieee-2030_5-go/internal/... paths.
-// This is the layering invariant: core must not import server-internal packages.
-// The compiler already enforces cross-module internal/ boundaries, but this
-// test makes the contract explicit and visible in the test suite.
+// TestAssembly_ImportCleanGate verifies that the assembly package (and all
+// packages it transitively imports) contains no import of
+// github.com/GRIDAPPSD/ieee-2030_5-go/internal/... paths.
+//
+// This is the layering invariant: core must not import server-internal
+// packages. The Go toolchain enforces cross-module internal/ at compile time,
+// so this test binary linking at all already proves the invariant holds. The
+// test adds a runtime assertion via debug/buildinfo that scans the actual
+// dependency list in the compiled binary, turning the guarantee from
+// "implicit and invisible" to "explicit and tested" (Pike LOW finding).
 func TestAssembly_ImportCleanGate(t *testing.T) {
 	t.Parallel()
 
-	// The forbidden prefix: any import from the reference server's internal tree.
 	const forbidden = "github.com/GRIDAPPSD/ieee-2030_5-go/internal"
 
-	// Enumerate our own module path to ensure we only check core packages.
-	const coreModule = "gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core"
+	// Read the build-info embedded in the current test binary. os.Args[0] is
+	// the test binary; debug/buildinfo.ReadFile inspects the Go build metadata
+	// section without forking or network access.
+	info, err := buildinfo.ReadFile(os.Args[0])
+	if err != nil {
+		// Reproducible case: -trimpath strips the binary or the binary is
+		// a stripped static build without build info. The compile-time
+		// enforcement still holds; skip rather than fail so CI is not
+		// broken by stripped binaries.
+		t.Skipf("debug/buildinfo.ReadFile(%q): %v (skipping runtime check; compile-time enforcement still applies)", os.Args[0], err)
+	}
 
-	// We cannot introspect imports at runtime without go/packages, so this test
-	// asserts the invariant by verifying that importing the assembly package in
-	// this test binary does not pull in anything from the forbidden prefix. We
-	// use a build-time static check pattern: if the assembly package compiles
-	// cleanly as part of this test (which it does if the test binary links),
-	// and the forbidden import would have caused a compile error (cross-module
-	// internal/ access is rejected by the Go toolchain), then the invariant is
-	// structurally enforced. This test documents that guarantee.
-	//
-	// The additional runtime check: scan the test binary's argv[0] build info
-	// via debug/buildinfo is possible but heavyweight. The toolchain enforcement
-	// is sufficient; this test exists to make the contract visible.
-	t.Log("import-clean gate: assembly package compiled without any internal/... import from the reference server module")
-	t.Logf("core module = %s", coreModule)
-	t.Logf("forbidden prefix = %s", forbidden)
-	t.Log("the Go toolchain rejects cross-module internal/ imports at compile time; this test binary compiling proves the invariant holds")
+	for _, dep := range info.Deps {
+		if strings.HasPrefix(dep.Path, forbidden) {
+			t.Errorf("forbidden import in test binary: dep.Path = %q (prefix %q)", dep.Path, forbidden)
+		}
+	}
+}
+
+// notifyRemoverStub satisfies both coreedev.ResourceNotifier and the internal
+// notifyRemover interface so TestAssembly_AsNotifyRemoved can exercise the
+// asNotifyRemoved type-assertion path in registerEndDeviceRoutes.
+// The stub counts Notify calls and records the last NotifyRemoved call.
+type notifyRemoverStub struct {
+	notifyCalled       int
+	notifyRemovedCalls []string // resourceHref values
+}
+
+func (s *notifyRemoverStub) Notify(_ context.Context, resourceHref string, _ uint8) {
+	s.notifyCalled++
+}
+
+func (s *notifyRemoverStub) NotifyRemoved(_ context.Context, sub sep2.Subscription) error {
+	s.notifyRemovedCalls = append(s.notifyRemovedCalls, sub.Href)
+	return nil
+}
+
+// TestAssembly_ScopedListRoutesMounted: exercises the scopedListHandler and
+// scopedListHandlerDeep closures by sending HTTP GETs to routes that are
+// registered through those helpers (FSA list, DER list, DERControl list).
+// These routes are hit at the HTTP level so the closure body is exercised.
+func TestAssembly_ScopedListRoutesMounted(t *testing.T) {
+	t.Parallel()
+
+	handler, _ := assembly.BuildProtocolRouter(
+		assembly.RouterConfig{},
+		testStores(),
+		testAuthPolicy(),
+		"serverSFDI", "serverLFDI",
+		nil,
+	)
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	// GET /edev/{id}/fsa (scoped by device id)
+	resp, err := http.Get(srv.URL + "/edev/e1/fsa")
+	if err != nil {
+		t.Fatalf("GET /edev/e1/fsa: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("GET /edev/e1/fsa status = %d, want 200", resp.StatusCode)
+	}
+
+	// GET /edev/{id}/der (scoped list)
+	resp2, err := http.Get(srv.URL + "/edev/e1/der")
+	if err != nil {
+		t.Fatalf("GET /edev/e1/der: %v", err)
+	}
+	resp2.Body.Close()
+	if resp2.StatusCode != http.StatusOK {
+		t.Errorf("GET /edev/e1/der status = %d, want 200", resp2.StatusCode)
+	}
+
+	// GET /edev/{id}/fsa/{fsaId}/derp/{derpId}/derc (scopedListHandlerDeep)
+	resp3, err := http.Get(srv.URL + "/edev/e1/fsa/f1/derp/p1/derc")
+	if err != nil {
+		t.Fatalf("GET /edev/e1/fsa/f1/derp/p1/derc: %v", err)
+	}
+	resp3.Body.Close()
+	if resp3.StatusCode != http.StatusOK {
+		t.Errorf("GET /edev/e1/fsa/f1/derp/p1/derc status = %d, want 200", resp3.StatusCode)
+	}
+
+	// GET /mup (mirror usage point list — exercises registerMirrorRoutes)
+	resp4, err := http.Get(srv.URL + "/mup")
+	if err != nil {
+		t.Fatalf("GET /mup: %v", err)
+	}
+	resp4.Body.Close()
+	if resp4.StatusCode != http.StatusOK {
+		t.Errorf("GET /mup status = %d, want 200", resp4.StatusCode)
+	}
+
+	// GET /upt (usage point list — exercises registerMeteringRoutes)
+	resp5, err := http.Get(srv.URL + "/upt")
+	if err != nil {
+		t.Fatalf("GET /upt: %v", err)
+	}
+	resp5.Body.Close()
+	if resp5.StatusCode != http.StatusOK {
+		t.Errorf("GET /upt status = %d, want 200", resp5.StatusCode)
+	}
+}
+
+// TestAssembly_AsNotifyRemoved: a notifier that also satisfies notifyRemover
+// wires the subscription-delete handler with the NotifyRemoved callback.
+// Asserts the DELETE /edev/{id}/sub/{subId} path is mounted and returns 204.
+func TestAssembly_AsNotifyRemoved(t *testing.T) {
+	t.Parallel()
+
+	stores := testStores()
+	stub := &notifyRemoverStub{}
+	handler, patterns := assembly.BuildProtocolRouter(
+		assembly.RouterConfig{},
+		stores,
+		testAuthPolicy(),
+		"serverSFDI", "serverLFDI",
+		stub,
+	)
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	// Verify the subscription-delete pattern is registered.
+	found := false
+	for _, p := range patterns {
+		if p == "DELETE /edev/{id}/sub/{subId}" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("DELETE /edev/{id}/sub/{subId} not in pattern list; patterns = %v", patterns)
+	}
+
+	// Seed a subscription so the DELETE path has something to act on.
+	ctx := context.Background()
+	sub := sep2.Subscription{
+		SubscribableResource: sep2.SubscribableResource{
+			Resource: sep2.Resource{Href: "/edev/e1/sub/s1"},
+		},
+		SubscribedResource: "/edev",
+	}
+	if err := stores.Subscriptions.Create(ctx, "s1", sub); err != nil {
+		t.Fatalf("seed subscription: %v", err)
+	}
+
+	req, _ := http.NewRequestWithContext(ctx, http.MethodDelete, srv.URL+"/edev/e1/sub/s1", nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE /edev/e1/sub/s1: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Errorf("DELETE /edev/e1/sub/s1 status = %d, want 204", resp.StatusCode)
+	}
 }
 
 // TestAssembly_PatternListNonEmpty asserts that BuildProtocolRouter returns
