@@ -16,6 +16,8 @@ package assembly
 
 import (
 	"context"
+	"fmt"
+	"log"
 	"net/http"
 	"sort"
 
@@ -115,21 +117,41 @@ type RouterConfig struct {
 // AuthPolicy bundles the three auth touch points the protocol router and the
 // ported handlers need. The server wires its internal/auth implementations;
 // tests supply pass-through stubs. Core imports nothing from internal/auth.
+//
+// Zero-value safety: a zero-value AuthPolicy is safe and fail-closed.
+// BuildProtocolRouter substitutes deny-all stubs for any nil func field
+// before wiring, so a nil Identity or SFDIPrefix never causes a nil-panic
+// at request time: they return ok=false (403) and an error (500)
+// respectively. A nil Wrap installs NO middleware (no ACL enforcement);
+// this is intentional for tests but is NOT safe for production: see the
+// Wrap field comment below.
 type AuthPolicy struct {
 	// Wrap composes the identity and ACL middleware around the protocol mux.
 	// The server passes auth.IdentityMiddleware composed with
-	// auth.ACLMiddleware(auth.DefaultACLRules()); a test passes http.HandlerFunc
-	// directly (identity pass-through).
+	// auth.ACLMiddleware(auth.DefaultACLRules()); a test passes a no-op.
+	//
+	// WARNING: nil Wrap disables ALL middleware for the protocol mux,
+	// meaning no TLS identity is extracted and no ACL rules are applied.
+	// This is only safe for unit tests. A production server MUST supply a
+	// non-nil Wrap that includes at minimum auth.IdentityMiddleware and
+	// auth.ACLMiddleware; BuildProtocolRouter logs a warning when Wrap is nil.
 	Wrap func(http.Handler) http.Handler
 
 	// Identity extracts the authenticated device identity from the request
 	// context. Replaces the direct auth.GetIdentity calls in the ported
-	// edev and registration handlers. Returns ok=false when unauthenticated.
+	// edev and registration handlers. Returns ok=false when unauthenticated,
+	// causing those handlers to return 403 Forbidden.
+	//
+	// If nil, BuildProtocolRouter substitutes a deny-all stub (always
+	// returns ok=false) so handlers fail closed rather than panicking.
 	Identity func(ctx context.Context) (lfdi, sfdi string, ok bool)
 
 	// SFDIPrefix derives the EndDevice id prefix from an SFDI, replacing
 	// auth.ExtractSFDIPrefix (IEEE-014 short-SFDI guard). Injected so the
 	// guard policy stays server-owned.
+	//
+	// If nil, BuildProtocolRouter substitutes a stub that always returns an
+	// error so the create path fails with 500 rather than panicking.
 	SFDIPrefix func(sfdi string) (string, error)
 }
 
@@ -149,6 +171,25 @@ func BuildProtocolRouter(
 	serverSFDI, serverLFDI string,
 	notifier coreedev.ResourceNotifier,
 ) (http.Handler, []string) {
+	// F1: substitute deny-all stubs for nil func fields so zero-value
+	// AuthPolicy is safe and fail-closed, never a nil-panic at request time.
+	if authPolicy.Identity == nil {
+		authPolicy.Identity = func(_ context.Context) (string, string, bool) {
+			return "", "", false // deny: handlers return 403
+		}
+	}
+	if authPolicy.SFDIPrefix == nil {
+		authPolicy.SFDIPrefix = func(_ string) (string, error) {
+			return "", fmt.Errorf("SFDIPrefix not configured: deny")
+		}
+	}
+
+	// F2: nil Wrap disables all middleware (no TLS identity extraction, no
+	// ACL enforcement). Log loudly so a production misconfiguration is visible.
+	if authPolicy.Wrap == nil {
+		log.Print("assembly: AuthPolicy.Wrap is nil: no identity middleware and no ACL enforcement; safe for tests only")
+	}
+
 	top := http.NewServeMux()
 
 	protocolMux := newRecordingMux()
