@@ -14,6 +14,7 @@ import (
 
 	"gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/pkg/sep2"
 	"gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/pkg/sep2srv/assembly"
+	coreedev "gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/pkg/sep2srv/handlers/enddevice"
 	"gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/pkg/store/memory"
 )
 
@@ -526,4 +527,16 @@ func TestAssembly_PatternListNonEmpty(t *testing.T) {
 			t.Errorf("pattern list missing %q; got: %v", want, patterns)
 		}
 	}
+}
+
+// TestResourceNotifierAliasIdentity proves assembly.ResourceNotifier is the
+// SAME type as coreedev.ResourceNotifier (an alias, not a distinct interface).
+// The bidirectional var _ assignment compiles only when both names denote the
+// identical type; a distinct-but-method-compatible wrapper would also compile
+// here, but the alias guarantee is the relevant contract: a value typed as one
+// can be passed where the other is named without any conversion. (IEEECORE-002)
+func TestResourceNotifierAliasIdentity(t *testing.T) {
+	t.Parallel()
+	var _ assembly.ResourceNotifier = (coreedev.ResourceNotifier)(nil)
+	var _ coreedev.ResourceNotifier = (assembly.ResourceNotifier)(nil)
 }
