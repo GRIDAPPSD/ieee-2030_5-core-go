@@ -62,6 +62,12 @@ func HandleFSA(fsaStore *memory.ScopedStore[sep2.FunctionSetAssignments]) http.H
 
 // HandleCreateFSA returns a handler for POST /api/fsa (admin endpoint).
 // Creates a FunctionSetAssignment and assigns it to a device.
+//
+// This handler serves the admin-surface create route and is intended to be
+// wired by the consuming server on its own admin mux, NOT by
+// assembly.BuildProtocolRouter, consistent with the IEEECORE-001
+// read/protocol export scope. The export is deliberate: consumers mount it
+// on their own admin auth chain.
 func HandleCreateFSA(fsaStore *memory.ScopedStore[sep2.FunctionSetAssignments]) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Admin API uses JSON, but FSA creation can be simple
