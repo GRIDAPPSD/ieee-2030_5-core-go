@@ -25,9 +25,9 @@ import (
 // we populate all of them to maximise coverage.
 func testStores() *assembly.Stores {
 	return &assembly.Stores{
-		EndDevices:         memory.NewEndDeviceStore(),
-		Registrations:      memory.NewRegistrationStore(),
-		MirrorUsagePoints:  memory.NewStore[sep2.MirrorUsagePoint](),
+		EndDevices:          memory.NewEndDeviceStore(),
+		Registrations:       memory.NewRegistrationStore(),
+		MirrorUsagePoints:   memory.NewStore[sep2.MirrorUsagePoint](),
 		MirrorMeterReadings: memory.NewScopedStore[sep2.MirrorMeterReading](),
 
 		DERs:               memory.NewScopedStore[sep2.DER](),
