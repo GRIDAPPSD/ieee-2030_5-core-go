@@ -277,7 +277,9 @@ func (r *Receiver) Stop(ctx context.Context) error {
 //   - 415 Unsupported Media Type when the base media type is not application/sep+xml.
 //   - 400 Bad Request on read failure, body-too-large, empty body, malformed
 //     XML, or XML that does not decode into a Notification.
-//   - 500 Internal Server Error when the Dispatcher panics.
+//   - 500 Internal Server Error when the connection context yields no verified
+//     peer certificate (fail-closed guard enforcing the Dispatcher contract),
+//     or when the Dispatcher panics.
 //   - 204 No Content on a well-formed, accepted Notification.
 func (r *Receiver) handler() http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
@@ -337,6 +339,20 @@ func (r *Receiver) handler() http.HandlerFunc {
 			if cs := tc.ConnectionState(); len(cs.PeerCertificates) > 0 {
 				peerCert = cs.PeerCertificates[0]
 			}
+		}
+
+		// Fail closed when the peer cert is not available. In production the
+		// ConnContext + RequireAnyClientCert guarantee a non-nil cert; if
+		// either is absent (a plain-HTTP connection, a test helper, or a
+		// future refactor) the handler returns 500 before invoking the
+		// dispatcher. This enforces the peerCert-is-never-nil contract in
+		// the Dispatcher godoc rather than relying on documentation alone.
+		if peerCert == nil {
+			if r.logger != nil {
+				r.logger.ErrorContext(req.Context(), "notify: no verified peer certificate in connection context")
+			}
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
 		}
 
 		// Invoke the dispatcher inside a recover wrapper so a panicking
