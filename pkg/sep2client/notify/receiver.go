@@ -16,11 +16,13 @@ package notify
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
+	"mime"
 	"net"
 	"net/http"
 	"sync"
@@ -30,6 +32,13 @@ import (
 	sepTLS "gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/pkg/sep2tls"
 	gotls "gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/pkg/sep2tls/gotls"
 )
+
+// gotlsConnKey is the context key under which the accepted *gotls.Conn is
+// stored for each connection. The handler reads it to access the
+// post-handshake ConnectionState (including PeerCertificates) because
+// gotls.Conn is not *crypto/tls.Conn and http.Server does not populate
+// req.TLS for it.
+type gotlsConnKey struct{}
 
 // contentTypeSEPXML is the mandatory content type for IEEE 2030.5 resource
 // payloads per IEEE 2030.5 §10 / CSIP §6.6.
@@ -45,11 +54,19 @@ const maxBodyBytes = 64 * 1024
 // the project.
 const readHeaderTimeout = 5 * time.Second
 
-// shutdownTimeout bounds graceful shutdown. Connections still being served
-// get this long to finish before the server is force-closed.
+// shutdownTimeout is the internal cap on the graceful-shutdown phase inside
+// Stop. See the Stop docstring for the interaction with the caller-supplied
+// context.
 const shutdownTimeout = 5 * time.Second
 
 // Dispatcher is the callback invoked for every well-formed Notification POST.
+//
+// peerCert is the verified leaf certificate presented by the SEP2 server
+// during the mTLS handshake. It is never nil: the mTLS posture rejects any
+// request that does not carry a validated client certificate. Consumers can
+// use peerCert to authorize the notification source, for example by
+// extracting LFDI or SFDI from the HardwareModuleName SAN, before acting on
+// the notification content.
 //
 // The dispatcher runs synchronously inside the /notify handler: keep it
 // cheap. Heavy work (HTTP GETs to re-fetch a changed resource, state-machine
@@ -58,15 +75,12 @@ const shutdownTimeout = 5 * time.Second
 //
 // ctx is the per-request context; cancellation propagates to any goroutines
 // the dispatcher spawns.
-type Dispatcher func(ctx context.Context, n sep2.Notification)
+type Dispatcher func(ctx context.Context, peerCert *x509.Certificate, n sep2.Notification)
 
-// Noop is the default Dispatcher: logs the notification and returns. Replace
-// it with a real dispatcher once the consuming application's state machine is
-// wired.
-func Noop(_ context.Context, n sep2.Notification) {
-	log.Printf("notify: received subscribed=%q newURI=%q status=%d (no-op dispatch)",
-		n.SubscribedResource, n.NewResourceURI, n.Status)
-}
+// Noop is a no-op Dispatcher that silently discards every well-formed
+// Notification. Use it as the Config.Dispatcher default when no consumer is
+// wired yet; it emits nothing and does not touch the process-global logger.
+func Noop(_ context.Context, _ *x509.Certificate, _ sep2.Notification) {}
 
 // Config carries the inputs NewReceiver needs.
 //
@@ -80,14 +94,18 @@ func Noop(_ context.Context, n sep2.Notification) {
 // case, which the caller treats as "subscription flow disabled, fall back to
 // polling."
 //
-// D is the per-notification callback. Nil substitutes Noop so callers can
-// wire the listener and defer dispatcher selection.
+// Dispatcher is the per-notification callback. Nil substitutes Noop so
+// callers can wire the listener and defer dispatcher selection.
+//
+// Logger, if non-nil, receives diagnostic messages from the receiver
+// (currently: dispatcher panic recovery). A nil Logger is silent.
 type Config struct {
 	CertFile   string
 	KeyFile    string
 	CAFile     string
 	ListenAddr string
-	D          Dispatcher
+	Dispatcher Dispatcher
+	Logger     *slog.Logger
 }
 
 // Receiver owns the inbound HTTPS listener and the /notify handler.
@@ -99,6 +117,7 @@ type Receiver struct {
 	tlsCfg     *gotls.Config
 	listenAddr string
 	dispatcher Dispatcher
+	logger     *slog.Logger
 
 	mu     sync.Mutex
 	tlsL   net.Listener
@@ -126,16 +145,16 @@ func NewReceiver(cfg Config) (*Receiver, error) {
 		return nil, nil
 	}
 
-	// NewCCMServerConfig from sep2tls builds the gotls.Config with CCM-8
-	// as the primary cipher, GCM as fallback, RequireAnyClientCert, and
-	// the HardwareModuleName-SAN-tolerant verify hook. This mirrors the
-	// production CCM server config and the client's own buildNotifyTLSConfig.
+	// NewCCMServerConfig builds a gotls.Config with CCM-8 as the primary
+	// cipher, GCM as fallback, RequireAnyClientCert, and the
+	// HardwareModuleName-SAN-tolerant verify hook. This matches the posture
+	// of the production sep2tls CCM server configuration.
 	tlsCfg, err := sepTLS.NewCCMServerConfig(cfg.CertFile, cfg.KeyFile, cfg.CAFile)
 	if err != nil {
 		return nil, fmt.Errorf("notify receiver: build TLS config: %w", err)
 	}
 
-	d := cfg.D
+	d := cfg.Dispatcher
 	if d == nil {
 		d = Noop
 	}
@@ -144,6 +163,7 @@ func NewReceiver(cfg Config) (*Receiver, error) {
 		tlsCfg:     tlsCfg,
 		listenAddr: cfg.ListenAddr,
 		dispatcher: d,
+		logger:     cfg.Logger,
 	}, nil
 }
 
@@ -172,6 +192,16 @@ func (r *Receiver) Start() error {
 	srv := &http.Server{
 		Handler:           mux,
 		ReadHeaderTimeout: readHeaderTimeout,
+		// Store the *gotls.Conn in the per-connection context so the handler
+		// can read PeerCertificates after the TLS handshake completes.
+		// http.Server does not recognise gotls.Conn as *crypto/tls.Conn and
+		// therefore does not populate req.TLS itself.
+		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
+			if tc, ok := c.(*gotls.Conn); ok {
+				return context.WithValue(ctx, gotlsConnKey{}, tc)
+			}
+			return ctx
+		},
 	}
 
 	doneCh := make(chan error, 1)
@@ -206,8 +236,10 @@ func (r *Receiver) Addr() (string, error) {
 }
 
 // Stop initiates a graceful shutdown and waits for the serve goroutine to
-// exit. The supplied ctx bounds the graceful phase; expiring it triggers an
-// immediate Close.
+// exit. The supplied ctx is used as the parent for an internal shutdown
+// context capped at shutdownTimeout (5 s); if the caller's ctx expires
+// earlier that shorter deadline applies instead. An immediate Close is
+// forced when graceful shutdown does not complete within the cap.
 //
 // Stop is safe to call multiple times: the first call drains the serve
 // goroutine; subsequent calls return ErrNotStarted.
@@ -229,8 +261,8 @@ func (r *Receiver) Stop(ctx context.Context) error {
 
 	// Shutdown closes the underlying listener as part of its work.
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		// Force-close as a last resort: http.Server.Close is safe after a
-		// failed Shutdown.
+		// srv.Close is safe after a partial Shutdown: it force-closes any
+		// lingering connections so Stop does not block indefinitely.
 		_ = srv.Close()
 	}
 
@@ -242,9 +274,10 @@ func (r *Receiver) Stop(ctx context.Context) error {
 //
 // Status code policy (IEEE 2030.5 §10.13):
 //   - 405 Method Not Allowed for any non-POST method.
-//   - 415 Unsupported Media Type when Content-Type is not application/sep+xml.
+//   - 415 Unsupported Media Type when the base media type is not application/sep+xml.
 //   - 400 Bad Request on read failure, body-too-large, empty body, malformed
 //     XML, or XML that does not decode into a Notification.
+//   - 500 Internal Server Error when the Dispatcher panics.
 //   - 204 No Content on a well-formed, accepted Notification.
 func (r *Receiver) handler() http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
@@ -254,13 +287,13 @@ func (r *Receiver) handler() http.HandlerFunc {
 			return
 		}
 
-		// IEEE 2030.5 §10 / CSIP §6.6 mandates application/sep+xml.
-		// Accept the bare value and the common charset variant; ignore other
-		// trailing parameters.
+		// IEEE 2030.5 §10 / CSIP §6.6 mandates application/sep+xml. Use
+		// mime.ParseMediaType to extract the base type so that valid
+		// variants such as "application/sep+xml; charset=utf-8" or
+		// uppercased values are accepted.
 		ct := req.Header.Get("Content-Type")
-		if ct != contentTypeSEPXML &&
-			ct != contentTypeSEPXML+"; charset=utf-8" &&
-			ct != contentTypeSEPXML+";charset=utf-8" {
+		baseType, _, parseErr := mime.ParseMediaType(ct)
+		if parseErr != nil || baseType != contentTypeSEPXML {
 			http.Error(w, "unsupported media type", http.StatusUnsupportedMediaType)
 			return
 		}
@@ -292,7 +325,35 @@ func (r *Receiver) handler() http.HandlerFunc {
 			return
 		}
 
-		r.dispatcher(req.Context(), n)
+		// Extract the verified peer leaf certificate for the dispatcher.
+		// gotls.Conn is not *crypto/tls.Conn so req.TLS is nil; retrieve
+		// the post-handshake state via the conn reference stored in
+		// ConnContext above. Chain validation already ran in
+		// VerifyPeerCertificate; PeerCertificates[0] is trust-verified.
+		// RequireAnyClientCert guarantees the slice is non-empty after a
+		// successful handshake.
+		var peerCert *x509.Certificate
+		if tc, ok := req.Context().Value(gotlsConnKey{}).(*gotls.Conn); ok {
+			if cs := tc.ConnectionState(); len(cs.PeerCertificates) > 0 {
+				peerCert = cs.PeerCertificates[0]
+			}
+		}
+
+		// Invoke the dispatcher inside a recover wrapper so a panicking
+		// consumer cannot crash the receiver process. A panic returns 500.
+		var recoverVal any
+		func() {
+			defer func() { recoverVal = recover() }()
+			r.dispatcher(req.Context(), peerCert, n)
+		}()
+		if recoverVal != nil {
+			if r.logger != nil {
+				r.logger.ErrorContext(req.Context(), "dispatcher panicked",
+					"recover", fmt.Sprint(recoverVal))
+			}
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
 
 		w.WriteHeader(http.StatusNoContent)
 	}

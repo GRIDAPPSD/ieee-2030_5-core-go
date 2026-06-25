@@ -31,6 +31,10 @@ type notifyEnv struct {
 	deviceCertPath string
 	deviceKeyPath  string
 	caCertPath     string
+
+	// deviceCert is the parsed device certificate, used to verify the peer
+	// identity that the dispatcher receives.
+	deviceCert *x509.Certificate
 }
 
 // newNotifyEnv generates a fresh CA + device cert pair under t.TempDir.
@@ -61,6 +65,11 @@ func newNotifyEnv(t *testing.T) *notifyEnv {
 		t.Fatalf("GenerateDeviceCert: %v", err)
 	}
 
+	devCert, err := certs.ParseCertificatePEM(devCertPEM)
+	if err != nil {
+		t.Fatalf("ParseCertificatePEM device: %v", err)
+	}
+
 	caPool := x509.NewCertPool()
 	if !caPool.AppendCertsFromPEM(caCertPEM) {
 		t.Fatal("AppendCertsFromPEM: no certs")
@@ -88,6 +97,7 @@ func newNotifyEnv(t *testing.T) *notifyEnv {
 		deviceCertPath: devCertPath,
 		deviceKeyPath:  devKeyPath,
 		caCertPath:     caPath,
+		deviceCert:     devCert,
 	}
 }
 
@@ -100,7 +110,7 @@ func newReceiver(t *testing.T, env *notifyEnv, d notify.Dispatcher) *notify.Rece
 		KeyFile:    env.deviceKeyPath,
 		CAFile:     env.caCertPath,
 		ListenAddr: "127.0.0.1:0",
-		D:          d,
+		Dispatcher: d,
 	})
 	if err != nil {
 		t.Fatalf("NewReceiver: %v", err)
@@ -111,7 +121,11 @@ func newReceiver(t *testing.T, env *notifyEnv, d notify.Dispatcher) *notify.Rece
 	if err := rcv.Start(); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	t.Cleanup(func() { _ = rcv.Stop(context.Background()) })
+	t.Cleanup(func() {
+		if err := rcv.Stop(context.Background()); err != nil && !errors.Is(err, notify.ErrNotStarted) {
+			t.Errorf("Stop in cleanup: %v", err)
+		}
+	})
 	return rcv
 }
 
@@ -364,6 +378,15 @@ func TestHandler_StatusCodes(t *testing.T) {
 			wantStatus:  http.StatusNoContent,
 		},
 		{
+			// mime.ParseMediaType normalizes to lowercase, so uppercase variants
+			// that would have failed the old exact-match now succeed.
+			name:        "happy_204_xml_uppercase",
+			method:      http.MethodPost,
+			contentType: "APPLICATION/SEP+XML",
+			body:        sampleNotificationXML(t, 0, "/edev/0/fsa"),
+			wantStatus:  http.StatusNoContent,
+		},
+		{
 			name:        "wrong_method_get",
 			method:      http.MethodGet,
 			contentType: "application/sep+xml",
@@ -415,7 +438,6 @@ func TestHandler_StatusCodes(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -459,7 +481,7 @@ func TestHandler_DispatcherInvoked(t *testing.T) {
 	var captured atomic.Value // holds sep2.Notification
 	var fired atomic.Int32
 
-	d := notify.Dispatcher(func(_ context.Context, n sep2.Notification) {
+	d := notify.Dispatcher(func(_ context.Context, _ *x509.Certificate, n sep2.Notification) {
 		captured.Store(n)
 		fired.Add(1)
 	})
@@ -508,6 +530,58 @@ func TestHandler_DispatcherInvoked(t *testing.T) {
 	}
 }
 
+// TestHandler_PeerCertPassedToDispatcher asserts that the verified mTLS peer
+// leaf certificate is delivered to the Dispatcher. The serial number of the
+// received cert must match the device cert the test client presented, ruling
+// out any nil or stub substitution.
+func TestHandler_PeerCertPassedToDispatcher(t *testing.T) {
+	t.Parallel()
+
+	env := newNotifyEnv(t)
+
+	var capturedPeer atomic.Pointer[x509.Certificate]
+
+	d := notify.Dispatcher(func(_ context.Context, peerCert *x509.Certificate, _ sep2.Notification) {
+		capturedPeer.Store(peerCert)
+	})
+
+	rcv := newReceiver(t, env, d)
+	client := notifyClient(t, env)
+
+	body := sampleNotificationXML(t, 0, "/edev/0/fsa")
+	req, err := http.NewRequestWithContext(context.Background(),
+		http.MethodPost, notifyURL(t, rcv, "/notify"), bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/sep+xml")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("client.Do: %v", err)
+	}
+	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}()
+
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status: want 204, got %d", resp.StatusCode)
+	}
+
+	got := capturedPeer.Load()
+	if got == nil {
+		t.Fatal("dispatcher received nil peerCert")
+	}
+	// Verify by serial number: the cert carries a random serial set at
+	// generation time; matching it confirms the dispatcher received the
+	// actual device cert the client presented, not a nil or wrong cert.
+	if got.SerialNumber.Cmp(env.deviceCert.SerialNumber) != 0 {
+		t.Errorf("peerCert.SerialNumber = %s, want %s",
+			got.SerialNumber, env.deviceCert.SerialNumber)
+	}
+}
+
 // TestHandler_DispatcherNotInvokedOnError asserts the dispatcher is NOT
 // called for malformed bodies. This is important so a buggy or hostile
 // server cannot trigger consumer-policy state-machine churn by sending
@@ -518,7 +592,7 @@ func TestHandler_DispatcherNotInvokedOnError(t *testing.T) {
 	env := newNotifyEnv(t)
 
 	var fired atomic.Int32
-	d := notify.Dispatcher(func(_ context.Context, _ sep2.Notification) {
+	d := notify.Dispatcher(func(_ context.Context, _ *x509.Certificate, _ sep2.Notification) {
 		fired.Add(1)
 	})
 
@@ -546,6 +620,44 @@ func TestHandler_DispatcherNotInvokedOnError(t *testing.T) {
 	}
 	if got := fired.Load(); got != 0 {
 		t.Fatalf("dispatcher fired %d times on malformed body, want 0", got)
+	}
+}
+
+// TestHandler_DispatcherPanicRecovery asserts that a panicking Dispatcher
+// does not crash the receiver process: the handler returns 500 and the
+// receiver continues serving subsequent requests.
+func TestHandler_DispatcherPanicRecovery(t *testing.T) {
+	t.Parallel()
+
+	env := newNotifyEnv(t)
+
+	d := notify.Dispatcher(func(_ context.Context, _ *x509.Certificate, _ sep2.Notification) {
+		panic("test panic in dispatcher")
+	})
+
+	rcv := newReceiver(t, env, d)
+	client := notifyClient(t, env)
+
+	body := sampleNotificationXML(t, 0, "/edev/0/fsa")
+	req, err := http.NewRequestWithContext(context.Background(),
+		http.MethodPost, notifyURL(t, rcv, "/notify"), bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/sep+xml")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("client.Do: %v", err)
+	}
+	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}()
+
+	// A panicking dispatcher must not crash the receiver: it returns 500.
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status: want 500 on panicking dispatcher, got %d", resp.StatusCode)
 	}
 }
 
