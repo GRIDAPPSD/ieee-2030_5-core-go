@@ -3,7 +3,7 @@
 [![Pipeline](https://gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/badges/main/pipeline.svg)](https://gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/-/commits/main)
 [![Coverage](https://gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/badges/main/coverage.svg)](https://gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/-/commits/main)
 [![Go 1.26](https://img.shields.io/badge/go-1.26-blue)](https://go.dev)
-[![License](https://img.shields.io/badge/license-BSD--2--Clause-blue)](LICENSE)
+[![License](https://img.shields.io/badge/license-Battelle%20BSD-blue)](LICENSE)
 
 Shared Go library for the IEEE 2030.5 (SEP2) server and client implementations
 at PNNL. Both the reference server (`ieee-2030_5-server`) and the client
@@ -65,4 +65,6 @@ Adjust the relative path to match your local checkout layout.
 
 ## License
 
-BSD-2-Clause. Copyright Battelle Memorial Institute. See LICENSE.
+Battelle BSD (modified BSD with a Battelle name-use clause and DOE disclaimer).
+Copyright Battelle Memorial Institute, operated by Battelle for the U.S.
+Department of Energy under Contract DE-AC05-76RL01830. See LICENSE.
