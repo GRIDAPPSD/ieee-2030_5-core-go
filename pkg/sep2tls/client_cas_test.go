@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	septls "gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/pkg/sep2tls"
+	septls "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls"
 )
 
 // TestLoadClientCAs covers the multi-root ClientCA loader the IEEE-068

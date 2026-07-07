@@ -16,10 +16,10 @@ import (
 	"testing"
 	"time"
 
-	"gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/pkg/sep2"
-	certs "gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/pkg/sep2cert"
-	"gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/pkg/sep2client/notify"
-	gotls "gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/pkg/sep2tls/gotls"
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
+	certs "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2cert"
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2client/notify"
+	gotls "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls"
 )
 
 // notifyEnv is the shared TLS fixture for the receiver tests. It generates a

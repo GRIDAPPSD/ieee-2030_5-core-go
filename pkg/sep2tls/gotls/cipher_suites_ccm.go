@@ -3,7 +3,7 @@ package gotls
 import (
 	"crypto/aes"
 
-	"gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/pkg/sep2tls/ccm"
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/ccm"
 )
 
 // TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8 is the mandatory cipher suite
@@ -14,13 +14,13 @@ const TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8 uint16 = 0xC0AE
 func init() {
 	// Register CCM-8 in the cipher suite table
 	cipherSuites = append(cipherSuites, &cipherSuite{
-		id:   TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8,
+		id:     TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8,
 		keyLen: 16,
 		macLen: 0,
 		ivLen:  4,
-		ka:    ecdheECDSAKA,
-		flags: suiteECDHE | suiteECSign | suiteTLS12,
-		aead:  aeadAES128CCM8,
+		ka:     ecdheECDSAKA,
+		flags:  suiteECDHE | suiteECSign | suiteTLS12,
+		aead:   aeadAES128CCM8,
 	})
 
 	// Add to BOTH preference orders (with and without AES hardware)

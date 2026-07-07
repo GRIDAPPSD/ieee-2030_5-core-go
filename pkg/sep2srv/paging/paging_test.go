@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"testing"
 
-	"gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/pkg/sep2srv/paging"
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/paging"
 	"pgregory.net/rapid"
 )
 

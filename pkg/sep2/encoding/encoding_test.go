@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/pkg/sep2/encoding"
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
 )
 
 type testResource struct {

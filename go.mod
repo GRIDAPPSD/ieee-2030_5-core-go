@@ -1,4 +1,4 @@
-module gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core
+module github.com/GRIDAPPSD/ieee-2030_5-core-go
 
 go 1.26.3
 

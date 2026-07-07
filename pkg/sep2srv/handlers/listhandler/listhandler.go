@@ -3,9 +3,9 @@ package listhandler
 import (
 	"net/http"
 
-	"gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/pkg/sep2/encoding"
-	"gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/pkg/sep2srv/paging"
-	"gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/pkg/store"
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/paging"
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 )
 
 // ListHandler creates a generic HTTP handler for any IEEE 2030.5 list resource.
