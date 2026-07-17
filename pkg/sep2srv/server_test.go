@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -133,6 +134,7 @@ func echoHandler(id sep2srv.Identity) http.Handler {
 }
 
 func TestNew_GCM_IdentityMatchesLeafCert(t *testing.T) {
+	t.Parallel()
 	certs := newTestCertSet(t)
 	wantSFDI := sepTLS.SFDI(certs.serverLeaf)
 	wantLFDI := sepTLS.LFDI(certs.serverLeaf)
@@ -163,6 +165,7 @@ func TestNew_GCM_IdentityMatchesLeafCert(t *testing.T) {
 // Run exits cleanly on ctx cancellation within a bounded time, with no
 // leaked listener goroutine.
 func TestNew_GCM_MTLSAcceptAndReject(t *testing.T) {
+	t.Parallel()
 	certs := newTestCertSet(t)
 
 	srv, err := sep2srv.New(sep2srv.Options{
@@ -218,8 +221,11 @@ func TestNew_GCM_MTLSAcceptAndReject(t *testing.T) {
 	}
 
 	// (c) Clean shutdown: cancelling ctx must return Run within the
-	// configured ShutdownTimeout, and the listener must actually be closed
-	// afterward (no leaked accept loop).
+	// configured ShutdownTimeout, and the listener must actually stop
+	// accepting connections afterward (no leaked accept loop). The
+	// stop-accepting check polls with a bounded deadline rather than a
+	// single-shot dial: OS-level socket teardown can lag Run's return by a
+	// few milliseconds, and a single-shot probe races that lag.
 	cancel()
 	select {
 	case err := <-runDone:
@@ -230,13 +236,11 @@ func TestNew_GCM_MTLSAcceptAndReject(t *testing.T) {
 		t.Fatal("Run did not return within 2s of ctx cancellation; possible goroutine leak")
 	}
 
-	if conn, dialErr := net.DialTimeout("tcp", addr, 200*time.Millisecond); dialErr == nil {
-		_ = conn.Close()
-		t.Error("listener still accepting connections after Run returned; Serve goroutine leaked")
-	}
+	waitForDialFailure(t, addr)
 }
 
 func TestNew_CCM_IdentityAndLifecycle(t *testing.T) {
+	t.Parallel()
 	certs := newTestCertSet(t)
 	wantSFDI := sepTLS.SFDI(certs.serverLeaf)
 	wantLFDI := sepTLS.LFDI(certs.serverLeaf)
@@ -274,13 +278,99 @@ func TestNew_CCM_IdentityAndLifecycle(t *testing.T) {
 		t.Fatal("Run did not return within 2s of ctx cancellation (CCM); possible goroutine leak")
 	}
 
-	if conn, dialErr := net.DialTimeout("tcp", addr, 200*time.Millisecond); dialErr == nil {
-		_ = conn.Close()
-		t.Error("CCM listener still accepting connections after Run returned")
+	waitForDialFailure(t, addr)
+}
+
+// TestServer_Run_ShutdownTimeoutError proves Run's bounded-drain guarantee:
+// a handler that outlives ShutdownTimeout makes Run return the wrapped
+// shutdown error within bounds, rather than hanging on an unbounded
+// Shutdown. This is the reachable half of the two Run branches previously
+// (and wrongly) reported as defensive-only unreachable code; the stuck
+// handler here drives Run's Shutdown(shutdownCtx) call past its deadline.
+func TestServer_Run_ShutdownTimeoutError(t *testing.T) {
+	t.Parallel()
+	certs := newTestCertSet(t)
+
+	handlerStarted := make(chan struct{})
+	release := make(chan struct{})
+	stuckHandler := func(sep2srv.Identity) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			close(handlerStarted)
+			<-release // blocks well past ShutdownTimeout so Shutdown cannot drain gracefully
+			w.WriteHeader(http.StatusOK)
+		})
+	}
+
+	srv, err := sep2srv.New(sep2srv.Options{
+		Addr:            "127.0.0.1:0",
+		CertFile:        certs.serverCert,
+		KeyFile:         certs.serverKey,
+		CAFile:          certs.caFile,
+		ShutdownTimeout: 100 * time.Millisecond,
+	}, stuckHandler)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	addr := srv.Addr()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	runDone := make(chan error, 1)
+	go func() { runDone <- srv.Run(ctx) }()
+
+	waitForDial(t, addr)
+
+	clientTLSCfg, err := sepTLS.NewClientTLSConfigFromPEM(mustRead(t, certs.deviceCert), mustRead(t, certs.deviceKey), mustRead(t, certs.caFile))
+	if err != nil {
+		t.Fatalf("NewClientTLSConfigFromPEM: %v", err)
+	}
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: clientTLSCfg}}
+
+	reqDone := make(chan error, 1)
+	go func() {
+		resp, getErr := client.Get("https://" + addr + "/dcap")
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
+		reqDone <- getErr
+	}()
+
+	select {
+	case <-handlerStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("stuck handler never started")
+	}
+
+	cancel()
+
+	// Run must return within bounds even though the handler is still
+	// blocked: this is the "process does not hang" assertion.
+	select {
+	case err := <-runDone:
+		if err == nil {
+			t.Fatal("Run returned nil for a stuck handler that outlives ShutdownTimeout, want a shutdown error")
+		}
+		if !strings.Contains(err.Error(), "sep2srv: shutdown:") {
+			t.Errorf("Run error = %q, want it to wrap the shutdown timeout as \"sep2srv: shutdown: ...\"", err.Error())
+		}
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("Run error = %v, want errors.Is(err, context.DeadlineExceeded)", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return within 2s of a stuck handler outliving ShutdownTimeout; Run hung")
+	}
+
+	// Unblock the stuck handler so its goroutine and the client's pending
+	// request do not outlive the test.
+	close(release)
+	select {
+	case <-reqDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("stuck request never completed after release; handler goroutine leaked")
 	}
 }
 
 func TestNew_ValidationErrors(t *testing.T) {
+	t.Parallel()
 	certs := newTestCertSet(t)
 
 	tests := []struct {
@@ -317,6 +407,7 @@ func TestNew_ValidationErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			srv, err := sep2srv.New(tt.opts, tt.build)
 			if err == nil {
 				t.Fatalf("New(%s) succeeded, want error", tt.name)
@@ -329,6 +420,7 @@ func TestNew_ValidationErrors(t *testing.T) {
 }
 
 func TestNew_BadAddr_ListenError(t *testing.T) {
+	t.Parallel()
 	certs := newTestCertSet(t)
 	_, err := sep2srv.New(sep2srv.Options{
 		Addr:     "not-a-valid-addr:::",
@@ -355,6 +447,26 @@ func waitForDial(t *testing.T, addr string) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("server at %s never accepted a connection within the deadline", addr)
+}
+
+// waitForDialFailure polls addr until a plain TCP dial fails, bounding the
+// wait so the "listener stopped accepting" assertion is deterministic
+// instead of racing OS-level socket teardown. A single-shot dial right
+// after Run returns can observe the listener as still-open for a few
+// milliseconds after Shutdown closed it; polling to a bounded deadline is
+// the inverse of waitForDial and closes that race.
+func waitForDialFailure(t *testing.T, addr string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+		if err != nil {
+			return
+		}
+		_ = conn.Close()
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("listener at %s was still accepting connections after the deadline; possible leaked accept loop", addr)
 }
 
 func mustRead(t *testing.T, path string) []byte {
