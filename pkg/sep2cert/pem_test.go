@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/pem"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -82,6 +83,55 @@ func TestCertificateDERMatchesFingerprintAndLFDI(t *testing.T) {
 	wantLFDI := sep2tls.LFDI(cert)
 	if gotLFDI != wantLFDI {
 		t.Errorf("LFDI computed from CertificateDER = %q, want sep2tls.LFDI(cert) = %q", gotLFDI, wantLFDI)
+	}
+}
+
+// TestCertificateDERMatchesSFDI closes the other half of the identity
+// invariant: the fingerprint's 36-bit left truncation, derived from
+// sha256(CertificateDER(certPEM)) using the same construction as
+// sep2tls.SFDI, must equal sep2tls.SFDI(cert) exactly. Without this test
+// the doc comment's SFDI claim is documented but unverified.
+func TestCertificateDERMatchesSFDI(t *testing.T) {
+	caCert, caKey := generateTestCA(t)
+	certPEM, _, err := sep2cert.GenerateDeviceCert(caCert, caKey, sep2cert.DeviceCertOptions{
+		DeviceType:  sep2cert.DeviceTypeGeneric,
+		HWSerialNum: "DER-SFDI-001",
+	})
+	if err != nil {
+		t.Fatalf("GenerateDeviceCert: %v", err)
+	}
+
+	cert, err := sep2cert.ParseCertificatePEM(certPEM)
+	if err != nil {
+		t.Fatalf("ParseCertificatePEM: %v", err)
+	}
+
+	der, err := sep2cert.CertificateDER(certPEM)
+	if err != nil {
+		t.Fatalf("CertificateDER: %v", err)
+	}
+
+	fp := sha256.Sum256(der)
+
+	// Same construction as sep2tls.SFDI: left-truncate the fingerprint
+	// to 36 bits from the first 5 bytes, format as 11 decimal digits,
+	// append a sum-of-digits check digit.
+	val := uint64(fp[0])<<28 |
+		uint64(fp[1])<<20 |
+		uint64(fp[2])<<12 |
+		uint64(fp[3])<<4 |
+		uint64(fp[4])>>4
+	digits := fmt.Sprintf("%011d", val)
+	sum := 0
+	for _, c := range digits {
+		sum += int(c - '0')
+	}
+	checkDigit := (10 - sum%10) % 10
+	gotSFDI := digits + fmt.Sprintf("%d", checkDigit)
+
+	wantSFDI := sep2tls.SFDI(cert)
+	if gotSFDI != wantSFDI {
+		t.Errorf("SFDI derived from CertificateDER = %q, want sep2tls.SFDI(cert) = %q", gotSFDI, wantSFDI)
 	}
 }
 
