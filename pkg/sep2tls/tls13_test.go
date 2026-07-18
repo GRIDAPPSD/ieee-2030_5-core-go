@@ -225,3 +225,28 @@ func TestMutualAuthStillEnforcedUnderBothVersions(t *testing.T) {
 		})
 	}
 }
+
+// TestServerConfigSecurityInvariants locks two properties on the returned
+// server config so a future edit cannot silently regress them: session
+// tickets are disabled (so a resumed TLS 1.3 session cannot skip the CSIP
+// VerifyPeerCertificate check), and RequireAnyClientCert is always paired
+// with a non-nil VerifyPeerCertificate. RequireAnyClientCert with a nil
+// verify callback accepts any cert from any CA, an unverified-client auth
+// bypass, so pairing it with the callback is a hard invariant, not a style
+// choice. Asserting the actual field values makes a regression fail here
+// rather than ship.
+func TestServerConfigSecurityInvariants(t *testing.T) {
+	certs := newTLS13CertSet(t)
+
+	cfg, err := sepTLS.NewServerTLSConfigFromPEM(certs.serverPEM, certs.serverKey, certs.caPEM)
+	if err != nil {
+		t.Fatalf("NewServerTLSConfigFromPEM: %v", err)
+	}
+
+	if !cfg.SessionTicketsDisabled {
+		t.Error("SessionTicketsDisabled must be true: a resumed TLS 1.3 session restores the peer cert from the ticket and skips VerifyPeerCertificate, bypassing the CSIP SAN check")
+	}
+	if cfg.ClientAuth == tls.RequireAnyClientCert && cfg.VerifyPeerCertificate == nil {
+		t.Fatal("RequireAnyClientCert with a nil VerifyPeerCertificate accepts any client cert from any CA unverified: the two must always be paired")
+	}
+}
