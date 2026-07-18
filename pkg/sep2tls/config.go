@@ -62,12 +62,36 @@ func NewServerTLSConfigWithExtraCAs(certFile, keyFile, caFile string, extraCAFil
 		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
 			return VerifyPeerCertWithHardwareModuleSAN(rawCerts, caPool)
 		},
+		// MinVersion stays at the IEEE 2030.5 §6.7 spec floor (TLS 1.2).
+		// MaxVersion is raised to 1.3 so that clients which offer only
+		// TLS 1.3 (observed with the EPRI reference client, which sends
+		// no TLS 1.2 cipher suites at all) can still complete the
+		// handshake against this listener. This is additive: a spec-strict
+		// 1.2-only client negotiates 1.2 exactly as before, since 1.2
+		// remains in range and CipherSuites below still governs it. Go's
+		// crypto/tls ignores the CipherSuites field for 1.3 connections
+		// (the four 1.3 suites are fixed by the runtime and are not
+		// configurable), so no 1.3 cipher suite needs to be listed here.
+		// Mutual TLS (RequireAnyClientCert plus VerifyPeerCertificate
+		// above) is enforced identically under 1.2 and 1.3.
 		MinVersion: tls.VersionTLS12,
-		MaxVersion: tls.VersionTLS12,
+		MaxVersion: tls.VersionTLS13,
 		CipherSuites: []uint16{
 			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 		},
 		CurvePreferences: []tls.CurveID{tls.CurveP256},
+		// This is a low-frequency device-control listener, not a high-volume
+		// web endpoint: session resumption buys almost nothing here, and a
+		// resumed TLS 1.3 session restores the peer cert from the ticket
+		// without re-running VerifyPeerCertificate above, so the CSIP
+		// HardwareModuleName SAN check would be skipped on resumption.
+		// Disabling tickets forces a full mutual-auth handshake, with a
+		// fresh SAN verification, on every connection.
+		SessionTicketsDisabled: true,
+		// Safe only because callers use net/http or Conn.Read, both of which
+		// finish Handshake (and any client-cert rejection) before dispatching
+		// data; a raw handler writing before Handshake would leak the server's
+		// first flight to an unauthenticated TLS 1.3 peer.
 	}, nil
 }
 
@@ -120,12 +144,23 @@ func NewServerTLSConfigFromPEM(certPEM, keyPEM, caPEM []byte) (*tls.Config, erro
 		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
 			return VerifyPeerCertWithHardwareModuleSAN(rawCerts, caPool)
 		},
+		// See the matching comment in NewServerTLSConfigWithExtraCAs above:
+		// MinVersion stays at the spec floor, MaxVersion is raised to accept
+		// TLS 1.3-only clients, mutual TLS is unaffected either way.
 		MinVersion: tls.VersionTLS12,
-		MaxVersion: tls.VersionTLS12,
+		MaxVersion: tls.VersionTLS13,
 		CipherSuites: []uint16{
 			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 		},
 		CurvePreferences: []tls.CurveID{tls.CurveP256},
+		// See the matching comment in NewServerTLSConfigWithExtraCAs above:
+		// a resumed TLS 1.3 session skips VerifyPeerCertificate, so tickets
+		// are disabled to force a fresh CSIP SAN verification every connection.
+		SessionTicketsDisabled: true,
+		// Safe only because callers use net/http or Conn.Read, both of which
+		// finish Handshake (and any client-cert rejection) before dispatching
+		// data; a raw handler writing before Handshake would leak the server's
+		// first flight to an unauthenticated TLS 1.3 peer.
 	}, nil
 }
 
