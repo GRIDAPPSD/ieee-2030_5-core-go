@@ -62,8 +62,21 @@ func NewCCMServerConfigWithExtraCAs(certFile, keyFile, caFile string, extraCAFil
 		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
 			return VerifyPeerCertWithHardwareModuleSAN(rawCerts, caPool)
 		},
+		// MinVersion stays at the IEEE 2030.5 §6.7 spec floor (TLS 1.2),
+		// so a spec-strict CCM-8 client still negotiates exactly as
+		// before. MaxVersion is raised to 1.3 to accept clients that
+		// offer only TLS 1.3 (observed with the EPRI reference client).
+		// gotls is a vendored fork of Go's crypto/tls that implements
+		// TLS 1.3 (see handshake_server_tls13.go); its 1.3 handshake path
+		// calls the same processCertsFromClient used by the 1.2 path, so
+		// ClientAuth and VerifyPeerCertificate above are enforced
+		// identically under 1.3. CipherSuites below still governs 1.2
+		// only: gotls, like stdlib crypto/tls, selects TLS 1.3 cipher
+		// suites from its own fixed list and ignores CipherSuites for a
+		// 1.3 connection, so CCM-8 is never offered or negotiated under
+		// 1.3 and no additional 1.3 suite needs to be listed here.
 		MinVersion: gotls.VersionTLS12,
-		MaxVersion: gotls.VersionTLS12,
+		MaxVersion: gotls.VersionTLS13,
 		CipherSuites: []uint16{
 			gotls.TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8,
 			0xC02B, // TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 (fallback)
