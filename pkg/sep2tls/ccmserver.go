@@ -82,6 +82,19 @@ func NewCCMServerConfigWithExtraCAs(certFile, keyFile, caFile string, extraCAFil
 			0xC02B, // TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 (fallback)
 		},
 		CurvePreferences: []gotls.CurveID{gotls.CurveP256},
+		// This is a low-frequency device-control listener, not a high-volume
+		// web endpoint: session resumption buys almost nothing here, and a
+		// resumed TLS 1.3 session restores the peer cert from the ticket
+		// without re-running VerifyPeerCertificate above, so the CSIP
+		// HardwareModuleName SAN check would be skipped on resumption.
+		// Disabling tickets forces a full mutual-auth handshake, with a
+		// fresh SAN verification, on every connection.
+		SessionTicketsDisabled: true,
+		// Safe only because callers use net/http or Conn.Read (via
+		// SetupCCMServer/CCMIdentityMiddleware below), both of which finish
+		// Handshake (and any client-cert rejection) before dispatching data;
+		// a raw handler writing before Handshake would leak the server's
+		// first flight to an unauthenticated TLS 1.3 peer.
 	}, nil
 }
 
