@@ -39,6 +39,11 @@ func ParseCertificatePEM(pemBytes []byte) (*x509.Certificate, error) {
 // client-computed LFDI and SFDI equal the identity the server serves for
 // that same certificate, by construction, with the private key excluded
 // from the hash.
+//
+// Like pem.Decode and the sibling ParseCertificatePEM, this function uses
+// only the first PEM block in certPEM and silently ignores any trailing
+// blocks or data after it, so a cert-plus-key concatenation returns the
+// cert block.
 func CertificateDER(certPEM []byte) ([]byte, error) {
 	block, _ := pem.Decode(certPEM)
 	if block == nil {
