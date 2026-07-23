@@ -8,7 +8,7 @@ import "encoding/xml"
 // Curve-reference fields (OpModVoltVar, OpModVoltWatt, OpModFreqWatt,
 // OpModLVRT*, OpModHVRT*, OpModLFRT*, OpModHFRT*) are typed as *int32
 // to match the established project convention introduced with
-// OpModVoltVar — the value names the referenced DERCurve resource by
+// OpModVoltVar: the value names the referenced DERCurve resource by
 // the int32 hash/ID the global /dc store keys on. Per IEEE 2030.5 the
 // schema element is a DERCurveLink (Link to a DERCurve); the project
 // trades wire fidelity for an integer ref keyed off the same /dc store.
@@ -202,8 +202,8 @@ func (d DefaultDERControl) Copy() DefaultDERControl {
 // DERProgram contains controls and curves for DER devices.
 //
 // Field order matches the SubscribableIdentifiedObject + DERProgram
-// combined xsd:sequence: mRID, description, version (base, subset present
-// here) THEN ActiveDERControlListLink, DefaultDERControlLink,
+// combined xsd:sequence: mRID, description (base; version omitted, not
+// yet modeled) THEN ActiveDERControlListLink, DefaultDERControlLink,
 // DERControlListLink, DERCurveListLink, primacy (DERProgram's own
 // sequence, primacy LAST).
 type DERProgram struct {

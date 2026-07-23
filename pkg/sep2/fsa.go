@@ -11,7 +11,7 @@ import "encoding/xml"
 // FileListLink, MessagingProgramListLink, PrepaymentListLink,
 // ResponseSetListLink, TariffProfileListLink, TimeLink, UsagePointListLink,
 // subset present here) come FIRST, THEN FunctionSetAssignments' own
-// sequence (mRID, description, version).
+// sequence (mRID, description; version omitted, not yet modeled).
 type FunctionSetAssignments struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns FunctionSetAssignments"`
 	Resource
