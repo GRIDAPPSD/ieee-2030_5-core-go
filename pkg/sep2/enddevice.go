@@ -4,26 +4,39 @@ import "encoding/xml"
 
 // EndDevice represents a client device registered with the server.
 // Spec reference: section 8.5
+//
+// Field order matches the combined AbstractDevice + EndDevice xsd:sequence
+// (AbstractDevice's own sequence elements come first per xsd:extension
+// composition, then EndDevice's own sequence elements). Only fields that
+// exist on this Go type are represented; AbstractDevice/EndDevice elements
+// not yet modeled here (ConfigurationLink, deviceCategory,
+// DeviceInformationLink, DeviceStatusLink, FileStatusLink,
+// IPInterfaceListLink, LoadShedAvailabilityListLink, PowerStatusLink,
+// FlowReservationRequestListLink, FlowReservationResponseListLink,
+// postRate) are omitted; see the IEEECORE-014 report for that gap.
+// Schema parsers (e.g., EPRI oeg_client) validate element order strictly.
 type EndDevice struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns EndDevice"`
 	SubscribableResource
-	ChangedTime int64  `xml:"changedTime"`
-	Enabled     *bool  `xml:"enabled,omitempty"`
-	LFDI        string `xml:"lFDI,omitempty"`
-	SFDI        string `xml:"sFDI"`
 
-	// Sub-resource links
-	RegistrationLink               *Link     `xml:"RegistrationLink,omitempty"`
+	// --- AbstractDevice sequence (in XSD order, subset present here) ---
+	DERListLink      *ListLink `xml:"DERListLink,omitempty"`
+	LFDI             string    `xml:"lFDI,omitempty"`
+	LogEventListLink *ListLink `xml:"LogEventListLink,omitempty"`
+	SFDI             string    `xml:"sFDI"`
+
+	// --- EndDevice's own sequence (in XSD order) ---
+	ChangedTime                    int64     `xml:"changedTime"`
+	Enabled                        *bool     `xml:"enabled,omitempty"`
 	FunctionSetAssignmentsListLink *ListLink `xml:"FunctionSetAssignmentsListLink,omitempty"`
-	DERListLink                    *ListLink `xml:"DERListLink,omitempty"`
-	LogEventListLink               *ListLink `xml:"LogEventListLink,omitempty"`
+	RegistrationLink               *Link     `xml:"RegistrationLink,omitempty"`
 	// SubscriptionListLink is the per-EndDevice subscription list, per
 	// IEEE 2030.5 §10.5.5 / CSIP V1.2 CORE-018 step 1. Servers that support
 	// subscription/notification advertise this link so an inverter can POST
 	// a Subscription resource to it (IEEE-050); servers that don't simply
 	// omit it (and any POST to a non-advertised path returns 405, which the
 	// inverter handles as polling-only fallback). omitempty preserves
-	// backward XML compatibility — existing EndDevice payloads without this
+	// backward XML compatibility, existing EndDevice payloads without this
 	// link round-trip unchanged.
 	SubscriptionListLink *ListLink `xml:"SubscriptionListLink,omitempty"`
 }
