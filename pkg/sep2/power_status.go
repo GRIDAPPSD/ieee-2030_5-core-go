@@ -38,6 +38,13 @@ type PEVInfo struct {
 // so RealEnergy and SignedRealEnergy use int64 as the widest Go integer
 // that can hold the range, and MarshalXML guards it at the wire boundary
 // so an out-of-range value errors instead of being silently serialized.
+//
+// The exact ranges: unsigned UInt48 is [0, 2^48-1]; signed Int48 (two's
+// complement) is the asymmetric [-2^47, 2^47-1]. maxInt48 and minInt48
+// below implement that mathematically correct signed-48-bit bound, which
+// is one below sep.xsd's Int48 restriction's literal xs:maxInclusive
+// facet (140737488355328, i.e. 2^47); that facet value does not fit in a
+// signed 48-bit integer and appears to have an off-by-one error.
 const (
 	maxUint48 = 1<<48 - 1
 	maxInt48  = 1<<47 - 1
@@ -64,12 +71,12 @@ func (r RealEnergy) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 }
 
 // SignedRealEnergy represents signed energy (2023 addition for
-// FlowReservation). Value is XSD Int48 (signed, +-2^47 per sep.xsd); Go
-// has no native 48-bit type, so the underlying field is int64 and
-// MarshalXML enforces the range.
+// FlowReservation). Value is XSD Int48 (signed, [-2^47, 2^47-1] per
+// sep.xsd); Go has no native 48-bit type, so the underlying field is
+// int64 and MarshalXML enforces the range.
 type SignedRealEnergy struct {
 	Multiplier int8  `xml:"multiplier"`
-	Value      int64 `xml:"value"` // watt-hours, positive = delivered, negative = received; must be in Int48 range
+	Value      int64 `xml:"value"` // watt-hours, positive = delivered, negative = received; must be in [-2^47, 2^47-1]
 }
 
 // MarshalXML validates Value is within XSD Int48 range before encoding,
