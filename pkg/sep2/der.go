@@ -17,8 +17,8 @@ type DERControlBase struct {
 	OpModEnergize               *bool             `xml:"opModEnergize,omitempty"`
 	OpModFixedPFAbsorbW         *FixedPowerFactor `xml:"opModFixedPFAbsorbW,omitempty"`
 	OpModFixedPFInjectW         *FixedPowerFactor `xml:"opModFixedPFInjectW,omitempty"`
-	OpModFixedW                 *ActivePower      `xml:"opModFixedW,omitempty"`
 	OpModFixedVar               *ReactivePower    `xml:"opModFixedVar,omitempty"`
+	OpModFixedW                 *ActivePower      `xml:"opModFixedW,omitempty"`
 	OpModFreqDroop              *uint16           `xml:"opModFreqDroop,omitempty"`
 	OpModFreqWatt               *int32            `xml:"opModFreqWatt,omitempty"`
 	OpModHFRTMustTrip           *int32            `xml:"opModHFRTMustTrip,omitempty"`
@@ -28,8 +28,8 @@ type DERControlBase struct {
 	OpModLVRTMomentaryCessation *int32            `xml:"opModLVRTMomentaryCessation,omitempty"`
 	OpModLVRTMustTrip           *int32            `xml:"opModLVRTMustTrip,omitempty"`
 	OpModMaxLimW                *ActivePower      `xml:"opModMaxLimW,omitempty"`
-	OpModTargetW                *ActivePower      `xml:"opModTargetW,omitempty"`
 	OpModTargetVar              *ReactivePower    `xml:"opModTargetVar,omitempty"`
+	OpModTargetW                *ActivePower      `xml:"opModTargetW,omitempty"`
 	OpModVoltVar                *int32            `xml:"opModVoltVar,omitempty"`
 	OpModVoltWatt               *int32            `xml:"opModVoltWatt,omitempty"`
 	RampTms                     *uint16           `xml:"rampTms,omitempty"`
@@ -200,17 +200,23 @@ func (d DefaultDERControl) Copy() DefaultDERControl {
 }
 
 // DERProgram contains controls and curves for DER devices.
+//
+// Field order matches the SubscribableIdentifiedObject + DERProgram
+// combined xsd:sequence: mRID, description, version (base, subset present
+// here) THEN ActiveDERControlListLink, DefaultDERControlLink,
+// DERControlListLink, DERCurveListLink, primacy (DERProgram's own
+// sequence, primacy LAST).
 type DERProgram struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns DERProgram"`
 	SubscribableResource
 	MRID        string `xml:"mRID,omitempty"`
 	Description string `xml:"description,omitempty"`
-	Primacy     uint8  `xml:"primacy"`
 
 	ActiveDERControlListLink *ListLink `xml:"ActiveDERControlListLink,omitempty"`
 	DefaultDERControlLink    *Link     `xml:"DefaultDERControlLink,omitempty"`
 	DERControlListLink       *ListLink `xml:"DERControlListLink,omitempty"`
 	DERCurveListLink         *ListLink `xml:"DERCurveListLink,omitempty"`
+	Primacy                  uint8     `xml:"primacy"`
 }
 
 // Copy returns an independent copy.
@@ -287,15 +293,21 @@ type DERList struct {
 }
 
 // DERCapability describes device-level DER capabilities.
+//
+// Field order matches the sep.xsd DERCapability sequence (subset present
+// here): modesSupported, rtgMaxA, rtgMaxChargeRateW, rtgMaxDischargeRateW,
+// rtgMaxVar, rtgMaxW, type. rtgMaxW is required (minOccurs=1) and sorts
+// near the end of the full XSD sequence, not immediately after
+// modesSupported.
 type DERCapability struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns DERCapability"`
 	Resource
 	ModesSupported       *uint32        `xml:"modesSupported,omitempty"`
-	RTGMaxW              *ActivePower   `xml:"rtgMaxW,omitempty"`
 	RTGMaxA              *int32         `xml:"rtgMaxA,omitempty"`
-	RTGMaxVar            *ReactivePower `xml:"rtgMaxVar,omitempty"`
 	RTGMaxChargeRateW    *ActivePower   `xml:"rtgMaxChargeRateW,omitempty"`
 	RTGMaxDischargeRateW *ActivePower   `xml:"rtgMaxDischargeRateW,omitempty"`
+	RTGMaxVar            *ReactivePower `xml:"rtgMaxVar,omitempty"`
+	RTGMaxW              *ActivePower   `xml:"rtgMaxW,omitempty"`
 	Type                 *uint8         `xml:"type,omitempty"`
 }
 
@@ -334,14 +346,18 @@ func (d DERCapability) Copy() DERCapability {
 }
 
 // DERSettings describes current device DER settings.
+//
+// Field order matches the sep.xsd DERSettings sequence (subset present
+// here): modesEnabled, setMaxChargeRateW, setMaxDischargeRateW, setMaxVar,
+// setMaxW, updatedTime (last).
 type DERSettings struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns DERSettings"`
 	SubscribableResource
 	ModesEnabled         *uint32        `xml:"modesEnabled,omitempty"`
-	SetMaxW              *ActivePower   `xml:"setMaxW,omitempty"`
-	SetMaxVar            *ReactivePower `xml:"setMaxVar,omitempty"`
 	SetMaxChargeRateW    *ActivePower   `xml:"setMaxChargeRateW,omitempty"`
 	SetMaxDischargeRateW *ActivePower   `xml:"setMaxDischargeRateW,omitempty"`
+	SetMaxVar            *ReactivePower `xml:"setMaxVar,omitempty"`
+	SetMaxW              *ActivePower   `xml:"setMaxW,omitempty"`
 	UpdatedTime          int64          `xml:"updatedTime,omitempty"`
 }
 
@@ -390,14 +406,18 @@ type OperationalModeStatusType struct {
 }
 
 // DERStatus reports current DER operational status.
+//
+// Field order matches the sep.xsd DERStatus sequence (subset present
+// here): alarmStatus, genConnectStatus, inverterStatus,
+// operationalModeStatus, readingTime, stateOfChargeStatus.
 type DERStatus struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns DERStatus"`
 	SubscribableResource
+	AlarmStatus           *uint32                    `xml:"alarmStatus,omitempty"`
 	GenConnectStatus      *ConnectStatusType         `xml:"genConnectStatus,omitempty"`
 	InverterStatus        *InverterStatusType        `xml:"inverterStatus,omitempty"`
 	OperationalModeStatus *OperationalModeStatusType `xml:"operationalModeStatus,omitempty"`
 	ReadingTime           int64                      `xml:"readingTime,omitempty"`
-	AlarmStatus           *uint32                    `xml:"alarmStatus,omitempty"`
 	StateOfChargeStatus   *uint16                    `xml:"stateOfChargeStatus,omitempty"`
 }
 
