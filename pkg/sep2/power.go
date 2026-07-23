@@ -1,15 +1,21 @@
 package sep2
 
-// ActivePower represents real power in watts.
+// ActivePower represents real power in watts. Value is xs:short (XSD
+// Int16, -32768..32767) per sep.xsd; it was previously Go int64, which
+// permitted wire values outside the schema's legal range. This is a
+// deliberate breaking API change: no compat shim. Downstream callers that
+// need a wider intermediate type adapt at their own boundary.
 type ActivePower struct {
 	Multiplier int8  `xml:"multiplier"`
-	Value      int64 `xml:"value"`
+	Value      int16 `xml:"value"`
 }
 
-// ReactivePower represents reactive power in volt-amperes reactive.
+// ReactivePower represents reactive power in volt-amperes reactive. Value
+// is xs:short (XSD Int16, -32768..32767) per sep.xsd; see ActivePower's
+// doc comment for the rationale on the int64 to int16 narrowing.
 type ReactivePower struct {
 	Multiplier int8  `xml:"multiplier"`
-	Value      int64 `xml:"value"`
+	Value      int16 `xml:"value"`
 }
 
 // FixedPowerFactor for fixed power factor control modes.
