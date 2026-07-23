@@ -1,6 +1,9 @@
 package sep2
 
-import "encoding/xml"
+import (
+	"encoding/xml"
+	"fmt"
+)
 
 // PowerStatus reports device power source and battery status.
 // Spec reference: section 9.4
@@ -31,16 +34,53 @@ type PEVInfo struct {
 	TimeChargingStatusPEV   int64       `xml:"timeChargingStatusPEV"`
 }
 
-// RealEnergy represents energy in watt-hours.
+// UInt48/Int48 bounds per sep.xsd. Go has no native 48-bit integer type,
+// so RealEnergy and SignedRealEnergy use int64 as the widest Go integer
+// that can hold the range, and MarshalXML guards it at the wire boundary
+// so an out-of-range value errors instead of being silently serialized.
+const (
+	maxUint48 = 1<<48 - 1
+	maxInt48  = 1<<47 - 1
+	minInt48  = -(1 << 47)
+)
+
+// RealEnergy represents energy in watt-hours. Value is XSD UInt48
+// (unsigned, 0..2^48-1 per sep.xsd); Go has no native 48-bit type, so the
+// underlying field is int64 and MarshalXML enforces the range.
 type RealEnergy struct {
 	Multiplier int8  `xml:"multiplier"`
-	Value      int64 `xml:"value"` // watt-hours
+	Value      int64 `xml:"value"` // watt-hours; must be in [0, 2^48-1]
 }
 
-// SignedRealEnergy represents signed energy (2023 addition for FlowReservation).
+// MarshalXML validates Value is within XSD UInt48 range before encoding,
+// rejecting an out-of-range value rather than serializing an illegal wire
+// value.
+func (r RealEnergy) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	if r.Value < 0 || r.Value > maxUint48 {
+		return fmt.Errorf("sep2: RealEnergy.Value %d out of UInt48 range [0, %d]", r.Value, maxUint48)
+	}
+	type shadow RealEnergy
+	return e.EncodeElement(shadow(r), start)
+}
+
+// SignedRealEnergy represents signed energy (2023 addition for
+// FlowReservation). Value is XSD Int48 (signed, +-2^47 per sep.xsd); Go
+// has no native 48-bit type, so the underlying field is int64 and
+// MarshalXML enforces the range.
 type SignedRealEnergy struct {
 	Multiplier int8  `xml:"multiplier"`
-	Value      int64 `xml:"value"` // watt-hours, positive = delivered, negative = received
+	Value      int64 `xml:"value"` // watt-hours, positive = delivered, negative = received; must be in Int48 range
+}
+
+// MarshalXML validates Value is within XSD Int48 range before encoding,
+// rejecting an out-of-range value rather than serializing an illegal wire
+// value. Sign is preserved: no normalization or absolute-value coercion.
+func (s SignedRealEnergy) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	if s.Value < minInt48 || s.Value > maxInt48 {
+		return fmt.Errorf("sep2: SignedRealEnergy.Value %d out of Int48 range [%d, %d]", s.Value, minInt48, maxInt48)
+	}
+	type shadow SignedRealEnergy
+	return e.EncodeElement(shadow(s), start)
 }
 
 // Copy returns an independent copy.
