@@ -23,7 +23,7 @@ func TestDERCapabilityWireOrder(t *testing.T) {
 	maxW := sep2.ActivePower{Value: 5000}
 	dtype := uint8(4)
 
-	cap := sep2.DERCapability{
+	derCap := sep2.DERCapability{
 		ModesSupported:       &modes,
 		RTGMaxA:              &maxA,
 		RTGMaxVar:            &maxVar,
@@ -33,7 +33,7 @@ func TestDERCapabilityWireOrder(t *testing.T) {
 		Type:                 &dtype,
 	}
 
-	data, err := xml.Marshal(&cap)
+	data, err := xml.Marshal(&derCap)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}

@@ -2,6 +2,7 @@ package sep2_test
 
 import (
 	"encoding/xml"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -34,7 +35,7 @@ func TestActivePowerValueBoundaryInt16(t *testing.T) {
 				t.Fatalf("marshal: %v", err)
 			}
 			xmlStr := string(data)
-			want := "<value>" + itoa(tc.val) + "</value>"
+			want := "<value>" + strconv.FormatInt(int64(tc.val), 10) + "</value>"
 			if !strings.Contains(xmlStr, want) {
 				t.Errorf("missing %q in XML: %s", want, xmlStr)
 			}
@@ -71,7 +72,7 @@ func TestReactivePowerValueBoundaryInt16(t *testing.T) {
 				t.Fatalf("marshal: %v", err)
 			}
 			xmlStr := string(data)
-			want := "<value>" + itoa(tc.val) + "</value>"
+			want := "<value>" + strconv.FormatInt(int64(tc.val), 10) + "</value>"
 			if !strings.Contains(xmlStr, want) {
 				t.Errorf("missing %q in XML: %s", want, xmlStr)
 			}
@@ -85,28 +86,4 @@ func TestReactivePowerValueBoundaryInt16(t *testing.T) {
 			}
 		})
 	}
-}
-
-// itoa avoids importing strconv just for a test helper's int16 formatting.
-func itoa(v int16) string {
-	if v == 0 {
-		return "0"
-	}
-	neg := v < 0
-	n := int64(v)
-	if neg {
-		n = -n
-	}
-	var buf [6]byte
-	i := len(buf)
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg {
-		i--
-		buf[i] = '-'
-	}
-	return string(buf[i:])
 }
