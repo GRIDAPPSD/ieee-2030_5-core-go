@@ -6,6 +6,7 @@ import (
 	"encoding/xml"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
@@ -197,9 +198,11 @@ func TestHandleCreateMirrorUsagePoint_Created(t *testing.T) {
 	if result.DeviceLFDI != "TEST_LFDI_ABCDEF" {
 		t.Errorf("DeviceLFDI = %q, want TEST_LFDI_ABCDEF (from provider)", result.DeviceLFDI)
 	}
-	if result.MirrorMeterReadingListLink == nil || result.MirrorMeterReadingListLink.Href != "/mup/INV001/mr" {
-		t.Errorf("MirrorMeterReadingListLink.Href = %q, want /mup/INV001/mr",
-			result.MirrorMeterReadingListLink.Href)
+	// sep.xsd defines no MirrorMeterReadingListLink element on
+	// MirrorUsagePoint (confirmed absent from the schema's full element
+	// index); the served bytes must never carry one.
+	if strings.Contains(w.Body.String(), "MirrorMeterReadingListLink") {
+		t.Errorf("served MirrorUsagePoint carries undefined MirrorMeterReadingListLink; body=%s", w.Body.String())
 	}
 }
 

@@ -78,7 +78,13 @@ func HandleCreateMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint], 
 			id = fmt.Sprintf("mup-%d", time.Now().UnixNano())
 		}
 		mup.Href = "/mup/" + id
-		mup.MirrorMeterReadingListLink = &sep2.ListLink{Href: fmt.Sprintf("/mup/%s/mr", id)}
+		// sep.xsd carries MirrorMeterReading inline on MirrorUsagePoint
+		// (sep2.MirrorUsagePoint.MirrorMeterReading), not via a link
+		// element; the schema has no MirrorMeterReadingListLink type at
+		// all. The POST /mup/{id}/mr endpoint below remains the
+		// out-of-band route clients use to add readings; its target
+		// path is a fixed convention documented on MirrorUsagePoint,
+		// not carried in the resource body.
 
 		if err := s.Create(r.Context(), id, mup); err != nil {
 			if errors.Is(err, store.ErrAlreadyExists) {
