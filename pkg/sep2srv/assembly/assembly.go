@@ -16,6 +16,7 @@ package assembly
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -393,6 +394,19 @@ func registerDERRoutes(mux routeRegistrar, stores *Stores) {
 			stores.DERControls, coreder.BuildDERControlList, 900,
 		))
 
+	// A DERControl's own href, so an activated event resolves. A client that
+	// activates an event arms a fast poll against the event's own URI, so
+	// without this route that poll 404s and the client tears the event down
+	// (the EPRI reference client turns a non-200 into RETRIEVE_FAIL and then
+	// calls remove_stub), which caps delivery at one event per client.
+	//
+	// Scoped by the SAME composite parent key as the list route above
+	// (id/fsaId/derpId, see scopedResourceHandlerDeep), so a control is
+	// reachable only under the device path it was stored beneath. Read-only:
+	// the DOWN path writes controls through the store, never over HTTP.
+	mux.HandleFunc("GET /edev/{id}/fsa/{fsaId}/derp/{derpId}/derc/{dercId}",
+		scopedResourceHandlerDeep[sep2.DERControl](stores.DERControls, "dercId"))
+
 	// DefaultDERControl
 	mux.HandleFunc("GET /edev/{id}/fsa/{fsaId}/derp/{derpId}/dderc",
 		coreder.DefaultDERControlHandler(stores.DefaultDERControls))
@@ -426,10 +440,64 @@ func scopedListHandlerDeep[T store.Copier[T], L any](
 	pollRate uint32,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		key := r.PathValue("id") + "/" + r.PathValue("fsaId") + "/" + r.PathValue("derpId")
+		key := deepScopeKey(r)
 		st := scopedStore.ForParent(key)
 		h := corelisthandler.ListHandler[T, L](st, buildList, pollRate)
 		h.ServeHTTP(w, r)
+	}
+}
+
+// deepScopeKey builds the composite parent key id/fsaId/derpId that scopes
+// resources nested under a DERProgram.
+//
+// The list handler and the single-resource handler MUST derive their scope
+// identically, which is why this is one function rather than the expression
+// repeated in each. The key is what confines a resource to the device path it
+// was stored beneath: a caller supplying another device's {id} produces a
+// different parent store, so the lookup misses rather than resolving a
+// resource it does not own. Duplicating the expression would let the two
+// routes drift, and a single-resource route that scoped more loosely than its
+// list would be a cross-device read.
+func deepScopeKey(r *http.Request) string {
+	return r.PathValue("id") + "/" + r.PathValue("fsaId") + "/" + r.PathValue("derpId")
+}
+
+// scopedResourceHandlerDeep creates a read-only single-resource handler scoped
+// by the same composite key id/fsaId/derpId as scopedListHandlerDeep, keyed
+// within that scope by the path value named idParam.
+//
+// It serves the STORED value directly rather than rebuilding a document, so
+// the bytes match what the list serves for the same resource field for field.
+// Behavior on the two non-happy paths is deliberate:
+//
+//   - A miss (wrong device, wrong program, or an id that never existed) is a
+//     clean 404 with no body, never a synthesized zero-valued resource. An
+//     empty 200 would be worse than the 404 this route exists to fix: a client
+//     would parse the zero value as a real resource and could act on it.
+//   - A store error other than not-found is a 500, because it means the store
+//     failed rather than that the resource is absent, and collapsing the two
+//     would report a broken server as a missing resource.
+func scopedResourceHandlerDeep[T store.Copier[T]](
+	scopedStore *memory.ScopedStore[T],
+	idParam string,
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			encoding.MethodNotAllowed(w, "GET, HEAD")
+			return
+		}
+
+		resource, err := scopedStore.Get(r.Context(), deepScopeKey(r), r.PathValue(idParam))
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				http.Error(w, "not found", http.StatusNotFound)
+				return
+			}
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
+		encoding.WriteXML(w, http.StatusOK, &resource)
 	}
 }
 
