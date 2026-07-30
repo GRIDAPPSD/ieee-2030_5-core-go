@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/pkg/sep2"
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 )
 
 // TestMirrorUsagePointElementOrder asserts the SERVED BYTES carry
@@ -68,9 +68,9 @@ func TestMirrorUsagePointRoleFlagsHexBinaryPadding(t *testing.T) {
 		want  string
 	}{
 		{0, "00"},
-		{9, "09"},   // isMirror | isDER, the EPRI client's actual value
+		{9, "09"}, // isMirror | isDER, the EPRI client's actual value
 		{15, "0F"},
-		{16, "10"},   // already even-length; must not be double-padded
+		{16, "10"},    // already even-length; must not be double-padded
 		{300, "012C"}, // 0x12C, three hex digits, pad to four
 	}
 
