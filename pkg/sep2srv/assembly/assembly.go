@@ -452,12 +452,20 @@ func scopedListHandlerDeep[T store.Copier[T], L any](
 //
 // The list handler and the single-resource handler MUST derive their scope
 // identically, which is why this is one function rather than the expression
-// repeated in each. The key is what confines a resource to the device path it
-// was stored beneath: a caller supplying another device's {id} produces a
-// different parent store, so the lookup misses rather than resolving a
-// resource it does not own. Duplicating the expression would let the two
-// routes drift, and a single-resource route that scoped more loosely than its
-// list would be a cross-device read.
+// repeated in each. Duplicating the expression would let the two routes
+// drift, and a single-resource route that scoped more loosely than its list
+// would widen what a store lookup can return.
+//
+// This key binds a RESOURCE to the path it was stored under. It does NOT
+// bind a CALLER to that path: nothing here checks that the authenticated
+// caller is the device named by {id}. A caller who supplies its own {id}
+// alongside another device's dercId gets a scope miss (404), but a caller
+// who supplies another device's {id} directly is not rejected by this
+// function at all; store scoping and caller ownership are different
+// properties, and this function implements only the former. Ownership
+// enforcement is IEEECORE-028's cross-cutting fix, not yet present here.
+// Do not read the absence of a panic or a wrong result from this function as
+// evidence that unauthorized cross-device reads are blocked.
 func deepScopeKey(r *http.Request) string {
 	return r.PathValue("id") + "/" + r.PathValue("fsaId") + "/" + r.PathValue("derpId")
 }
