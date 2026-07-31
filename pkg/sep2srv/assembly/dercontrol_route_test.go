@@ -190,18 +190,23 @@ func TestSingleDERControlBytesMatchListMember(t *testing.T) {
 	}
 }
 
-// TestSingleDERControlRouteRejectsCrossDeviceRead is the security assertion
-// on this new authenticated read surface.
+// TestSingleDERControlRouteScopesByPathNotJustID asserts store SCOPING, not
+// caller OWNERSHIP. Those are different properties.
 //
-// The route sits under /edev/{id}/..., and the DERControl store is scoped by
-// the composite key id/fsaId/derpId, so device B's path must not resolve a
-// control stored under device A even when the caller supplies A's exact
-// dercId. A single-resource route that resolved by dercId alone, or that fell
-// back to a global lookup on a scoped miss, would let any authenticated
-// device enumerate every other device's controls by guessing an id: a
-// widening of read access, and a worse outcome than the 404 this route
-// exists to fix.
-func TestSingleDERControlRouteRejectsCrossDeviceRead(t *testing.T) {
+// This test sends device B's OWN path (id=deviceB) carrying device A's exact
+// dercId. It proves that the composite key id/fsaId/derpId means a dercId
+// stored under A's scope is not visible under B's scope: a single-resource
+// route that resolved by dercId alone, or that fell back to a global lookup
+// on a scoped miss, would let any authenticated device enumerate every other
+// device's controls by guessing an id.
+//
+// It does NOT prove that an authenticated caller is bound to the {id} in its
+// own request path. Nothing in this test authenticates as device B and then
+// requests a path naming device A's {id}; that is the actual cross-device
+// read Leon's review demonstrated live against this same route, and closing
+// it is IEEECORE-028, not this route's scoping logic. Do not read a pass here
+// as evidence that cross-device reads are rejected.
+func TestSingleDERControlRouteScopesByPathNotJustID(t *testing.T) {
 	t.Parallel()
 
 	const deviceA = "AAAA1111BBBB2222CCCC3333DDDD4444EEEE5555"
