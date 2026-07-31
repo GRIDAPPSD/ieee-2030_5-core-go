@@ -85,20 +85,38 @@ func HandlePostFlowReservationRequest(
 			return
 		}
 
-		// Auto-create a FlowReservationResponse (server approves by default)
-		frpID := fmt.Sprintf("frp-%d", time.Now().UnixNano())
+		// Auto-create a FlowReservationResponse (server approves by default).
+		//
+		// One clock read serves both the event's creationTime and its
+		// EventStatus dateTime. Two separate time.Now() calls can straddle a
+		// second boundary and yield a status timestamp that predates the
+		// creation instant of the very event it describes.
+		now := time.Now()
+		frpID := fmt.Sprintf("frp-%d", now.UnixNano())
 		frp := sep2.FlowReservationResponse{
 			EnergyAvailable: frq.EnergyRequested,
 			PowerAvailable:  frq.PowerRequested,
 			Subject:         frq.MRID,
 		}
 		frp.Href = fmt.Sprintf("/edev/%s/frp/%s", edevID, frpID)
+
+		// creationTime is required on every Event-derived resource and the
+		// server is its only legitimate producer. Leaving it unset is not a
+		// cosmetic gap: it serializes as a parseable <creationTime>0</...>,
+		// and a client resolving two overlapping equal-primacy events compares
+		// creationTime to pick the newer one (the EPRI reference client's
+		// block_supersede tests x->creationTime > y->creationTime). With both
+		// sides at 0 that comparison is false in either direction, so the
+		// incoming event is silently discarded and the server can no longer
+		// replace a reservation it already granted.
+		frp.CreationTime = now.Unix()
+
 		if frq.IntervalRequested != nil {
 			interval := *frq.IntervalRequested
 			frp.Interval = &interval
 		}
 		status := sep2.EventStatusActive
-		frp.EventStatus = &sep2.EventStatus{CurrentStatus: status, DateTime: time.Now().Unix()}
+		frp.EventStatus = &sep2.EventStatus{CurrentStatus: status, DateTime: now.Unix()}
 
 		if err := frpStore.Create(r.Context(), edevID, frpID, frp); err != nil {
 			log.Printf("frq: create flow reservation response edev=%q frp=%q: %v", edevID, frpID, err)
