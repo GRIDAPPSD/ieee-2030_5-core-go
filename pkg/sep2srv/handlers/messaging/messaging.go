@@ -86,8 +86,24 @@ func HandlePostTextMessage(tmStore *memory.ScopedStore[sep2.TextMessage]) http.H
 			return
 		}
 
-		id := fmt.Sprintf("tm-%d", time.Now().UnixNano())
+		now := time.Now()
+		id := fmt.Sprintf("tm-%d", now.UnixNano())
 		tm.Href = fmt.Sprintf("/msg/%s/tm/%s", msgID, id)
+
+		// creationTime is required on every Event-derived resource (TextMessage
+		// embeds RandomizableEvent) and names the instant the SERVER created
+		// the event, so the server owns it the same way it owns href above.
+		//
+		// It carries no omitempty, so an unset value serves a parseable
+		// <creationTime>0</creationTime> rather than a missing element. That is
+		// quieter and worse: a client resolving two overlapping equal-primacy
+		// events compares creationTime to pick the newer one (the EPRI
+		// reference client's block_supersede tests
+		// x->creationTime > y->creationTime), so with both sides at 0 the
+		// comparison fails in either direction and the incoming event is
+		// discarded. Assigning here also discards any stale value a client
+		// supplied.
+		tm.CreationTime = now.Unix()
 
 		if err := tmStore.Create(r.Context(), msgID, id, tm); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
