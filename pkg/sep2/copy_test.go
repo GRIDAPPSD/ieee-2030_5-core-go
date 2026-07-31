@@ -7,7 +7,7 @@ import (
 )
 
 func TestEndDeviceCopyNilFields(t *testing.T) {
-	// All pointer fields nil — should not panic
+	// All pointer fields nil, should not panic
 	dev := sep2.EndDevice{SFDI: "123"}
 	copied := dev.Copy()
 	if copied.SFDI != "123" {
@@ -102,18 +102,20 @@ func TestReadingTypeCopyAllFields(t *testing.T) {
 func TestMirrorUsagePointCopy(t *testing.T) {
 	rate := uint32(300)
 	mup := sep2.MirrorUsagePoint{
-		PostRate:                   &rate,
-		MirrorMeterReadingListLink: &sep2.ListLink{Href: "/mr"},
+		PostRate: &rate,
+		MirrorMeterReading: []sep2.MirrorMeterReading{
+			{MRID: "READING-1"},
+		},
 	}
 	copied := mup.Copy()
 	*copied.PostRate = 999
-	copied.MirrorMeterReadingListLink.Href = "/changed"
+	copied.MirrorMeterReading[0].MRID = "CHANGED"
 
 	if *mup.PostRate != 300 {
 		t.Error("original PostRate mutated")
 	}
-	if mup.MirrorMeterReadingListLink.Href != "/mr" {
-		t.Error("original link mutated")
+	if mup.MirrorMeterReading[0].MRID != "READING-1" {
+		t.Error("original MirrorMeterReading slice mutated")
 	}
 }
 

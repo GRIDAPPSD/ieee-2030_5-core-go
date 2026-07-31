@@ -24,6 +24,34 @@ import (
 // as the subscription manager's NotificationObserver from Phase D1).
 type LFDIProvider func(ctx context.Context) (lfdi string, ok bool)
 
+// stampMirrorMeterReading assigns the server-owned fields on a
+// MirrorMeterReading and returns the store id it derived them from.
+//
+// href and lastUpdateTime are the server's to assign, never the client's.
+// MirrorMeterReading embeds Resource, so href arrives as a client-settable
+// attribute, and lastUpdateTime is a plain client-writable element. /mup is
+// not /edev-scoped, so no ownership middleware constrains what a client may
+// claim there, and GET /mup echoes stored records back to every reader: a
+// verbatim client href lets one device plant a path that points at another
+// device's reading namespace, and a verbatim lastUpdateTime lets it forge the
+// age of a reading others consume.
+//
+// Both the inline MirrorUsagePoint.MirrorMeterReading path and the
+// out-of-band POST /mup/{id}/mr path route through here so the two endpoints
+// cannot drift into minting different href shapes for the same resource kind.
+//
+// The zero-padded fixed-width nanosecond id is load-bearing rather than
+// cosmetic: the store orders keys lexicographically, so fixed-width digits
+// make lexical order match chronological order. lastUpdateTime is derived
+// from the same instant as the id rather than from a second clock read, so a
+// record's timestamp and its ordering key can never disagree.
+func stampMirrorMeterReading(mmr *sep2.MirrorMeterReading, parentID string, nanos int64) string {
+	id := fmt.Sprintf("%020d", nanos)
+	mmr.Href = fmt.Sprintf("/mup/%s/mr/%s", parentID, id)
+	mmr.LastUpdateTime = time.Unix(0, nanos).Unix()
+	return id
+}
+
 // BuildMirrorUsagePointList constructs a MirrorUsagePointList from store results.
 func BuildMirrorUsagePointList(href string, result store.ListResult[sep2.MirrorUsagePoint], pollRate uint32) sep2.MirrorUsagePointList {
 	return sep2.MirrorUsagePointList{
@@ -78,7 +106,29 @@ func HandleCreateMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint], 
 			id = fmt.Sprintf("mup-%d", time.Now().UnixNano())
 		}
 		mup.Href = "/mup/" + id
-		mup.MirrorMeterReadingListLink = &sep2.ListLink{Href: fmt.Sprintf("/mup/%s/mr", id)}
+
+		// Stamp the server-owned fields on every inline reading, matching
+		// what HandlePostMirrorMeterReading below does for the out-of-band
+		// route. Without this, a client's href and lastUpdateTime are stored
+		// and re-served verbatim on GET /mup, which is unscoped.
+		//
+		// The per-element nanos offset comes from one clock read plus the
+		// index rather than a fresh time.Now() per element: on a coarse
+		// monotonic clock repeated reads inside a loop can return the same
+		// nanosecond, which would mint colliding hrefs for distinct
+		// readings. Distinct ids are required because they are the store's
+		// ordering keys.
+		baseNanos := time.Now().UnixNano()
+		for i := range mup.MirrorMeterReading {
+			stampMirrorMeterReading(&mup.MirrorMeterReading[i], id, baseNanos+int64(i))
+		}
+		// sep.xsd carries MirrorMeterReading inline on MirrorUsagePoint
+		// (sep2.MirrorUsagePoint.MirrorMeterReading), not via a link
+		// element; the schema has no MirrorMeterReadingListLink type at
+		// all. The POST /mup/{id}/mr endpoint below remains the
+		// out-of-band route clients use to add readings; its target
+		// path is a fixed convention documented on MirrorUsagePoint,
+		// not carried in the resource body.
 
 		if err := s.Create(r.Context(), id, mup); err != nil {
 			if errors.Is(err, store.ErrAlreadyExists) {
@@ -165,10 +215,11 @@ func HandlePostMirrorMeterReading(
 			return
 		}
 
-		// Generate time-based ID for sorted ordering
-		id := fmt.Sprintf("%020d", time.Now().UnixNano())
-		mmr.Href = fmt.Sprintf("/mup/%s/mr/%s", parentID, id)
-		mmr.LastUpdateTime = time.Now().Unix()
+		// Generate time-based ID for sorted ordering, and override the
+		// client-supplied href and lastUpdateTime. Shared with the inline
+		// MirrorUsagePoint.MirrorMeterReading path so both mint the same
+		// href shape.
+		id := stampMirrorMeterReading(&mmr, parentID, time.Now().UnixNano())
 
 		if err := mmrStore.Create(r.Context(), parentID, id, mmr); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
