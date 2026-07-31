@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/handlers/metering"
@@ -206,6 +207,120 @@ func TestHandleCreateMirrorUsagePoint_Created(t *testing.T) {
 	}
 }
 
+// TestHandleCreateMirrorUsagePoint_InlineReadingsAreServerStamped asserts that
+// the inline MirrorMeterReading slice on a POSTed MirrorUsagePoint gets the same
+// server-side overrides the out-of-band POST /mup/{id}/mr path applies.
+//
+// Each inline element embeds Resource, so href is client-supplied, and
+// lastUpdateTime is a plain client-writable field. /mup is NOT /edev-scoped, so
+// no ownership middleware runs on it, and GET /mup echoes the whole list back to
+// every reader. Storing either field verbatim therefore lets one device plant a
+// chosen href and a forged reading timestamp onto records other devices read.
+// The sibling endpoint HandlePostMirrorMeterReading overwrites both
+// (mirror.go: mmr.Href and mmr.LastUpdateTime); the inline path must not be the
+// asymmetric hole that bypasses them.
+func TestHandleCreateMirrorUsagePoint_InlineReadingsAreServerStamped(t *testing.T) {
+	t.Parallel()
+	s := memory.NewStore[sep2.MirrorUsagePoint]()
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /mup", metering.HandleCreateMirrorUsagePoint(s, identityProvider("TEST_LFDI_ABCDEF")))
+
+	const forgedHref = "/mup/VICTIM/mr/00000000000000000001"
+	const forgedTime = int64(1)
+	valA, valB := int64(1000), int64(2000)
+	mup := sep2.MirrorUsagePoint{
+		MRID:       "INV001",
+		DeviceLFDI: "CLIENT_SUPPLIED_LFDI",
+		MirrorMeterReading: []sep2.MirrorMeterReading{
+			{
+				Resource:       sep2.Resource{Href: forgedHref},
+				MRID:           "MMR_A",
+				LastUpdateTime: forgedTime,
+				Reading:        &sep2.Reading{Value: &valA},
+			},
+			{
+				Resource:       sep2.Resource{Href: forgedHref},
+				MRID:           "MMR_B",
+				LastUpdateTime: forgedTime,
+				Reading:        &sep2.Reading{Value: &valB},
+			},
+		},
+	}
+	body, err := xml.Marshal(&mup)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	before := time.Now().Unix()
+	req := httptest.NewRequest(http.MethodPost, "/mup", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	after := time.Now().Unix()
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201, body: %s", w.Code, w.Body.String())
+	}
+
+	stored, err := s.Get(context.Background(), "INV001")
+	if err != nil {
+		t.Fatalf("get stored MirrorUsagePoint: %v", err)
+	}
+	if stored.DeviceLFDI != "TEST_LFDI_ABCDEF" {
+		t.Errorf("stored DeviceLFDI = %q, want TEST_LFDI_ABCDEF (cert override)", stored.DeviceLFDI)
+	}
+	if len(stored.MirrorMeterReading) != 2 {
+		t.Fatalf("stored MirrorMeterReading count = %d, want 2", len(stored.MirrorMeterReading))
+	}
+
+	seenHrefs := make(map[string]bool, len(stored.MirrorMeterReading))
+	for i, got := range stored.MirrorMeterReading {
+		if got.Href == forgedHref {
+			t.Errorf("reading %d: stored Href = %q, client-supplied href persisted verbatim", i, got.Href)
+		}
+		// Match the shape HandlePostMirrorMeterReading mints:
+		// "/mup/{parentID}/mr/{20-digit zero-padded id}".
+		prefix := "/mup/INV001/mr/"
+		if !strings.HasPrefix(got.Href, prefix) {
+			t.Errorf("reading %d: stored Href = %q, want prefix %q", i, got.Href, prefix)
+		} else {
+			id := strings.TrimPrefix(got.Href, prefix)
+			if len(id) != 20 {
+				t.Errorf("reading %d: href id segment %q has length %d, want 20 (%%020d nanos, matching the POST /mup/{id}/mr path)", i, id, len(id))
+			}
+			for _, c := range id {
+				if c < '0' || c > '9' {
+					t.Errorf("reading %d: href id segment %q is not all digits", i, id)
+					break
+				}
+			}
+		}
+		if seenHrefs[got.Href] {
+			t.Errorf("reading %d: stored Href %q collides with an earlier reading; ids must be distinct for sorted ordering", i, got.Href)
+		}
+		seenHrefs[got.Href] = true
+
+		if got.LastUpdateTime == forgedTime {
+			t.Errorf("reading %d: stored LastUpdateTime = %d, forged client value persisted verbatim", i, got.LastUpdateTime)
+		}
+		if got.LastUpdateTime < before || got.LastUpdateTime > after {
+			t.Errorf("reading %d: stored LastUpdateTime = %d, want server clock in [%d, %d]", i, got.LastUpdateTime, before, after)
+		}
+	}
+
+	// Client-owned payload must survive: the fix overrides the two
+	// server-owned fields, it does not discard the reading itself.
+	if stored.MirrorMeterReading[0].MRID != "MMR_A" || stored.MirrorMeterReading[1].MRID != "MMR_B" {
+		t.Errorf("inline reading mRIDs = %q, %q; want MMR_A, MMR_B preserved in order",
+			stored.MirrorMeterReading[0].MRID, stored.MirrorMeterReading[1].MRID)
+	}
+	if stored.MirrorMeterReading[0].Reading == nil || *stored.MirrorMeterReading[0].Reading.Value != valA {
+		t.Errorf("inline reading 0 value not preserved: %+v", stored.MirrorMeterReading[0].Reading)
+	}
+	if stored.MirrorMeterReading[1].Reading == nil || *stored.MirrorMeterReading[1].Reading.Value != valB {
+		t.Errorf("inline reading 1 value not preserved: %+v", stored.MirrorMeterReading[1].Reading)
+	}
+}
+
 func TestHandleCreateMirrorUsagePoint_NoIdentity(t *testing.T) {
 	t.Parallel()
 	s := memory.NewStore[sep2.MirrorUsagePoint]()
@@ -239,20 +354,26 @@ func TestHandlePostMirrorMeterReading_Created(t *testing.T) {
 
 	val := int64(5000)
 	uom := sep2.UomWatts
+	const forgedHref = "/mup/VICTIM/mr/00000000000000000001"
+	const forgedTime = int64(1)
 	mmr := sep2.MirrorMeterReading{
-		MRID:        "MMR01",
-		Description: "Active Power",
-		ReadingType: &sep2.ReadingType{Uom: &uom},
-		Reading:     &sep2.Reading{Value: &val},
+		Resource:       sep2.Resource{Href: forgedHref},
+		MRID:           "MMR01",
+		Description:    "Active Power",
+		LastUpdateTime: forgedTime,
+		ReadingType:    &sep2.ReadingType{Uom: &uom},
+		Reading:        &sep2.Reading{Value: &val},
 	}
 	body, _ := xml.Marshal(&mmr)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /mup/{id}/mr", metering.HandlePostMirrorMeterReading(mupStore, mmrStore))
 
+	before := time.Now().Unix()
 	req := httptest.NewRequest(http.MethodPost, "/mup/inv1/mr", bytes.NewReader(body))
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, req)
+	after := time.Now().Unix()
 
 	if w.Code != http.StatusCreated {
 		t.Fatalf("status = %d, body: %s", w.Code, w.Body.String())
@@ -260,7 +381,42 @@ func TestHandlePostMirrorMeterReading_Created(t *testing.T) {
 
 	count, _ := mmrStore.Count(context.Background(), "inv1")
 	if count != 1 {
-		t.Errorf("mirror meter readings count = %d, want 1", count)
+		t.Fatalf("mirror meter readings count = %d, want 1", count)
+	}
+
+	// The Location header names the id the server minted, which is also the
+	// store key. Assert on the STORED record: the response body here is empty.
+	loc := w.Header().Get("Location")
+	prefix := "/mup/inv1/mr/"
+	if !strings.HasPrefix(loc, prefix) {
+		t.Fatalf("Location = %q, want prefix %q", loc, prefix)
+	}
+	id := strings.TrimPrefix(loc, prefix)
+	if len(id) != 20 {
+		t.Errorf("minted id %q has length %d, want 20", id, len(id))
+	}
+
+	stored, err := mmrStore.Get(context.Background(), "inv1", id)
+	if err != nil {
+		t.Fatalf("get stored MirrorMeterReading %q: %v", id, err)
+	}
+	if stored.Href != loc {
+		t.Errorf("stored Href = %q, want %q (server-synthesized, matching Location)", stored.Href, loc)
+	}
+	if stored.Href == forgedHref {
+		t.Errorf("stored Href = %q, client-supplied href persisted verbatim", stored.Href)
+	}
+	if stored.LastUpdateTime == forgedTime {
+		t.Errorf("stored LastUpdateTime = %d, forged client value persisted verbatim", stored.LastUpdateTime)
+	}
+	if stored.LastUpdateTime < before || stored.LastUpdateTime > after {
+		t.Errorf("stored LastUpdateTime = %d, want server clock in [%d, %d]", stored.LastUpdateTime, before, after)
+	}
+	if stored.MRID != "MMR01" {
+		t.Errorf("stored MRID = %q, want MMR01 preserved", stored.MRID)
+	}
+	if stored.Reading == nil || stored.Reading.Value == nil || *stored.Reading.Value != val {
+		t.Errorf("stored Reading value not preserved: %+v", stored.Reading)
 	}
 }
 
