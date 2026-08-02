@@ -13,6 +13,13 @@ test/csip/fixtures/*
 !test/csip/fixtures/.gitkeep
 !test/csip/fixtures/*.yaml
 
+# IEEE 2030.5 XML Schema. sep.xsd is copyrighted by IEEE and is NOT
+# distributed with this project (see NOTICE). Drop a licensed copy at
+# schema/sep.xsd, or point SEP2_SCHEMA_PATH at one, to run the schema-gated
+# tests. It must never be committed.
+/schema/*.xsd
+sep*.xsd
+
 # Go build artifacts
 /bin/
 /dist/
