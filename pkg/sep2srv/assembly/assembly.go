@@ -51,6 +51,22 @@ import (
 // lines 31-84); every field already resolves to pkg/store or pkg/store/memory.
 type Stores struct {
 	EndDevices store.EndDeviceStore
+
+	// EndDeviceIndexes allocates the opaque, server-chosen index that
+	// addresses an EndDevice in resource URLs ("/edev/3/rg"). It is an
+	// ADDRESSING mechanism only: device identity remains the
+	// certificate-derived LFDI on the EndDevice record, and every ownership
+	// check still compares that stored LFDI against the caller's
+	// certificate.
+	//
+	// Nil is permitted and BuildProtocolRouter substitutes a fresh
+	// process-local allocator, which keeps a zero-value Stores usable in
+	// tests. A production server SHOULD supply
+	// memory.NewEndDeviceIndexWithPersistence so indices survive restart;
+	// with the process-local substitute they do not, and a restart
+	// re-addresses the fleet. See memory.EndDeviceIndex for why that
+	// matters and what a client's poll cycle does and does not recover.
+	EndDeviceIndexes *memory.EndDeviceIndex
 	// Registrations is the persistent-aware wrapper around the in-memory
 	// Store[sep2.Registration]. The embedded *Store gives back-compat
 	// method promotion (Get/List/Count) for call sites that don't need
@@ -310,10 +326,20 @@ func asNotifyRemoved(n ResourceNotifier) func(context.Context, sep2.Subscription
 }
 
 func registerEndDeviceRoutes(mux routeRegistrar, stores *Stores, authPolicy AuthPolicy, notifier ResourceNotifier) {
+	// A nil index allocator is substituted rather than rejected so a
+	// zero-value Stores stays usable, but the substitute is process-local:
+	// log it, because on a production server it means every device is
+	// re-addressed on restart.
+	edevIndexes := stores.EndDeviceIndexes
+	if edevIndexes == nil {
+		log.Print("assembly: Stores.EndDeviceIndexes is nil: using a process-local EndDevice index; URL indices will NOT survive restart")
+		edevIndexes = memory.NewEndDeviceIndex()
+	}
+
 	mux.HandleFunc("GET /edev", corelisthandler.ListHandler[sep2.EndDevice, sep2.EndDeviceList](
 		stores.EndDevices, coreedev.BuildEndDeviceList, 900,
 	))
-	mux.HandleFunc("POST /edev", coreedev.HandleCreateEndDevice(stores.EndDevices, authPolicy.Identity, authPolicy.SFDIPrefix))
+	mux.HandleFunc("POST /edev", coreedev.HandleCreateEndDevice(stores.EndDevices, edevIndexes, authPolicy.Identity, authPolicy.SFDIPrefix))
 	mux.HandleFunc("GET /edev/{id}", coreedev.HandleEndDevice(stores.EndDevices))
 	mux.HandleFunc("PUT /edev/{id}", coreedev.HandleUpdateEndDevice(stores.EndDevices))
 	mux.HandleFunc("DELETE /edev/{id}", coreedev.HandleDeleteEndDevice(stores.EndDevices, notifier))

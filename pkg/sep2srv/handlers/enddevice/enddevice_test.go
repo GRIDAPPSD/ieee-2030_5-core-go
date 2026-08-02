@@ -100,7 +100,7 @@ func TestHandleCreateEndDevice(t *testing.T) {
 	t.Parallel()
 
 	s := memory.NewEndDeviceStore()
-	h := coreedev.HandleCreateEndDevice(s, identityOK(testLFDI, testSFDI), sfdiFirst8)
+	h := coreedev.HandleCreateEndDevice(s, memory.NewEndDeviceIndex(), identityOK(testLFDI, testSFDI), sfdiFirst8)
 
 	req := httptest.NewRequest(http.MethodPost, "/edev", nil)
 	w := httptest.NewRecorder()
@@ -128,7 +128,7 @@ func TestHandleCreateEndDeviceDuplicate(t *testing.T) {
 	t.Parallel()
 
 	s := memory.NewEndDeviceStore()
-	h := coreedev.HandleCreateEndDevice(s, identityOK(testLFDI, testSFDI), sfdiFirst8)
+	h := coreedev.HandleCreateEndDevice(s, memory.NewEndDeviceIndex(), identityOK(testLFDI, testSFDI), sfdiFirst8)
 
 	// First POST: 201 Created.
 	req1 := httptest.NewRequest(http.MethodPost, "/edev", nil)
@@ -156,7 +156,7 @@ func TestHandleCreateEndDeviceNoIdentity(t *testing.T) {
 	t.Parallel()
 
 	s := memory.NewEndDeviceStore()
-	h := coreedev.HandleCreateEndDevice(s, identityNone(), sfdiFirst8)
+	h := coreedev.HandleCreateEndDevice(s, memory.NewEndDeviceIndex(), identityNone(), sfdiFirst8)
 
 	req := httptest.NewRequest(http.MethodPost, "/edev", nil)
 	w := httptest.NewRecorder()
@@ -209,7 +209,7 @@ func TestHandleEndDeviceStoreError(t *testing.T) {
 func TestHandleCreateEndDeviceInvalidXML(t *testing.T) {
 	t.Parallel()
 	s := memory.NewEndDeviceStore()
-	h := coreedev.HandleCreateEndDevice(s, identityOK(testLFDI, testSFDI), sfdiFirst8)
+	h := coreedev.HandleCreateEndDevice(s, memory.NewEndDeviceIndex(), identityOK(testLFDI, testSFDI), sfdiFirst8)
 	req := httptest.NewRequest(http.MethodPost, "/edev", bytes.NewBufferString("<not-xml"))
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
@@ -222,7 +222,7 @@ func TestHandleCreateEndDeviceInvalidXML(t *testing.T) {
 func TestHandleCreateEndDeviceMethodNotAllowed(t *testing.T) {
 	t.Parallel()
 	s := memory.NewEndDeviceStore()
-	h := coreedev.HandleCreateEndDevice(s, identityOK(testLFDI, testSFDI), sfdiFirst8)
+	h := coreedev.HandleCreateEndDevice(s, memory.NewEndDeviceIndex(), identityOK(testLFDI, testSFDI), sfdiFirst8)
 	req := httptest.NewRequest(http.MethodGet, "/edev", nil)
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, req)
