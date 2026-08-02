@@ -28,6 +28,33 @@ import (
 // as the subscription manager's NotificationObserver from Phase D1).
 type LFDIProvider func(ctx context.Context) (lfdi string, ok bool)
 
+// PostRateProvider resolves the server's preferred postRate, in seconds, for
+// the client identified by lfdi, and reports whether the server has an
+// opinion at all. A false second return means "no configured rate": the
+// handler then leaves whatever postRate the client supplied untouched,
+// including none.
+//
+// sep.xsd:6485-6487 documents MirrorUsagePoint.postRate as "how often
+// mirrored data should be POSTed, in seconds. A client MAY indicate a
+// preferred postRate when POSTing MirrorUsagePoint. A server MAY add or
+// modify postRate to indicate its preferred posting rate." Both verbs are
+// explicit, so a server that is configured with a rate is entitled to
+// overwrite a client's preference, not merely to fill an absent one. That is
+// what HandleCreateMirrorUsagePoint does, and it is the reason this is a
+// resolver rather than a plain "default if absent" value.
+//
+// The rate is keyed on the CREATING client's LFDI, the same identity
+// HandleCreateMirrorUsagePoint stamps into MirrorUsagePoint.DeviceLFDI. That
+// makes a per-device rate policy a pure consumer-side concern: a consumer
+// that today answers one fleet-wide value for every LFDI can later answer a
+// per-device value with no change to this package or to any call site here.
+//
+// Distinct from LFDIProvider above: that one reads identity off the request
+// context, this one maps an already-resolved identity to a policy value. A
+// nil PostRateProvider is safe and means the server has no opinion for any
+// client.
+type PostRateProvider func(lfdi string) (rate uint32, ok bool)
+
 // stampMirrorMeterReading assigns the server-owned fields on a
 // MirrorMeterReading and returns the store id it derived them from.
 //
@@ -275,7 +302,15 @@ func MirrorHref(id string) string {
 // and its mRID together (see MirrorStoreID), so two devices POSTing the same
 // mRID each get their own MirrorUsagePoint and neither is ever handed the
 // other's Location.
-func HandleCreateMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint], lfdiProvider LFDIProvider) http.HandlerFunc {
+//
+// postRateProvider supplies the server's preferred MirrorUsagePoint.postRate
+// for the creating client (see PostRateProvider). Nil, or a provider that
+// answers false, leaves the client's own postRate exactly as submitted, so a
+// server that configures no rate behaves precisely as it did before this
+// parameter existed. The stamp applies identically on the create path and on
+// the rule (a)(4) overwrite path a re-POST of the same mRID takes; see the
+// stamping site below for why the overwrite path is not exempted.
+func HandleCreateMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint], lfdiProvider LFDIProvider, postRateProvider PostRateProvider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			encoding.MethodNotAllowed(w, "POST")
@@ -322,6 +357,56 @@ func HandleCreateMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint], 
 
 		// Set DeviceLFDI from cert (override client-supplied value)
 		mup.DeviceLFDI = lfdi
+
+		// Stamp the server's preferred postRate, overriding whatever the
+		// client asked for. sep.xsd:6487 grants the server both verbs, "add
+		// or modify", so a configured server value wins over a client
+		// preference; see PostRateProvider for the full reasoning.
+		//
+		// This runs once, on the same mup value the ErrAlreadyExists branch
+		// below reuses verbatim for its s.Update call, so the stamp lands on
+		// BOTH the create path and the rule (a)(4) overwrite path a re-POST
+		// of the same mRID takes. That reuse is deliberate, not incidental:
+		// if the stamp applied only to the create path, a client that lost
+		// the rate war on its first POST could win it back by simply
+		// re-POSTing the same mRID, since rule (a)(4) writes the new data
+		// over the existing record. The overwrite would then persist an
+		// un-stamped client value and silently revert or drop the server's
+		// configured rate on the very record the server already claimed.
+		// An ingest-budget policy the server cannot make survive a re-POST
+		// is not a policy it can rely on, so the overwrite path is not
+		// exempted.
+		//
+		// This is deliberately NOT the same kind of override as DeviceLFDI
+		// above. DeviceLFDI is overridden because it is an identity claim and
+		// a client must never be able to assert one. postRate is overridden
+		// because it is a rate the SERVER is being asked to absorb: the client
+		// posting into it does not know the server's ingest budget, and a
+		// mirror whose rate the server did not agree to is a rate the server
+		// cannot plan for.
+		//
+		// A nil provider, or one that reports no configured rate, is a no-op:
+		// mup.PostRate keeps whatever the client submitted in THIS POST (not
+		// whatever was previously stored), consistent with rule (a)(4)'s full
+		// write-over semantics on the overwrite path. That keeps an
+		// unconfigured server byte-for-byte identical to its pre-change
+		// behavior instead of silently zeroing a client's stated preference.
+		//
+		// Neither response body observes the stamp directly: 201 carries none
+		// (rule (a)(3)) and 204 carries none (rule (a)(4)), so a client learns
+		// its actual postRate only from a follow-up GET /mup/{id}, which
+		// serves the stored record rule (c) permits. The stamp still has to
+		// happen here, before storage, because GET only ever echoes what was
+		// persisted.
+		if postRateProvider != nil {
+			if rate, ok := postRateProvider(lfdi); ok {
+				// Bind to a fresh local: taking the address of the loop-free
+				// but per-request `rate` is fine, while pointing at any shared
+				// policy storage would alias one value across every mirror.
+				r := rate
+				mup.PostRate = &r
+			}
+		}
 
 		// The resource identity is (creating device, client mRID).
 		id := MirrorStoreID(lfdi, mup.MRID)
