@@ -1,0 +1,61 @@
+name: "CodeQL"
+
+# Static analysis for Go. This is the wire-format authority for a
+# protocol a third-party C client parses, and had no CI gate at all
+# before this workflow plus ci.yml; CodeQL adds a second, independent
+# signal (data-flow and taint analysis) alongside the compiler-driven
+# build/vet/test/gofmt checks in ci.yml.
+#
+# Runs on pull_request (so findings gate merge review) and on a weekly
+# schedule (so a newly-published CodeQL query pack catches something in
+# code that has not itself changed). Deliberately NOT on every push to
+# every branch: PRs into main are already gated, and a push-triggered
+# run on top of the PR run would double the analysis cost for no
+# additional signal. See .claude/rules/devops.md "GitHub Actions" for
+# the GitHub-hosted-runner posture this follows; this is read-only
+# static analysis with no deploy reach.
+#
+# Requires GitHub Advanced Security to be enabled for this repository:
+# Settings > Code security and analysis > "GitHub Advanced Security".
+# This repo is private, so code scanning does not run without it — the
+# analyze step's SARIF upload fails closed with "Advanced Security must
+# be enabled for this repository to use code scanning" if it is off.
+# No repository secret is required beyond what GitHub provides
+# automatically for code scanning uploads.
+
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    # Mondays 06:00 UTC. Catches newly-published CodeQL query-pack
+    # findings against code that has not itself changed.
+    - cron: '0 6 * * 1'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze (Go)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: go
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v4
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:go"
