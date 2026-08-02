@@ -48,6 +48,44 @@ go test -race ./...
 All packages compile and pass tests with the standard `go` toolchain. No
 external services or network access are required to run the test suite.
 
+### The IEEE 2030.5 schema is not included
+
+The normative IEEE 2030.5 XML Schema (`sep.xsd`) is copyrighted by IEEE and is
+**not distributed with this repository**, in any release artifact, or in any
+binary built from this module. It is used only as a test fixture: the
+wire-format gate in `internal/xsdgate` reads it at test time and validates
+marshalled SEP2 resources against it.
+
+The commands above run green without it. The schema-gated tests report as
+SKIP, naming `SEP2_SCHEMA_PATH`, and every other test runs normally.
+
+To run the gate, obtain the standard at no charge through the IEEE GET
+Program (see [NOTICE](NOTICE)) and either drop the file at `schema/sep.xsd`,
+which is gitignored, or point at it:
+
+```
+export SEP2_SCHEMA_PATH=/path/to/sep.xsd
+go test ./...
+```
+
+Verify the copy first: `schema/PROVENANCE.md` records the digest the tests
+check and the exact model release this module gates against. A copy that is
+not that document is rejected with one clear error.
+
+Because a skip is not a validation, CI or anyone else who intends to supply
+the schema should also set `SEP2_SCHEMA_REQUIRED=1`, which turns a missing or
+misconfigured copy into a hard failure instead of a silent skip. The single
+test to look at is `TestSchemaGateArmed` in `internal/xsdgate`: it passes only
+when a verified schema was loaded.
+
+Continuous integration supplies the schema the same way. It reassembles a
+licensed copy from repository secrets into a file outside the checkout, points
+`SEP2_SCHEMA_PATH` at it, and sets `SEP2_SCHEMA_REQUIRED=1`, so a decode or
+path failure fails the run rather than skipping quietly. A pull request from a
+fork receives no secrets, so its run skips the gated tests and still reports
+green. The schema is never written into the working tree, never committed, and
+never appears in a log or a build artifact.
+
 ## Importing this module
 
 This module follows the server and client repositories into production together.

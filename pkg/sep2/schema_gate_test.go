@@ -9,8 +9,11 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 )
 
-// This file gates the wire format of sep2 resources against the vendored
-// normative IEEE 2030.5 schema (schema/sep.xsd). Before it existed, every
+// This file gates the wire format of sep2 resources against the normative
+// IEEE 2030.5 schema (sep.xsd), which is not distributed with this project
+// and is read at test time from an operator-supplied copy: see the NOTICE
+// file at the repository root. Every test here SKIPS when no copy is
+// available. Before this file existed, every
 // conformance defect in this package was found by a human reading the XSD
 // against struct tags. None was caught by a test, because round-tripping
 // through encoding/xml cannot detect wrong element order, dropped required
@@ -368,7 +371,7 @@ func TestSchemaGateCoversKnownResources(t *testing.T) {
 			t.Errorf("resource %q is in scope but not gated", name)
 		}
 		if _, ok := s.ComplexType(name); !ok {
-			t.Errorf("resource %q is not a complexType in the vendored schema", name)
+			t.Errorf("resource %q is not a complexType in the IEEE 2030.5 schema", name)
 		}
 	}
 	for _, name := range populated {
