@@ -1,62 +1,19 @@
 package sep2
 
-import (
-	"encoding/xml"
-	"strconv"
-	"strings"
-)
+import "encoding/xml"
 
-// RoleFlagsValue is a HexBinary16 bitmap (sep.xsd RoleFlagsType, which
-// extends HexBinary16 at sep.xsd:6031-6045) describing the roles that
-// apply to a usage point (Table: bit 0 isMirror, bit 1
-// isPremisesAggregationPoint, bit 2 isPEV, bit 3 isDER, bit 4
-// isRevenueQuality, bit 5 isDC, bit 6 isSubmeter, bits 7-15 reserved).
+// RoleFlagsValue is the sep.xsd RoleFlagsType bitmap, an extension of
+// HexBinary16 (sep.xsd:6031-6045), describing the roles that apply to a
+// usage point (bit 0 isMirror, bit 1 isPremisesAggregationPoint, bit 2
+// isPEV, bit 3 isDER, bit 4 isRevenueQuality, bit 5 isDC, bit 6 isSubmeter,
+// bits 7-15 reserved).
 //
-// hexBinary requires a whole number of octets: sep.xsd:6249 states the
-// rule verbatim ("hexBinary requires pairs of hex characters, so an odd
-// number of characters requires a leading 0"). encoding/xml has no notion
-// of this padding rule for an integer type, so a plain uint16 marshals a
-// value like 9 as the single character "9", which is not legal hexBinary
-// at all (one nibble, not one or more whole octets). MarshalXML below
-// applies the padding for every value below 0x10, not just 9: the defect
-// is in the encoding, not in any particular value.
-type RoleFlagsValue uint16
-
-// MarshalXML renders the value as even-length uppercase hex, satisfying
-// the HexBinary16 octet-pairing rule for every value from 0x0 to 0xFFFF.
-func (r RoleFlagsValue) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
-	return e.EncodeElement(hexBinaryPad(uint64(r)), start)
-}
-
-// UnmarshalXML is the mirror of MarshalXML: it accepts the padded (or
-// unpadded) hex text a peer may send and parses it back to the numeric
-// value. Round-tripping through this type must not change the semantic
-// bit value; only the wire encoding of that value changes.
-func (r *RoleFlagsValue) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
-	var text string
-	if err := d.DecodeElement(&text, &start); err != nil {
-		return err
-	}
-	v, err := strconv.ParseUint(strings.TrimSpace(text), 16, 16)
-	if err != nil {
-		return err
-	}
-	*r = RoleFlagsValue(v)
-	return nil
-}
-
-// hexBinaryPad renders v as uppercase hex, left-padded with a single "0"
-// when the natural hex representation has an odd digit count. hexBinary's
-// octet-pairing rule (sep.xsd:6249) applies to every hexBinary-derived
-// type in this package, not only RoleFlagsType, so this helper is not
-// RoleFlagsValue-specific.
-func hexBinaryPad(v uint64) string {
-	s := strings.ToUpper(strconv.FormatUint(v, 16))
-	if len(s)%2 != 0 {
-		s = "0" + s
-	}
-	return s
-}
+// It is an alias for HexBinary16 rather than a distinct type so that the
+// hexBinary encoding lives in exactly one place (hexbinary.go) for the whole
+// family. Every hexBinary-derived field in this package had the same latent
+// defect that RoleFlagsType had, so the fix belongs to the family, not to
+// this one field.
+type RoleFlagsValue = HexBinary16
 
 // MirrorUsagePoint is a client-created resource for reporting metering data.
 // Inverters POST to /mup to register, then POST readings to /mup/{id}/mr.
