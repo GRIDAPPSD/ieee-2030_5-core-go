@@ -1,45 +1,80 @@
 package xsdgate_test
 
 import (
-	"strings"
+	"crypto/sha256"
+	"encoding/hex"
 	"testing"
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/internal/xsdgate"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/schema"
 )
 
-// TestVendoredSchemaParses is the load-bearing guard on the whole gate. If
-// the vendored schema ever gains a construct outside the supported subset,
-// ParseSchema errors here rather than letting the gate silently check less
-// than its documentation claims.
-func TestVendoredSchemaParses(t *testing.T) {
-	s, err := xsdgate.Load()
+// TestSchemaGateArmed is the canary that tells "the gate ran" apart from
+// "the gate was skipped", without parsing prose out of go test output. It is
+// the single test name to look for: PASS means a schema was located,
+// verified against its digest, and parsed, so the rest of the gate really
+// validated something; SKIP means no schema was available and NOTHING in
+// this module checked any resource against the standard.
+//
+// Under schema.EnvRequired an absent schema fails here instead of skipping,
+// so a run that is supposed to supply a schema cannot report green without
+// one.
+func TestSchemaGateArmed(t *testing.T) {
+	s := xsdgate.MustLoad(t)
+
+	path, err := schema.Resolve()
 	if err != nil {
-		t.Fatalf("vendored sep.xsd failed to parse: %v", err)
+		t.Fatalf("resolve schema path after a successful load: %v", err)
 	}
-	if got, want := s.TargetNamespace, "urn:ieee:std:2030.5:ns"; got != want {
+	t.Logf("schema gate armed: %s, %d top-level elements", path, len(s.TopLevelElements()))
+}
+
+// TestSchemaParses is the load-bearing guard on the whole gate. If the
+// schema ever gains a construct outside the supported subset, ParseSchema
+// errors here rather than letting the gate silently check less than its
+// documentation claims.
+func TestSchemaParses(t *testing.T) {
+	s := xsdgate.MustLoad(t)
+
+	if got, want := s.TargetNamespace, schema.Namespace; got != want {
 		t.Errorf("targetNamespace = %q, want %q", got, want)
 	}
 	if got, want := s.Version, "2.1.0"; got != want {
 		t.Errorf("schema version = %q, want %q", got, want)
 	}
 	if n := len(s.TopLevelElements()); n != 324 {
-		t.Errorf("top-level element count = %d, want 324; the vendored schema changed", n)
+		t.Errorf("top-level element count = %d, want 324; this is not the expected schema", n)
 	}
 }
 
-// TestVendoredSchemaIntegrity pins the vendored bytes. The schema is the
-// arbiter of correctness for this module, so an unnoticed edit to it would
-// quietly redefine what "conformant" means.
-func TestVendoredSchemaIntegrity(t *testing.T) {
-	if got, want := len(schema.SEP2), 381926; got != want {
-		t.Errorf("vendored sep.xsd is %d bytes, want %d; see schema/PROVENANCE.md", got, want)
+// TestSchemaIntegrity pins the bytes the gate reads. The schema is the
+// arbiter of correctness for this module, so a different edition or an
+// edited copy would quietly redefine what "conformant" means. Pinning it
+// turns that into one clear failure instead of a spray of confusing
+// validation errors.
+//
+// The digest is recomputed here rather than trusting schema.Load's own
+// check, so weakening or disabling the loader's verification cannot leave
+// the identity of the document unasserted.
+//
+// The predecessor of this test asserted a byte length, a UTF-8 BOM, and CRLF
+// line endings on a vendored file. A digest over the normalized form is a
+// strictly stronger identity check, and it does not fail an operator whose
+// copy was extracted with converted line endings.
+func TestSchemaIntegrity(t *testing.T) {
+	xsdgate.MustLoad(t) // applies the skip-or-fail policy when no schema exists
+
+	data, path, err := schema.Load()
+	if err != nil {
+		t.Fatalf("load IEEE 2030.5 schema: %v", err)
 	}
-	if !strings.HasPrefix(string(schema.SEP2), "\xef\xbb\xbf<?xml") {
-		t.Error("vendored sep.xsd lost its UTF-8 BOM; it must stay byte-faithful")
+	norm := schema.Normalize(data)
+	sum := sha256.Sum256(norm)
+	if got, want := hex.EncodeToString(sum[:]), schema.NormalizedSHA256; got != want {
+		t.Errorf("%s: normalized sha256 = %s, want %s; see schema/PROVENANCE.md", path, got, want)
 	}
-	if !strings.Contains(string(schema.SEP2), "\r\n") {
-		t.Error("vendored sep.xsd lost its CRLF line endings; check .gitattributes marks it -text")
+	if got, want := len(norm), schema.NormalizedSize; got != want {
+		t.Errorf("%s: normalized size = %d bytes, want %d", path, got, want)
 	}
 }
 

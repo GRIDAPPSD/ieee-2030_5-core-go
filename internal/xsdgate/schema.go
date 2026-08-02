@@ -1,5 +1,9 @@
-// Package xsdgate validates marshalled IEEE 2030.5 XML against the vendored
+// Package xsdgate validates marshalled IEEE 2030.5 XML against the
 // normative schema (see ../../schema).
+//
+// The schema is not distributed with this project. It is read at test time
+// from a copy the operator supplies, and the gated tests skip when none is
+// available. See the NOTICE file at the repository root.
 //
 // # Why this exists
 //
@@ -246,7 +250,7 @@ type Schema struct {
 // cannot see, and the gate would keep reporting success while checking less
 // than it claims.
 func ParseSchema(data []byte) (*Schema, error) {
-	// Tolerate the UTF-8 BOM the vendored file carries.
+	// Tolerate the UTF-8 BOM the original schema file carries.
 	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
 
 	var doc xsdSchemaDoc
