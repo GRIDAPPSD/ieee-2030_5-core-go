@@ -613,6 +613,146 @@ func TestAssembly_PostMirrorUsagePointReading_ViaLocationHeader(t *testing.T) {
 	}
 }
 
+// TestAssembly_MirrorOwnershipIsWiredOnEveryMupRoute proves the section
+// 10.11.3 rule (e) gate is actually reachable through the real router, not
+// merely present in the handler package. The handler-level suite in
+// pkg/sep2srv/handlers/metering covers the rule itself; this covers the
+// wiring, which is the half that silently regresses when a route is added and
+// its lfdiProvider argument is forgotten.
+//
+// Two routers are built over ONE set of stores with two different identities:
+// the first creates the mirror, the second is a valid but unrelated
+// certificate. Every /mup route that touches a single mirror must deny it.
+func TestAssembly_MirrorOwnershipIsWiredOnEveryMupRoute(t *testing.T) {
+	t.Parallel()
+
+	const otherLFDI = "FFEEDDCCBBAA998877665544332211009988776655443322"
+	if otherLFDI == testLFDI {
+		t.Fatal("test setup: the two identities must differ")
+	}
+
+	stores := testStores()
+
+	ownerPolicy := testAuthPolicy()
+	ownerHandler, _ := assembly.BuildProtocolRouter(
+		assembly.RouterConfig{}, stores, ownerPolicy, "serverSFDI", "serverLFDI", nil,
+	)
+	ownerSrv := httptest.NewServer(ownerHandler)
+	defer ownerSrv.Close()
+
+	otherPolicy := testAuthPolicy()
+	otherPolicy.Identity = func(_ context.Context) (lfdi, sfdi string, ok bool) {
+		return otherLFDI, testSFDI, true
+	}
+	otherHandler, _ := assembly.BuildProtocolRouter(
+		assembly.RouterConfig{}, stores, otherPolicy, "serverSFDI", "serverLFDI", nil,
+	)
+	otherSrv := httptest.NewServer(otherHandler)
+	defer otherSrv.Close()
+
+	body, err := xml.Marshal(&sep2.MirrorUsagePoint{MRID: "OWNED"})
+	if err != nil {
+		t.Fatalf("marshal MirrorUsagePoint: %v", err)
+	}
+	createResp, err := http.Post(ownerSrv.URL+"/mup", "application/xml", strings.NewReader(string(body)))
+	if err != nil {
+		t.Fatalf("POST /mup: %v", err)
+	}
+	createResp.Body.Close()
+	if createResp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST /mup status = %d, want 201", createResp.StatusCode)
+	}
+
+	val := int64(99)
+	uom := sep2.UomWatts
+	mmrBody, err := xml.Marshal(&sep2.MirrorMeterReading{
+		MRID:        "FORGED",
+		ReadingType: &sep2.ReadingType{Uom: &uom},
+		Reading:     &sep2.Reading{Value: &val},
+	})
+	if err != nil {
+		t.Fatalf("marshal MirrorMeterReading: %v", err)
+	}
+
+	for _, path := range []string{"/mup/OWNED", "/mup/OWNED/mr"} {
+		resp, err := http.Post(otherSrv.URL+path, "application/xml", strings.NewReader(string(mmrBody)))
+		if err != nil {
+			t.Fatalf("POST %s: %v", path, err)
+		}
+		respBody, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("POST %s as a non-creator: status = %d, want 403; body = %s", path, resp.StatusCode, respBody)
+		}
+		if strings.Contains(string(respBody), "<") || strings.Contains(string(respBody), testLFDI) {
+			t.Errorf("POST %s denial body leaks content: %s", path, respBody)
+		}
+	}
+
+	getResp, err := http.Get(otherSrv.URL + "/mup/OWNED")
+	if err != nil {
+		t.Fatalf("GET /mup/OWNED: %v", err)
+	}
+	getBody, _ := io.ReadAll(getResp.Body)
+	getResp.Body.Close()
+	if getResp.StatusCode != http.StatusForbidden {
+		t.Errorf("GET /mup/OWNED as a non-creator: status = %d, want 403; body = %s", getResp.StatusCode, getBody)
+	}
+	if strings.Contains(string(getBody), "<") || strings.Contains(string(getBody), testLFDI) {
+		t.Errorf("GET denial body leaks content: %s", getBody)
+	}
+
+	// Nothing was persisted by any of the denied writes.
+	count, err := stores.MirrorMeterReadings.Count(context.Background(), "OWNED")
+	if err != nil {
+		t.Fatalf("count readings: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("stored reading count = %d, want 0: a denied POST persisted data", count)
+	}
+
+	// The creator is unaffected: same stores, same routes, 200 and 201.
+	okResp, err := http.Post(ownerSrv.URL+"/mup/OWNED", "application/xml", strings.NewReader(string(mmrBody)))
+	if err != nil {
+		t.Fatalf("owner POST /mup/OWNED: %v", err)
+	}
+	okResp.Body.Close()
+	if okResp.StatusCode != http.StatusCreated {
+		t.Errorf("owner POST /mup/OWNED status = %d, want 201", okResp.StatusCode)
+	}
+	ownerGet, err := http.Get(ownerSrv.URL + "/mup/OWNED")
+	if err != nil {
+		t.Fatalf("owner GET /mup/OWNED: %v", err)
+	}
+	ownerGetBody, _ := io.ReadAll(ownerGet.Body)
+	ownerGet.Body.Close()
+	if ownerGet.StatusCode != http.StatusOK {
+		t.Errorf("owner GET /mup/OWNED status = %d, want 200", ownerGet.StatusCode)
+	}
+	// Rule (c) still holds for the owner through the real router.
+	if strings.Contains(string(ownerGetBody), "MirrorMeterReading") {
+		t.Errorf("owner GET served a MirrorMeterReading element, violates rule (c); body = %s", ownerGetBody)
+	}
+
+	// The list stays server-wide in this change: rule (e) governs POST only,
+	// and 6.2.3.1 puts sub-resource access control out of scope. Per-client
+	// list scoping is permitted by 4.6.1 but is a separate design decision
+	// (CSIP 5.7.1 per-device MirrorUsagePointListLink URIs), deliberately not
+	// made here. Asserting it keeps the boundary of this change explicit.
+	listResp, err := http.Get(otherSrv.URL + "/mup")
+	if err != nil {
+		t.Fatalf("GET /mup: %v", err)
+	}
+	listBody, _ := io.ReadAll(listResp.Body)
+	listResp.Body.Close()
+	if listResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /mup status = %d, want 200 (list is intentionally unscoped)", listResp.StatusCode)
+	}
+	if !strings.Contains(string(listBody), "<mRID>OWNED</mRID>") {
+		t.Errorf("GET /mup omitted a mirror the caller did not create; the list was scoped, which this change does not do. body = %s", listBody)
+	}
+}
+
 // TestAssembly_PatternListNonEmpty asserts that BuildProtocolRouter returns
 // a non-empty, sorted pattern list (boot-logging invariant).
 func TestAssembly_PatternListNonEmpty(t *testing.T) {
