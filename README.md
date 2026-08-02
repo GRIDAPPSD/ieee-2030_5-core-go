@@ -1,9 +1,13 @@
 # ieee-2030_5-core
 
-[![Pipeline](https://gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/badges/main/pipeline.svg)](https://gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/-/commits/main)
-[![Coverage](https://gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/badges/main/coverage.svg)](https://gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core/-/commits/main)
-[![Go 1.26](https://img.shields.io/badge/go-1.26-blue)](https://go.dev)
+[![Build, vet, and test](https://github.com/GRIDAPPSD/ieee-2030_5-core-go/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/GRIDAPPSD/ieee-2030_5-core-go/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/GRIDAPPSD/ieee-2030_5-core-go/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/GRIDAPPSD/ieee-2030_5-core-go/actions/workflows/codeql.yml)
+[![Go 1.26.3](https://img.shields.io/badge/go-1.26.3-00ADD8?logo=go)](https://go.dev)
+[![Release v0.7.0](https://img.shields.io/badge/release-v0.7.0-blue)](https://github.com/GRIDAPPSD/ieee-2030_5-core-go/releases/latest)
 [![License](https://img.shields.io/badge/license-Battelle%20BSD-blue)](LICENSE)
+
+This repo is private: the workflow badges above render for viewers with
+repository access and show nothing for anonymous visitors.
 
 Shared Go library for the IEEE 2030.5 (SEP2) server and client implementations
 at PNNL. Both the reference server (`ieee-2030_5-server`) and the client
