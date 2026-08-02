@@ -78,6 +78,14 @@ misconfigured copy into a hard failure instead of a silent skip. The single
 test to look at is `TestSchemaGateArmed` in `internal/xsdgate`: it passes only
 when a verified schema was loaded.
 
+Continuous integration supplies the schema the same way. It reassembles a
+licensed copy from repository secrets into a file outside the checkout, points
+`SEP2_SCHEMA_PATH` at it, and sets `SEP2_SCHEMA_REQUIRED=1`, so a decode or
+path failure fails the run rather than skipping quietly. A pull request from a
+fork receives no secrets, so its run skips the gated tests and still reports
+green. The schema is never written into the working tree, never committed, and
+never appears in a log or a build artifact.
+
 ## Importing this module
 
 This module follows the server and client repositories into production together.
