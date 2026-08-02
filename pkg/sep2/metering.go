@@ -85,12 +85,19 @@ type DateTimeInterval struct {
 }
 
 // Reading is an individual meter data point.
+//
+// Field order matches the sep.xsd ReadingBase sequence (sep.xsd:6511):
+// consumptionBlock, qualityFlags, timePeriod, touTier, value, followed by
+// Reading's own localID. This struct implements qualityFlags (position 2),
+// timePeriod (position 3), and value (position 5); their declaration order
+// below preserves that relative sequence for a strict schema-validating
+// client, even though the unimplemented optional fields are omitted.
 type Reading struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns Reading"`
 	Resource
-	Value        *int64            `xml:"value,omitempty"`
-	TimePeriod   *DateTimeInterval `xml:"timePeriod,omitempty"`
 	QualityFlags *HexBinary16      `xml:"qualityFlags,omitempty"`
+	TimePeriod   *DateTimeInterval `xml:"timePeriod,omitempty"`
+	Value        *int64            `xml:"value,omitempty"`
 }
 
 // Copy returns an independent copy.
@@ -119,10 +126,29 @@ type ReadingList struct {
 }
 
 // ReadingType describes the unit and semantics of a meter reading.
+//
+// ReadingType is <xs:extension base="Resource"/> in sep.xsd (:2053-2150);
+// Resource contributes only the href attribute, no elements. There is no
+// mRID element in this type's sequence: a full scan of the complexType body
+// confirms zero occurrences, and the EPRI client's generated schema table
+// (se_schema.c, ReadingType (330)) agrees, listing href then
+// accumulationBehaviour as the first content. A prior version of this
+// struct emitted mRID as the first child element, which the EPRI client's
+// strict schema-validating parser rejected outright because no such slot
+// exists in its table.
+//
+// The implemented fields below are a subset of the 17-element canonical
+// sequence (accumulationBehaviour, calorificValue, commodity,
+// conversionFactor, dataQualifier, flowDirection, intervalLength, kind,
+// maxNumberOfIntervals, numberOfConsumptionBlocks, numberOfTouTiers, phase,
+// powerOfTenMultiplier, subIntervalLength, supplyLimit,
+// tieredConsumptionBlocks, uom); their relative declaration order below
+// already matches their relative canonical positions (1, 3, 5, 6, 8, 12,
+// 13, 17), so omitting the unimplemented optional fields does not disturb
+// order for a strict sequence-validating client.
 type ReadingType struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns ReadingType"`
 	Resource
-	MRID                  string `xml:"mRID,omitempty"`
 	AccumulationBehaviour *uint8 `xml:"accumulationBehaviour,omitempty"`
 	Commodity             *uint8 `xml:"commodity,omitempty"`
 	DataQualifier         *uint8 `xml:"dataQualifier,omitempty"`

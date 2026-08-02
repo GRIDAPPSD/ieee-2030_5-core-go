@@ -97,6 +97,162 @@ func TestMirrorUsagePointRoleFlagsHexBinaryPadding(t *testing.T) {
 	}
 }
 
+// TestReadingTypeNoMRID asserts the served bytes never carry an mRID
+// element inside a ReadingType. This is the regression guard for the root
+// cause: sep.xsd's ReadingType is <xs:extension base="Resource"/> only, and
+// Resource contributes solely the href attribute, no elements. A prior
+// version of this struct emitted mRID as ReadingType's first child, which
+// does not exist in the EPRI reference client's schema table
+// (se_schema.c, ReadingType (330): href, accumulationBehaviour, ...), so
+// the client's strict parser rejected the whole document. Checked both
+// standalone and nested inside a MirrorMeterReading, since the nested path
+// is how a device actually receives it.
+func TestReadingTypeNoMRID(t *testing.T) {
+	uom := sep2.UomWatts
+	rt := sep2.ReadingType{
+		Resource: sep2.Resource{Href: "/mup/inv1/mr/1/rt"},
+		Uom:      &uom,
+	}
+
+	data, err := xml.Marshal(&rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(data)
+	if strings.Contains(body, "<mRID") {
+		t.Errorf("served ReadingType carries an mRID element, which does not exist in sep.xsd's ReadingType sequence; body=%s", body)
+	}
+
+	val := int64(5000)
+	mmr := sep2.MirrorMeterReading{
+		Resource: sep2.Resource{Href: "/mup/inv1/mr/1"},
+		MRID:     "MMR01",
+		Reading:  &sep2.Reading{Value: &val},
+		ReadingType: &sep2.ReadingType{
+			Uom: &uom,
+		},
+	}
+	data, err = xml.Marshal(&mmr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = string(data)
+
+	rtStart := strings.Index(body, "<ReadingType")
+	if rtStart == -1 {
+		t.Fatalf("served MirrorMeterReading missing <ReadingType>; body=%s", body)
+	}
+	rtEnd := strings.Index(body[rtStart:], "</ReadingType>")
+	if rtEnd == -1 {
+		t.Fatalf("served MirrorMeterReading missing closing </ReadingType>; body=%s", body)
+	}
+	readingTypeElement := body[rtStart : rtStart+rtEnd]
+	if strings.Contains(readingTypeElement, "<mRID") {
+		t.Errorf("served ReadingType (nested in MirrorMeterReading) carries an mRID element; readingTypeElement=%s, full body=%s", readingTypeElement, body)
+	}
+}
+
+// TestMirrorMeterReadingElementOrder asserts the SERVED BYTES carry
+// MirrorMeterReading's children in the sep.xsd sequence order (mRID,
+// description, lastUpdateTime, Reading, ReadingType), with both Reading
+// and ReadingType present. This was latent while the only client behavior
+// was posting ReadingType alone; it breaks a strict sequence-validating
+// parser the moment both are present, per sep.xsd:6416 (MirrorMeterReading
+// -> MeterReadingBase -> IdentifiedObject), which places Reading (position
+// 7) before ReadingType (position 8).
+func TestMirrorMeterReadingElementOrder(t *testing.T) {
+	val := int64(5000)
+	uom := sep2.UomWatts
+	mmr := sep2.MirrorMeterReading{
+		Resource:       sep2.Resource{Href: "/mup/inv1/mr/1"},
+		MRID:           "MMR01",
+		Description:    "Active Power",
+		LastUpdateTime: 1700000000,
+		Reading:        &sep2.Reading{Value: &val},
+		ReadingType:    &sep2.ReadingType{Uom: &uom},
+	}
+
+	data, err := xml.Marshal(&mmr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(data)
+
+	wantOrder := []string{"mRID", "description", "lastUpdateTime", "Reading", "ReadingType"}
+	positions := make([]int, len(wantOrder))
+	for i, tag := range wantOrder {
+		idx := strings.Index(body, "<"+tag)
+		if idx == -1 {
+			t.Fatalf("served bytes missing <%s>; body=%s", tag, body)
+		}
+		positions[i] = idx
+	}
+	for i := 1; i < len(positions); i++ {
+		if positions[i] < positions[i-1] {
+			t.Fatalf("element %q (pos %d) appears before %q (pos %d), violates sep.xsd sequence order; body=%s",
+				wantOrder[i], positions[i], wantOrder[i-1], positions[i-1], body)
+		}
+	}
+}
+
+// TestMirrorMeterReadingMRIDAlwaysEmitted asserts MRID serializes even at
+// its zero value. IdentifiedObject (sep.xsd:5324) declares mRID
+// minOccurs="1"; "omitempty" on a string field silently drops the element
+// for the empty string, which would serve a document missing a required
+// element.
+func TestMirrorMeterReadingMRIDAlwaysEmitted(t *testing.T) {
+	mmr := sep2.MirrorMeterReading{Resource: sep2.Resource{Href: "/mup/inv1/mr/1"}}
+
+	data, err := xml.Marshal(&mmr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(data)
+	if !strings.Contains(body, "<mRID></mRID>") {
+		t.Errorf("served MirrorMeterReading at zero-value MRID missing <mRID></mRID>; body=%s", body)
+	}
+}
+
+// TestReadingElementOrder asserts the SERVED BYTES carry Reading's
+// implemented children in the ReadingBase sequence order (qualityFlags,
+// timePeriod, value), per sep.xsd:6511. A prior version of this struct
+// declared value first, which is out of order relative to qualityFlags
+// (position 2) and timePeriod (position 3): any served Reading with more
+// than one of these fields set would fail a strict sequence-validating
+// parser.
+func TestReadingElementOrder(t *testing.T) {
+	val := int64(5000)
+	qf := sep2.HexBinary16(0x0009)
+	reading := sep2.Reading{
+		Resource:     sep2.Resource{Href: "/mup/inv1/mr/1/r"},
+		QualityFlags: &qf,
+		TimePeriod:   &sep2.DateTimeInterval{Duration: 900, Start: 1700000000},
+		Value:        &val,
+	}
+
+	data, err := xml.Marshal(&reading)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(data)
+
+	wantOrder := []string{"qualityFlags", "timePeriod", "value"}
+	positions := make([]int, len(wantOrder))
+	for i, tag := range wantOrder {
+		idx := strings.Index(body, "<"+tag)
+		if idx == -1 {
+			t.Fatalf("served bytes missing <%s>; body=%s", tag, body)
+		}
+		positions[i] = idx
+	}
+	for i := 1; i < len(positions); i++ {
+		if positions[i] < positions[i-1] {
+			t.Fatalf("element %q (pos %d) appears before %q (pos %d), violates sep.xsd ReadingBase sequence order; body=%s",
+				wantOrder[i], positions[i], wantOrder[i-1], positions[i-1], body)
+		}
+	}
+}
+
 // TestMirrorUsagePointNoMeterReadingListLink asserts the served bytes never
 // carry a MirrorMeterReadingListLink element. sep.xsd defines no such type
 // for MirrorUsagePoint (grep of the full schema element index returns zero

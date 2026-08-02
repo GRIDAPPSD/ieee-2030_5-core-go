@@ -76,14 +76,29 @@ type MirrorUsagePointList struct {
 }
 
 // MirrorMeterReading contains metering data posted by a device.
+//
+// Field order matches the canonical sep.xsd sequence for
+// MirrorMeterReading -> MeterReadingBase -> IdentifiedObject -> Resource
+// (sep.xsd:6416, :6452, :5324): mRID, description, version,
+// lastUpdateTime, MirrorReadingSet, nextUpdateTime, Reading, ReadingType.
+// This struct implements mRID (position 1), description (position 2),
+// lastUpdateTime (position 4), Reading (position 7), and ReadingType
+// (position 8); Reading is declared before ReadingType below to match.
+// Prior code emitted ReadingType before Reading, which was latent while
+// the only client behavior was posting ReadingType alone, but breaks a
+// strict sequence-validating parser the moment both are present.
+//
+// MRID has no omitempty: it is minOccurs=1 via IdentifiedObject
+// (sep.xsd:5324), so a zero-value mRID must still serialize; omitempty
+// would silently drop a required element.
 type MirrorMeterReading struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns MirrorMeterReading"`
 	Resource
-	MRID           string       `xml:"mRID,omitempty"`
+	MRID           string       `xml:"mRID"`
 	Description    string       `xml:"description,omitempty"`
 	LastUpdateTime int64        `xml:"lastUpdateTime,omitempty"`
-	ReadingType    *ReadingType `xml:"ReadingType,omitempty"`
 	Reading        *Reading     `xml:"Reading,omitempty"`
+	ReadingType    *ReadingType `xml:"ReadingType,omitempty"`
 }
 
 // Copy returns an independent copy.
