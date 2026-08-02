@@ -443,6 +443,170 @@ func TestHandlePostMirrorMeterReading_NotFoundParent(t *testing.T) {
 	}
 }
 
+// --- POST /mup/{id} (WADL-mandated Location-follow route; IEEECORE-MUPPOST) ---
+
+// TestHandlePostMirrorMeterReading_ViaLocationHeader reproduces the exact
+// sequence IEEE 2030.5-2018 section 10.11.3 rule (d) describes and the EPRI
+// reference client performs: POST a MirrorUsagePoint, then POST the reading
+// to the literal Location value the server returned (e.g. /mup/3), not to a
+// separately-documented convention path. Before HandlePostMirrorMeterReading
+// was mounted at "POST /mup/{id}" this returned 405, because only "GET
+// /mup/{id}" existed at that pattern.
+func TestHandlePostMirrorMeterReading_ViaLocationHeader(t *testing.T) {
+	t.Parallel()
+	mupStore := memory.NewStore[sep2.MirrorUsagePoint]()
+	mmrStore := memory.NewScopedStore[sep2.MirrorMeterReading]()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /mup", metering.HandleCreateMirrorUsagePoint(mupStore, identityProvider("DEVICE_A_LFDI")))
+	mux.HandleFunc("GET /mup/{id}", metering.HandleMirrorUsagePoint(mupStore))
+	mux.HandleFunc("POST /mup/{id}", metering.HandlePostMirrorMeterReading(mupStore, mmrStore))
+
+	// Step 1: create the MirrorUsagePoint, exactly the client's first exchange.
+	mup := sep2.MirrorUsagePoint{MRID: "INV001"}
+	body, _ := xml.Marshal(&mup)
+	createReq := httptest.NewRequest(http.MethodPost, "/mup", bytes.NewReader(body))
+	createW := httptest.NewRecorder()
+	mux.ServeHTTP(createW, createReq)
+	if createW.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want 201, body: %s", createW.Code, createW.Body.String())
+	}
+	loc := createW.Header().Get("Location")
+	if loc == "" {
+		t.Fatal("POST /mup: no Location header")
+	}
+
+	// Step 2: post a MirrorMeterReading to EXACTLY the Location value. The
+	// client never constructs this path itself: it follows http_location().
+	val := int64(4200)
+	uom := sep2.UomWatts
+	mmr := sep2.MirrorMeterReading{
+		MRID:        "MMR01",
+		Description: "Active Power",
+		ReadingType: &sep2.ReadingType{Uom: &uom},
+		Reading:     &sep2.Reading{Value: &val},
+	}
+	mmrBody, _ := xml.Marshal(&mmr)
+	postReq := httptest.NewRequest(http.MethodPost, loc, bytes.NewReader(mmrBody))
+	postW := httptest.NewRecorder()
+	mux.ServeHTTP(postW, postReq)
+
+	if postW.Code == http.StatusMethodNotAllowed {
+		t.Fatalf("POST %s returned 405: the server's own Location header is not accepted (IEEECORE-MUPPOST regression)", loc)
+	}
+	if postW.Code != http.StatusCreated {
+		t.Fatalf("POST %s status = %d, want 201, body: %s", loc, postW.Code, postW.Body.String())
+	}
+
+	// Assert the reading is actually stored under the parent id, not merely
+	// that the POST returned 2xx.
+	mmrLoc := postW.Header().Get("Location")
+	const prefix = "/mup/INV001/mr/"
+	if !strings.HasPrefix(mmrLoc, prefix) {
+		t.Fatalf("MirrorMeterReading Location = %q, want prefix %q", mmrLoc, prefix)
+	}
+	id := strings.TrimPrefix(mmrLoc, prefix)
+	stored, err := mmrStore.Get(context.Background(), "INV001", id)
+	if err != nil {
+		t.Fatalf("get stored MirrorMeterReading: %v", err)
+	}
+	if stored.MRID != "MMR01" {
+		t.Errorf("stored MRID = %q, want MMR01", stored.MRID)
+	}
+	if stored.Reading == nil || stored.Reading.Value == nil || *stored.Reading.Value != val {
+		t.Errorf("stored Reading value not preserved: %+v", stored.Reading)
+	}
+
+	// deviceLFDI override invariant: this route only ever mutates
+	// MirrorMeterReading storage, never the parent MirrorUsagePoint record,
+	// so the cert-derived DeviceLFDI stamped at creation time must be
+	// unchanged by a reading POST through the new route.
+	parent, err := mupStore.Get(context.Background(), "INV001")
+	if err != nil {
+		t.Fatalf("get stored MirrorUsagePoint: %v", err)
+	}
+	if parent.DeviceLFDI != "DEVICE_A_LFDI" {
+		t.Errorf("parent DeviceLFDI = %q, want DEVICE_A_LFDI unchanged by the reading POST", parent.DeviceLFDI)
+	}
+
+	// Rule (c) regression check: GET /mup/{id} must still omit
+	// MirrorMeterReading children after a reading has been posted through
+	// the new route.
+	getReq := httptest.NewRequest(http.MethodGet, "/mup/INV001", nil)
+	getW := httptest.NewRecorder()
+	mux.ServeHTTP(getW, getReq)
+	if getW.Code != http.StatusOK {
+		t.Fatalf("GET /mup/INV001 status = %d, want 200", getW.Code)
+	}
+	if strings.Contains(getW.Body.String(), "MirrorMeterReading") {
+		t.Errorf("GET /mup/{id} served a MirrorMeterReading element after a reading was posted via POST /mup/{id}, violates rule (c); body=%s", getW.Body.String())
+	}
+}
+
+func TestHandlePostMirrorMeterReading_ViaLocationHeader_NotFoundParent(t *testing.T) {
+	t.Parallel()
+	mupStore := memory.NewStore[sep2.MirrorUsagePoint]()
+	mmrStore := memory.NewScopedStore[sep2.MirrorMeterReading]()
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /mup/{id}", metering.HandlePostMirrorMeterReading(mupStore, mmrStore))
+
+	req := httptest.NewRequest(http.MethodPost, "/mup/nonexistent", bytes.NewBufferString("<MirrorMeterReading/>"))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", w.Code)
+	}
+}
+
+// TestHandlePostMirrorMeterReading_NoOwnershipCheck_KnownGap documents actual
+// behavior; it does NOT assert a protection that does not exist. Neither the
+// pre-existing POST /mup/{id}/mr route nor the WADL-mandated POST /mup/{id}
+// route added here checks that the caller's identity matches the target
+// MirrorUsagePoint's DeviceLFDI: /mup is not /edev-scoped, and no ACL
+// middleware is wired inside core for it (see mirror.go's
+// stampMirrorMeterReading doc comment, and the pre-existing open finding that
+// GET /mup/{id} has no ownership check either). Ownership enforcement for
+// /mup, if any, is injected by the consuming server's AuthPolicy.Wrap
+// (auth.ACLMiddleware), which core does not define.
+//
+// This test proves ROUTE PARITY: mounting POST /mup/{id} did not narrow or
+// widen this gap relative to the pre-existing POST /mup/{id}/mr. It is a
+// marker for the tracked finding (see report), not a claim the write path is
+// protected. See "## Findings / Issues Discovered" in the delivering report.
+func TestHandlePostMirrorMeterReading_NoOwnershipCheck_KnownGap(t *testing.T) {
+	t.Parallel()
+	mupStore := memory.NewStore[sep2.MirrorUsagePoint]()
+	mmrStore := memory.NewScopedStore[sep2.MirrorMeterReading]()
+
+	_ = mupStore.Create(context.Background(), "device-a", sep2.MirrorUsagePoint{
+		Resource:   sep2.Resource{Href: "/mup/device-a"},
+		MRID:       "DEVICE_A",
+		DeviceLFDI: "DEVICE_A_LFDI",
+	})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /mup/{id}", metering.HandlePostMirrorMeterReading(mupStore, mmrStore))
+	mux.HandleFunc("POST /mup/{id}/mr", metering.HandlePostMirrorMeterReading(mupStore, mmrStore))
+
+	val := int64(1)
+	mmr := sep2.MirrorMeterReading{MRID: "FORGED", Reading: &sep2.Reading{Value: &val}}
+	body, _ := xml.Marshal(&mmr)
+
+	// A caller with no relationship to "device-a" targets its resource id
+	// directly. HandlePostMirrorMeterReading never consults an
+	// LFDIProvider, so this succeeds on both routes today.
+	for _, path := range []string{"/mup/device-a", "/mup/device-a/mr"} {
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		if w.Code != http.StatusCreated {
+			t.Fatalf("POST %s (cross-device write) status = %d, want 201: parity with the pre-existing route broke", path, w.Code)
+		}
+	}
+}
+
 // --- BuildMirrorUsagePointList ---
 
 func TestBuildMirrorUsagePointList(t *testing.T) {
