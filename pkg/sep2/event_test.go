@@ -1,6 +1,6 @@
 // Package sep2_test covers Event-base XML round-tripping for the
 // IEEE-044a additions: `replyTo` and `responseRequired` child elements
-// per IEEE 2030.5 §10.1.3 (Event rules) / 2023 XSD `RespondableResource`.
+// per IEEE 2030.5 section 10.1.3 (Event rules) / 2023 XSD `RespondableResource`.
 //
 // These tests gate the IEEE-044 hook-wiring work: the OnTransition hook
 // reads `ReplyTo` off a decoded DERControl to drive `(*SEP2Client).
@@ -20,7 +20,7 @@ import (
 // TestEventReplyToRoundTrip asserts that a DERControl marshalled with
 // ReplyTo set survives an unmarshal-marshal-unmarshal cycle without
 // losing or mutating the URI. Both relative ("/edev/1/rsps/1/rsp")
-// and absolute ("https://example/rsp") forms are exercised — the
+// and absolute ("https://example/rsp") forms are exercised : the
 // IEEE-044 hook resolves both via SEP2Client.resolveServerURL.
 func TestEventReplyToRoundTrip(t *testing.T) {
 	t.Parallel()
@@ -70,7 +70,7 @@ func TestEventReplyToRoundTrip(t *testing.T) {
 }
 
 // TestEventResponseRequiredRoundTrip asserts the HexBinary8 bitmap
-// (Table 32 — bits select which transition statuses require a
+// (Table 32 : bits select which transition statuses require a
 // Response POST) round-trips through xml.Marshal/Unmarshal. The
 // IEEE-044 hook ANDs this mask against the transition status to
 // decide whether to call PostResponse.
@@ -79,7 +79,7 @@ func TestEventResponseRequiredRoundTrip(t *testing.T) {
 
 	cases := []struct {
 		name string
-		mask uint8
+		mask sep2.HexBinary8
 	}{
 		{name: "all_bits_clear", mask: 0x00},
 		{name: "bit0_received_only", mask: 0x01},
@@ -120,7 +120,7 @@ func TestEventResponseRequiredRoundTrip(t *testing.T) {
 
 // TestEventResponseRequiredOmitEmpty verifies that a DERControl with
 // no ResponseRequired pointer set marshals WITHOUT a <responseRequired>
-// element. This guards the omitempty contract — pre-2023 servers and
+// element. This guards the omitempty contract : pre-2023 servers and
 // clients must not see an unknown element.
 func TestEventResponseRequiredOmitEmpty(t *testing.T) {
 	t.Parallel()
@@ -145,7 +145,7 @@ func TestEventResponseRequiredOmitEmpty(t *testing.T) {
 func TestEventElementOrder(t *testing.T) {
 	t.Parallel()
 
-	mask := uint8(0x07)
+	mask := sep2.HexBinary8(0x07)
 	ctrl := sep2.DERControl{}
 	ctrl.MRID = "DERC-ORDER"
 	ctrl.ReplyTo = "/rsp"
@@ -174,7 +174,7 @@ func TestEventElementOrder(t *testing.T) {
 }
 
 // TestDERControlCopyResponseRequiredDeepCopy asserts that DERControl.Copy
-// produces an independent ResponseRequired pointer — mutating the copy
+// produces an independent ResponseRequired pointer : mutating the copy
 // must not change the original. The IEEE-044 hook may stash a copy of
 // the active DERControl and mutate the bitmap during retry-policy
 // evaluation; without deep-copy, the canonical event in the store
@@ -182,7 +182,7 @@ func TestEventElementOrder(t *testing.T) {
 func TestDERControlCopyResponseRequiredDeepCopy(t *testing.T) {
 	t.Parallel()
 
-	mask := uint8(0x07)
+	mask := sep2.HexBinary8(0x07)
 	ctrl := sep2.DERControl{}
 	ctrl.MRID = "DERC-COPY"
 	ctrl.ResponseRequired = &mask
@@ -205,7 +205,7 @@ func TestDERControlCopyResponseRequiredDeepCopy(t *testing.T) {
 func TestEndDeviceControlCopyResponseRequiredDeepCopy(t *testing.T) {
 	t.Parallel()
 
-	mask := uint8(0x03)
+	mask := sep2.HexBinary8(0x03)
 	ctrl := sep2.EndDeviceControl{}
 	ctrl.MRID = "EDC-COPY"
 	ctrl.ResponseRequired = &mask
@@ -228,7 +228,7 @@ func TestEndDeviceControlCopyResponseRequiredDeepCopy(t *testing.T) {
 func TestTextMessageCopyResponseRequiredDeepCopy(t *testing.T) {
 	t.Parallel()
 
-	mask := uint8(0x05)
+	mask := sep2.HexBinary8(0x05)
 	tm := sep2.TextMessage{}
 	tm.MRID = "TM-COPY"
 	tm.ResponseRequired = &mask
@@ -252,7 +252,7 @@ func TestTextMessageCopyResponseRequiredDeepCopy(t *testing.T) {
 func TestFlowReservationResponseCopyResponseRequiredDeepCopy(t *testing.T) {
 	t.Parallel()
 
-	mask := uint8(0x01)
+	mask := sep2.HexBinary8(0x01)
 	frp := sep2.FlowReservationResponse{}
 	frp.MRID = "FRP-COPY"
 	frp.ResponseRequired = &mask

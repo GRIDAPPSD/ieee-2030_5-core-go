@@ -3,7 +3,7 @@ package sep2
 import "encoding/xml"
 
 // DemandResponseProgram is a demand response program.
-// Spec reference: section 10.3 (stub — handlers deferred)
+// Spec reference: section 10.3 (stub: handlers deferred)
 type DemandResponseProgram struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns DemandResponseProgram"`
 	SubscribableResource
@@ -39,7 +39,7 @@ type DemandResponseProgramList struct {
 type EndDeviceControl struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns EndDeviceControl"`
 	RandomizableEvent
-	DeviceCategory *uint32 `xml:"deviceCategory,omitempty"`
+	DeviceCategory *DeviceCategoryType `xml:"deviceCategory,omitempty"`
 }
 
 // Copy returns an independent copy.

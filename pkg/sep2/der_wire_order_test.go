@@ -15,7 +15,7 @@ import (
 // second (right after modesSupported), far ahead of rtgMaxA/rtgMaxVar/etc,
 // which a strict schema validator rejects.
 func TestDERCapabilityWireOrder(t *testing.T) {
-	modes := uint32(0xFF)
+	modes := sep2.DERControlType(0xFF)
 	maxA := int32(20)
 	maxVar := sep2.ReactivePower{Value: 100}
 	maxChargeW := sep2.ActivePower{Value: 200}
@@ -56,7 +56,7 @@ func TestDERCapabilityWireOrder(t *testing.T) {
 // updatedTime (last). The regression this guards: setMaxVar/setMaxW were
 // previously emitted before setMaxChargeRateW/setMaxDischargeRateW.
 func TestDERSettingsWireOrder(t *testing.T) {
-	modes := uint32(0x0F)
+	modes := sep2.DERControlType(0x0F)
 	maxW := sep2.ActivePower{Value: 5000}
 	maxVar := sep2.ReactivePower{Value: 100}
 	maxChargeW := sep2.ActivePower{Value: 200}
@@ -94,7 +94,7 @@ func TestDERSettingsWireOrder(t *testing.T) {
 // regression this guards: alarmStatus was previously emitted near-last,
 // after readingTime, instead of first.
 func TestDERStatusWireOrder(t *testing.T) {
-	alarm := uint32(0x01)
+	alarm := sep2.HexBinary32(0x01)
 	soc := uint16(85)
 	status := sep2.DERStatus{
 		AlarmStatus:           &alarm,

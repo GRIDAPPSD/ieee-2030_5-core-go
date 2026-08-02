@@ -9,11 +9,11 @@ import (
 )
 
 // Test that 2023-only fields are present when set and omitted when empty.
-// This ensures backward compatibility — 2013/2018 clients won't see unknown elements.
+// This ensures backward compatibility : 2013/2018 clients won't see unknown elements.
 
 func TestDeviceInformation2023Fields(t *testing.T) {
 	// With 2023 fields set
-	funcs := uint64(0xFF)
+	funcs := sep2.HexBinary64(0xFF)
 	di := sep2.DeviceInformation{
 		ConnectionPointID:    "NMI-12345", // 2023 addition
 		FunctionsImplemented: &funcs,
@@ -31,7 +31,7 @@ func TestDeviceInformation2023Fields(t *testing.T) {
 		t.Error("connectionPointID value should be present")
 	}
 
-	// Without 2023 fields — should be omitted (2013/2018 compatible)
+	// Without 2023 fields : should be omitted (2013/2018 compatible)
 	di2 := sep2.DeviceInformation{LFDI: "AABB", MfModel: "TestModel"}
 	data2, _ := xml.Marshal(&di2)
 	xmlStr2 := string(data2)
@@ -57,7 +57,7 @@ func TestLogEvent2023DetailsField(t *testing.T) {
 		t.Error("2023 details field should be present when set")
 	}
 
-	// Without details — 2013/2018 compatible
+	// Without details : 2013/2018 compatible
 	le2 := sep2.LogEvent{CreatedDateTime: 1000, FunctionSet: sep2.FunctionSetDER}
 	data2, _ := xml.Marshal(&le2)
 	xmlStr2 := string(data2)
@@ -83,7 +83,7 @@ func TestFlowReservation2023SignedRealEnergy(t *testing.T) {
 
 func TestDERControlResponse2023Type(t *testing.T) {
 	// DERControlResponse is a 2023 addition (doesn't exist in 2013)
-	modes := uint32(0x0F)
+	modes := sep2.DERControlType(0x0F)
 	dcr := sep2.DERControlResponse{ModesResponded: &modes}
 	dcr.Subject = "ctrl-001"
 	status := sep2.ResponseStatusEventCompleted
