@@ -384,6 +384,23 @@ func registerMirrorRoutes(mux routeRegistrar, stores *Stores, authPolicy AuthPol
 	mux.HandleFunc("POST /mup/{id}/mr", coremetering.HandlePostMirrorMeterReading(
 		stores.MirrorUsagePoints, stores.MirrorMeterReadings,
 	))
+
+	// IEEE 2030.5-2018 section 10.11.3 rule (d): the client posts readings
+	// "to the resource identified in the Metering server's response... (e.g.,
+	// /mup/3)" -- that resource is the Location header POST /mup returns,
+	// which HandleCreateMirrorUsagePoint sets to exactly "/mup/{id}". The
+	// WADL marks POST /mup/{id} Mandatory. Before this route existed, a
+	// client that followed our own advertised Location header got a 405: the
+	// EPRI reference client does exactly that (retrieve.c's
+	// process_response reads http_location() on the POST /mup response and
+	// posts the follow-up MirrorMeterReading to that literal path, not to
+	// our /mr convention). Mounting it against the identical handler used
+	// for POST /mup/{id}/mr means both routes share stampMirrorMeterReading,
+	// so the two can never drift into minting different href shapes for the
+	// same resource kind.
+	mux.HandleFunc("POST /mup/{id}", coremetering.HandlePostMirrorMeterReading(
+		stores.MirrorUsagePoints, stores.MirrorMeterReadings,
+	))
 }
 
 func registerDERRoutes(mux routeRegistrar, stores *Stores) {
