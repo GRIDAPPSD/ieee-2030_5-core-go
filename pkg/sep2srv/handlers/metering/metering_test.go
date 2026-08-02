@@ -1342,6 +1342,69 @@ func TestHandleCreateMirrorUsagePoint_SameDeviceRepostReturns204(t *testing.T) {
 	}
 }
 
+// TestHandleCreateMirrorUsagePoint_RepostOverwritesStoredRecord asserts rule
+// (a)(4)'s "the new data SHALL be written over the existing MirrorUsagePoint":
+// a second POST of the same mRID from the same device actually updates the
+// stored record's fields rather than the first version surviving untouched
+// underneath a silently-discarded 204. DeviceLFDI (server-stamped from the
+// certificate) and Href (derived from the same (owner, mRID) id) must stay
+// stable across the overwrite, because those are exactly what re-addressing
+// the resource depends on.
+func TestHandleCreateMirrorUsagePoint_RepostOverwritesStoredRecord(t *testing.T) {
+	t.Parallel()
+	const mrid = "AAAA1111AAAA1111AAAA1111AAAA1111"
+
+	s := memory.NewStore[sep2.MirrorUsagePoint]()
+	mux := createMirrorMux(s, mupKeyLFDIA)
+
+	firstBody, err := xml.Marshal(&sep2.MirrorUsagePoint{MRID: mrid, Description: "first description"})
+	if err != nil {
+		t.Fatalf("marshal first body: %v", err)
+	}
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/mup", bytes.NewReader(firstBody)))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("first POST /mup: status = %d, want 201; body = %s", w.Code, w.Body.String())
+	}
+	id := strings.TrimPrefix(w.Header().Get("Location"), "/mup/")
+
+	before, err := s.Get(context.Background(), id)
+	if err != nil {
+		t.Fatalf("get record after create: %v", err)
+	}
+	if before.Description != "first description" {
+		t.Fatalf("stored Description before overwrite = %q, want %q", before.Description, "first description")
+	}
+
+	secondBody, err := xml.Marshal(&sep2.MirrorUsagePoint{MRID: mrid, Description: "second description"})
+	if err != nil {
+		t.Fatalf("marshal second body: %v", err)
+	}
+	w2 := httptest.NewRecorder()
+	mux.ServeHTTP(w2, httptest.NewRequest(http.MethodPost, "/mup", bytes.NewReader(secondBody)))
+	if w2.Code != http.StatusNoContent {
+		t.Fatalf("second POST /mup: status = %d, want 204; body = %s", w2.Code, w2.Body.String())
+	}
+
+	after, err := s.Get(context.Background(), id)
+	if err != nil {
+		t.Fatalf("get record after overwrite: %v", err)
+	}
+	if after.Description != "second description" {
+		t.Errorf("stored Description after overwrite = %q, want %q (rule (a)(4): new data SHALL be written over the existing record)",
+			after.Description, "second description")
+	}
+	if after.DeviceLFDI != mupKeyLFDIA {
+		t.Errorf("stored DeviceLFDI after overwrite = %q, want %q (server-stamped, must stay stable)", after.DeviceLFDI, mupKeyLFDIA)
+	}
+	if after.Href != before.Href {
+		t.Errorf("stored Href after overwrite = %q, want %q (same (owner, mRID) id, must stay stable)", after.Href, before.Href)
+	}
+	if after.MRID != mrid {
+		t.Errorf("stored MRID after overwrite = %q, want %q", after.MRID, mrid)
+	}
+}
+
 // TestHandleCreateMirrorUsagePoint_CollisionKeepsACLIntact asserts the rule (e)
 // ownership gate still holds through the new keying: after both devices create
 // a mirror under the same client mRID, neither can read or write the other's.
@@ -1479,5 +1542,39 @@ func TestHandleCreateMirrorUsagePoint_NoMRID_Rejected(t *testing.T) {
 	}
 	if count != 0 {
 		t.Errorf("stored MirrorUsagePoint count = %d, want 0: a rejected POST must not store anything", count)
+	}
+}
+
+// TestHandleCreateMirrorUsagePoint_SeededForeignRecordDenied covers the
+// defense-in-depth branch inside the ErrAlreadyExists path: per-owner keying
+// means a caller's own (LFDI, mRID) pair cannot naturally collide with
+// another caller's, but the store is also writable by a consumer that seeds
+// it directly (mirror.go's authorizeMirrorOwner doc comment describes the
+// same concern). If the id a caller's POST derives is already occupied by a
+// record stamped with someone else's DeviceLFDI, the create path must deny
+// with 403 rather than overwrite a record it does not own.
+func TestHandleCreateMirrorUsagePoint_SeededForeignRecordDenied(t *testing.T) {
+	t.Parallel()
+	const foreignOwner = "FOREIGN_OWNER_LFDI"
+	const mrid = "SEEDED0000000000SEEDED0000000000"
+
+	id := metering.MirrorStoreID(mupKeyLFDIA, mrid)
+	s := memory.NewStore[sep2.MirrorUsagePoint]()
+	seedOwnedMirror(t, s, id, mrid, foreignOwner)
+
+	mux := createMirrorMux(s, mupKeyLFDIA)
+	w := postMirror(t, mux, mrid)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("POST /mup colliding with a foreign-owned seeded record: status = %d, want 403; body = %s", w.Code, w.Body.String())
+	}
+	assertNoBodyLeak(t, w, foreignOwner, mupKeyLFDIA)
+
+	stored, err := s.Get(context.Background(), id)
+	if err != nil {
+		t.Fatalf("get seeded record: %v", err)
+	}
+	if stored.DeviceLFDI != foreignOwner {
+		t.Errorf("stored DeviceLFDI = %q, want %q: a denied POST must not overwrite a record it does not own", stored.DeviceLFDI, foreignOwner)
 	}
 }

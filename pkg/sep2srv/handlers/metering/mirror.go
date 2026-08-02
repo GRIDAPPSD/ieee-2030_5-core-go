@@ -376,23 +376,52 @@ func HandleCreateMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint], 
 					return
 				}
 
-				// Location is minted from the id just resolved, never
-				// echoed from storage. A record seeded directly into the
-				// store may carry an empty or foreign Href, and an empty
-				// Location is not merely wrong: the EPRI client takes
-				// strlen of it with no guard and dereferences the NULL
-				// that its failed URI parse returns.
+				// IEEE 2030.5-2018 section 10.11.3 rule (a)(4): "...the new
+				// data SHALL be written over the existing MirrorUsagePoint."
+				// mup already carries this POST's data with every
+				// server-owned field stamped the same way the create path
+				// stamps it: DeviceLFDI from the caller's certificate (not
+				// the body, set above), Href derived from the same id this
+				// (owner, mRID) pair always resolves to, and any inline
+				// MirrorMeterReading elements already re-stamped with
+				// fresh server-owned href/lastUpdateTime values. Persisting
+				// mup as-is overwrites every other field verbatim from what
+				// the client just sent, mRID and Description included.
 				//
-				// IEEE 2030.5-2018 section 10.11.3 rule (a)(4), verbatim:
-				// "...the response code SHALL be 204 (No Content), the
-				// MirrorUsagePoint URI SHALL be included in the Location
-				// header." No representation is written: the EPRI client's
+				// This is a full write-over, not a merge: an inline
+				// MirrorMeterReading this POST omits is cleared from the
+				// stored record, matching "written over" rather than
+				// "append". Rule (a)(4) does not describe a partial-update
+				// mode, and a merge would leave stale inline readings that
+				// this POST deliberately dropped served back on the next
+				// GET.
+				//
+				// The out-of-band POST /mup/{id}/mr route persists into
+				// mmrStore, a separate collection this s.Update call never
+				// touches. Rule (a)(4)'s "written over" language is scoped
+				// to the MirrorUsagePoint resource itself, and neither
+				// source cited for this fix speaks to the out-of-band
+				// readings collection; rather than silently discard data
+				// outside the rule's stated scope, this overwrite leaves
+				// mmrStore untouched.
+				if err := s.Update(r.Context(), id, mup); err != nil {
+					log.Printf("mup: overwrite id=%q: %v (path=%s)", id, err, r.URL.Path)
+					http.Error(w, "internal error", http.StatusInternalServerError)
+					return
+				}
+
+				// Location is minted from the id just resolved, never
+				// echoed from storage. An empty Location is not merely
+				// wrong: the EPRI client takes strlen of it with no guard
+				// and dereferences the NULL that its failed URI parse
+				// returns.
+				//
+				// No representation is written on 204: the EPRI client's
 				// se_receive (se_connection.c) schema-parses ANY response
 				// body ahead of process_response regardless of status code,
 				// so a 204 carrying content is both non-conformant and a
 				// needless parse surface the reference client never reads.
-				href := MirrorHref(id)
-				w.Header().Set("Location", href)
+				w.Header().Set("Location", mup.Href)
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}
