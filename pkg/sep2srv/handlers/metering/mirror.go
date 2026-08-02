@@ -376,16 +376,24 @@ func HandleCreateMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint], 
 					return
 				}
 
-				// Location and the served href are both minted from the id
-				// just resolved, never echoed from storage. A record seeded
-				// directly into the store may carry an empty or foreign Href,
-				// and an empty Location is not merely wrong: the EPRI client
-				// takes strlen of it with no guard and dereferences the NULL
+				// Location is minted from the id just resolved, never
+				// echoed from storage. A record seeded directly into the
+				// store may carry an empty or foreign Href, and an empty
+				// Location is not merely wrong: the EPRI client takes
+				// strlen of it with no guard and dereferences the NULL
 				// that its failed URI parse returns.
+				//
+				// IEEE 2030.5-2018 section 10.11.3 rule (a)(4), verbatim:
+				// "...the response code SHALL be 204 (No Content), the
+				// MirrorUsagePoint URI SHALL be included in the Location
+				// header." No representation is written: the EPRI client's
+				// se_receive (se_connection.c) schema-parses ANY response
+				// body ahead of process_response regardless of status code,
+				// so a 204 carrying content is both non-conformant and a
+				// needless parse surface the reference client never reads.
 				href := MirrorHref(id)
-				existing.Href = href
 				w.Header().Set("Location", href)
-				encoding.WriteXML(w, http.StatusOK, &existing)
+				w.WriteHeader(http.StatusNoContent)
 				return
 			}
 			log.Printf("mup: create id=%q: %v (path=%s)", id, err, r.URL.Path)

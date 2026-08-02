@@ -1290,10 +1290,12 @@ func TestHandleCreateMirrorUsagePoint_SameMRIDFromTwoDevicesStaysIsolated(t *tes
 	}
 }
 
-// TestHandleCreateMirrorUsagePoint_SameDeviceRepostReturnsOwnResource asserts
-// the idempotent-ish re-POST path survives per-owner keying: one device
-// POSTing its own mRID twice gets its own record back, not a second one.
-func TestHandleCreateMirrorUsagePoint_SameDeviceRepostReturnsOwnResource(t *testing.T) {
+// TestHandleCreateMirrorUsagePoint_SameDeviceRepostReturns204 asserts the
+// idempotent-ish re-POST path survives per-owner keying: one device POSTing
+// its own mRID twice gets 204 (IEEE 2030.5-2018 section 10.11.3 rule (a)(4)),
+// an empty body, and a Location pointing at the SAME record it created the
+// first time, not a second one.
+func TestHandleCreateMirrorUsagePoint_SameDeviceRepostReturns204(t *testing.T) {
 	t.Parallel()
 	const mrid = "FEDCBA9876543210FEDCBA9876543210"
 
@@ -1307,13 +1309,17 @@ func TestHandleCreateMirrorUsagePoint_SameDeviceRepostReturnsOwnResource(t *test
 	idFirst := assertUsableLocation(t, first, "first create")
 
 	second := postMirror(t, mux, mrid)
-	if second.Code != http.StatusOK {
-		t.Fatalf("re-POST of the caller's own mRID: status = %d, want 200; body = %s", second.Code, second.Body.String())
+	if second.Code != http.StatusNoContent {
+		t.Fatalf("re-POST of the caller's own mRID: status = %d, want 204; body = %s", second.Code, second.Body.String())
 	}
-	idSecond := assertUsableLocation(t, second, "re-post")
+	if second.Body.Len() != 0 {
+		t.Errorf("re-POST body = %q, want empty (rule (a)(4): 204 carries no representation)", second.Body.String())
+	}
 
-	if idSecond != idFirst {
-		t.Errorf("re-POST Location id = %q, want %q (the caller's own mirror, stable across re-POSTs)", idSecond, idFirst)
+	locSecond := second.Header().Get("Location")
+	wantLoc := "/mup/" + idFirst
+	if locSecond != wantLoc {
+		t.Errorf("re-POST Location = %q, want %q (the caller's own mirror, stable across re-POSTs)", locSecond, wantLoc)
 	}
 
 	count, err := s.Count(context.Background())
@@ -1324,15 +1330,15 @@ func TestHandleCreateMirrorUsagePoint_SameDeviceRepostReturnsOwnResource(t *test
 		t.Errorf("stored MirrorUsagePoint count = %d, want 1 (a re-POST must not mint a second record)", count)
 	}
 
-	var served sep2.MirrorUsagePoint
-	if err := xml.Unmarshal(second.Body.Bytes(), &served); err != nil {
-		t.Fatalf("unmarshal re-POST body: %v", err)
+	stored, err := s.Get(context.Background(), idFirst)
+	if err != nil {
+		t.Fatalf("get stored MirrorUsagePoint: %v", err)
 	}
-	if served.DeviceLFDI != mupKeyLFDIA {
-		t.Errorf("re-POST served DeviceLFDI = %q, want %q (the caller's own record)", served.DeviceLFDI, mupKeyLFDIA)
+	if stored.DeviceLFDI != mupKeyLFDIA {
+		t.Errorf("stored DeviceLFDI = %q, want %q (the caller's own record)", stored.DeviceLFDI, mupKeyLFDIA)
 	}
-	if served.Href != "/mup/"+idFirst {
-		t.Errorf("re-POST served Href = %q, want %q (body must agree with Location)", served.Href, "/mup/"+idFirst)
+	if stored.Href != wantLoc {
+		t.Errorf("stored Href = %q, want %q (must agree with the Location served)", stored.Href, wantLoc)
 	}
 }
 
@@ -1429,11 +1435,12 @@ func TestHandleCreateMirrorUsagePoint_LocationIsBounded(t *testing.T) {
 			}
 			assertUsableLocation(t, created, "create")
 
-			// The re-POST collision path emits a Location too, and it is the
-			// one the field defect exercised; hold it to the same bound.
+			// The re-POST overwrite path (rule (a)(4)) emits a Location too,
+			// and it is the one the field defect exercised; hold it to the
+			// same bound.
 			collided := postMirror(t, mux, tc.mrid)
-			if collided.Code != http.StatusOK {
-				t.Fatalf("re-post: status = %d, want 200; body = %s", collided.Code, collided.Body.String())
+			if collided.Code != http.StatusNoContent {
+				t.Fatalf("re-post: status = %d, want 204; body = %s", collided.Code, collided.Body.String())
 			}
 			assertUsableLocation(t, collided, "re-post collision")
 		})
