@@ -52,8 +52,32 @@ func stampMirrorMeterReading(mmr *sep2.MirrorMeterReading, parentID string, nano
 	return id
 }
 
+// stripMirrorMeterReadings returns a copy of mup with MirrorMeterReading
+// omitted, for serving on GET.
+//
+// IEEE 2030.5-2018 section 10.11.3 rule (c): a GET of the MirrorUsagePoint
+// "SHALL return a resource with only the first level elements (i.e.,
+// sub-elements and collections are not included)." MirrorMeterReading is
+// minOccurs="0" maxOccurs="unbounded" on MirrorUsagePoint (sep.xsd:6472),
+// so it is a collection, not a first-level scalar, and omitting it on
+// GET is spec-mandated, not merely a workaround for the ReadingType/mRID
+// defect. This is a serving-only change: storage is untouched, so a POST
+// still stores whatever MirrorMeterReading children the client submitted.
+//
+// s.Get and s.List (see pkg/store/memory) already return independent
+// copies, so mutating the returned value's slice field here does not
+// affect the stored record.
+func stripMirrorMeterReadings(mup sep2.MirrorUsagePoint) sep2.MirrorUsagePoint {
+	mup.MirrorMeterReading = nil
+	return mup
+}
+
 // BuildMirrorUsagePointList constructs a MirrorUsagePointList from store results.
 func BuildMirrorUsagePointList(href string, result store.ListResult[sep2.MirrorUsagePoint], pollRate uint32) sep2.MirrorUsagePointList {
+	items := make([]sep2.MirrorUsagePoint, len(result.Items))
+	for i, mup := range result.Items {
+		items[i] = stripMirrorMeterReadings(mup)
+	}
 	return sep2.MirrorUsagePointList{
 		ListResource: sep2.ListResource{
 			SubscribableResource: sep2.SubscribableResource{
@@ -63,7 +87,7 @@ func BuildMirrorUsagePointList(href string, result store.ListResult[sep2.MirrorU
 			Results:  result.Results,
 			PollRate: pollRate,
 		},
-		MirrorUsagePoint: result.Items,
+		MirrorUsagePoint: items,
 	}
 }
 
@@ -150,8 +174,21 @@ func HandleCreateMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint], 
 			return
 		}
 
+		// IEEE 2030.5-2018 section 10.11.3 rule (a)(3) mandates only that
+		// the Location header carry the new MirrorUsagePoint URI on 201;
+		// it does not require a representation in the body, and the text
+		// is identical in the 2018 and 2023 editions. The EPRI client's
+		// process_response (retrieve.c) never reads a POST response body
+		// via se_body(): for HTTP_POST it reads the Location header and
+		// issues a fresh GET to fetch the created resource. Independent
+		// of that, se_receive (se_connection.c) attempts to schema-parse
+		// ANY response body before process_response is even reached, POST
+		// included, so serving a body here re-creates a second parse
+		// point the client does not use for anything. Dropping the body
+		// removes that surface entirely rather than relying on item 1 and
+		// item 2 to keep it well-formed forever.
 		w.Header().Set("Location", mup.Href)
-		encoding.WriteXML(w, http.StatusCreated, &mup)
+		w.WriteHeader(http.StatusCreated)
 	}
 }
 
@@ -175,7 +212,8 @@ func HandleMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint]) http.H
 			return
 		}
 
-		encoding.WriteXML(w, http.StatusOK, &mup)
+		stripped := stripMirrorMeterReadings(mup)
+		encoding.WriteXML(w, http.StatusOK, &stripped)
 	}
 }
 

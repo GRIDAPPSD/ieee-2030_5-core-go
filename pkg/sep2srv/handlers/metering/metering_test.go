@@ -194,16 +194,22 @@ func TestHandleCreateMirrorUsagePoint_Created(t *testing.T) {
 		t.Errorf("Location = %q, want /mup/INV001", loc)
 	}
 
-	var result sep2.MirrorUsagePoint
-	_ = xml.Unmarshal(w.Body.Bytes(), &result)
-	if result.DeviceLFDI != "TEST_LFDI_ABCDEF" {
-		t.Errorf("DeviceLFDI = %q, want TEST_LFDI_ABCDEF (from provider)", result.DeviceLFDI)
+	// IEEE 2030.5-2018 section 10.11.3 rule (a)(3) mandates only the
+	// Location header on 201, not a body: the EPRI client never reads a
+	// POST response body (retrieve.c process_response follows Location
+	// with a fresh GET instead). The 201 response body is empty; assert
+	// the created record's DeviceLFDI via the store, which is what the
+	// client's follow-up GET would actually observe.
+	if w.Body.Len() != 0 {
+		t.Errorf("201 body = %q, want empty (Location header is the sole spec-mandated carrier)", w.Body.String())
 	}
-	// sep.xsd defines no MirrorMeterReadingListLink element on
-	// MirrorUsagePoint (confirmed absent from the schema's full element
-	// index); the served bytes must never carry one.
-	if strings.Contains(w.Body.String(), "MirrorMeterReadingListLink") {
-		t.Errorf("served MirrorUsagePoint carries undefined MirrorMeterReadingListLink; body=%s", w.Body.String())
+
+	stored, err := s.Get(context.Background(), "INV001")
+	if err != nil {
+		t.Fatalf("get stored MirrorUsagePoint: %v", err)
+	}
+	if stored.DeviceLFDI != "TEST_LFDI_ABCDEF" {
+		t.Errorf("stored DeviceLFDI = %q, want TEST_LFDI_ABCDEF (from provider)", stored.DeviceLFDI)
 	}
 }
 
@@ -459,5 +465,114 @@ func TestBuildMirrorUsagePointList(t *testing.T) {
 	}
 	if len(result.MirrorUsagePoint) != 2 {
 		t.Errorf("len(MirrorUsagePoint) = %d, want 2", len(result.MirrorUsagePoint))
+	}
+}
+
+// TestBuildMirrorUsagePointList_OmitsMirrorMeterReading asserts item 2:
+// IEEE 2030.5-2018 section 10.11.3 rule (c) requires a GET of the
+// MirrorUsagePoint to return "only the first level elements (i.e.,
+// sub-elements and collections are not included)". MirrorMeterReading is
+// minOccurs="0" maxOccurs="unbounded" on MirrorUsagePoint (sep.xsd:6472),
+// a collection, so GET /mup must omit it even though a record with stored
+// readings is being served.
+func TestBuildMirrorUsagePointList_OmitsMirrorMeterReading(t *testing.T) {
+	t.Parallel()
+	items := []sep2.MirrorUsagePoint{
+		{
+			Resource: sep2.Resource{Href: "/mup/a"},
+			MRID:     "A",
+			MirrorMeterReading: []sep2.MirrorMeterReading{
+				{MRID: "MMR01"},
+			},
+		},
+	}
+	result := metering.BuildMirrorUsagePointList("/mup", store.ListResult[sep2.MirrorUsagePoint]{
+		Items:   items,
+		All:     1,
+		Results: 1,
+	}, 300)
+
+	if len(result.MirrorUsagePoint) != 1 {
+		t.Fatalf("len(MirrorUsagePoint) = %d, want 1", len(result.MirrorUsagePoint))
+	}
+	if result.MirrorUsagePoint[0].MirrorMeterReading != nil {
+		t.Errorf("MirrorUsagePoint[0].MirrorMeterReading = %+v, want nil (rule (c): sub-elements/collections excluded on GET)",
+			result.MirrorUsagePoint[0].MirrorMeterReading)
+	}
+
+	data, err := xml.Marshal(&result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "MirrorMeterReading") {
+		t.Errorf("served MirrorUsagePointList carries a MirrorMeterReading element; body=%s", data)
+	}
+}
+
+// --- HandleMirrorUsagePoint (GET /mup/{id}) ---
+
+// TestHandleMirrorUsagePoint_OmitsMirrorMeterReading covers the single-
+// resource GET path (item 2's other named route). Storage is asserted
+// separately (via the store) to confirm the omission is serving-only: the
+// POST path continues to persist whatever MirrorMeterReading children the
+// client submitted, only the GET response representation changes.
+func TestHandleMirrorUsagePoint_OmitsMirrorMeterReading(t *testing.T) {
+	t.Parallel()
+	s := memory.NewStore[sep2.MirrorUsagePoint]()
+	val := int64(5000)
+	stored := sep2.MirrorUsagePoint{
+		Resource: sep2.Resource{Href: "/mup/inv1"},
+		MRID:     "INV001",
+		MirrorMeterReading: []sep2.MirrorMeterReading{
+			{MRID: "MMR01", Reading: &sep2.Reading{Value: &val}},
+		},
+	}
+	if err := s.Create(context.Background(), "inv1", stored); err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /mup/{id}", metering.HandleMirrorUsagePoint(s))
+
+	req := httptest.NewRequest(http.MethodGet, "/mup/inv1", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	if strings.Contains(body, "MirrorMeterReading") {
+		t.Errorf("GET /mup/{id} served a MirrorMeterReading element, violates rule (c); body=%s", body)
+	}
+	if !strings.Contains(body, "<mRID>INV001</mRID>") {
+		t.Errorf("GET /mup/{id} missing first-level mRID element; body=%s", body)
+	}
+
+	// Storage is untouched: item 2 changes serving, not what was stored.
+	got, err := s.Get(context.Background(), "inv1")
+	if err != nil {
+		t.Fatalf("get stored MirrorUsagePoint: %v", err)
+	}
+	if len(got.MirrorMeterReading) != 1 {
+		t.Errorf("stored MirrorMeterReading count = %d, want 1 (POST storage must be unaffected by GET-serving change)", len(got.MirrorMeterReading))
+	}
+	if got.MirrorMeterReading[0].MRID != "MMR01" {
+		t.Errorf("stored MirrorMeterReading[0].MRID = %q, want MMR01", got.MirrorMeterReading[0].MRID)
+	}
+}
+
+func TestHandleMirrorUsagePoint_NotFound(t *testing.T) {
+	t.Parallel()
+	s := memory.NewStore[sep2.MirrorUsagePoint]()
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /mup/{id}", metering.HandleMirrorUsagePoint(s))
+
+	req := httptest.NewRequest(http.MethodGet, "/mup/nonexistent", nil)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", w.Code)
 	}
 }
