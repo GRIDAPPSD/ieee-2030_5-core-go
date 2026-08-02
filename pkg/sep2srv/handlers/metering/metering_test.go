@@ -97,23 +97,40 @@ func TestHandleCreateUsagePoint_Created(t *testing.T) {
 		t.Fatalf("status = %d, want 201, body: %s", w.Code, w.Body.String())
 	}
 
+	// The id is derived from the mRID, not the mRID itself: an mRID is a
+	// plain unvalidated string and this handler puts the id into a URI it
+	// hands back. See TestHandleCreateUsagePoint_LocationIsBounded.
+	wantHref := metering.UsagePointHref(metering.UsagePointStoreID("UPT001"))
 	loc := w.Header().Get("Location")
-	if loc != "/upt/UPT001" {
-		t.Errorf("Location = %q, want /upt/UPT001", loc)
+	if loc != wantHref {
+		t.Errorf("Location = %q, want %q", loc, wantHref)
 	}
 
 	var result sep2.UsagePoint
 	if err := xml.Unmarshal(w.Body.Bytes(), &result); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
 	}
-	if result.Href != "/upt/UPT001" {
-		t.Errorf("Href = %q, want /upt/UPT001", result.Href)
+	if result.Href != wantHref {
+		t.Errorf("Href = %q, want %q", result.Href, wantHref)
 	}
 	if result.MeterReadingListLink == nil {
 		t.Fatal("MeterReadingListLink is nil, want set")
 	}
-	if result.MeterReadingListLink.Href != "/upt/UPT001/mr" {
-		t.Errorf("MeterReadingListLink.Href = %q, want /upt/UPT001/mr", result.MeterReadingListLink.Href)
+	if result.MeterReadingListLink.Href != wantHref+"/mr" {
+		t.Errorf("MeterReadingListLink.Href = %q, want %q", result.MeterReadingListLink.Href, wantHref+"/mr")
+	}
+
+	// The record is retrievable at the id the Location names, so the derived
+	// key and the served URI agree.
+	stored, err := s.Get(context.Background(), strings.TrimPrefix(loc, "/upt/"))
+	if err != nil {
+		t.Fatalf("get stored UsagePoint at the id Location names: %v", err)
+	}
+	if stored.MRID != "UPT001" {
+		t.Errorf("stored MRID = %q, want UPT001 preserved", stored.MRID)
+	}
+	if stored.Href != wantHref {
+		t.Errorf("stored Href = %q, want %q", stored.Href, wantHref)
 	}
 }
 
