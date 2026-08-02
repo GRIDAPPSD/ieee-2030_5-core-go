@@ -72,11 +72,32 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 	accum := uint8(9)
 	uom := uint8(38)
 	powerOfTen := int8(-3)
+	alarm := sep2.HexBinary32(0x01)
 
 	tests := []struct {
 		typeName string
 		v        any
 	}{
+		{
+			// DERStatus is pinned as a known failure below, but only at its
+			// ZERO value, where every optional field is a nil pointer and so
+			// never reaches the wire. That blind spot is how IEEECORE-055 got
+			// in: stateOfChargeStatus was modelled as a bare *uint16 against a
+			// schema complexType, and no fixture ever populated it, so the
+			// marshalled check had nothing to inspect. This entry populates
+			// every field, including readingTime, which is the resource's one
+			// pinned defect and is therefore clean here.
+			typeName: "DERStatus",
+			v: sep2.DERStatus{
+				AlarmStatus:           &alarm,
+				GenConnectStatus:      &sep2.ConnectStatusType{DateTime: 1604963587, Value: 1},
+				InverterStatus:        &sep2.InverterStatusType{DateTime: 1604963587, Value: 2},
+				OperationalModeStatus: &sep2.OperationalModeStatusType{DateTime: 1604963587, Value: 2},
+				ReadingTime:           1604963587,
+				StateOfChargeStatus:   &sep2.StateOfChargeStatusType{DateTime: 1604963587, Value: 7500},
+				StorageModeStatus:     &sep2.StorageModeStatusType{DateTime: 1604963587, Value: 1},
+			},
+		},
 		{
 			typeName: "Registration",
 			v: sep2.Registration{
@@ -331,6 +352,16 @@ func TestSchemaGateCoversKnownResources(t *testing.T) {
 		"EndDevice": true,
 	}
 
+	// Appearing in the zero-value tables is NOT full coverage. A resource
+	// whose optional fields are all nil pointers marshals to almost nothing,
+	// so the marshalled check has no values to inspect and a wrong Go type
+	// behind an optional element stays invisible. That is exactly how
+	// IEEECORE-055 reached an interop run. Resources listed here must have a
+	// populated fixture in TestSchemaGatePopulatedResources.
+	populated := []string{
+		"Registration", "Reading", "ReadingType", "MirrorMeterReading", "DERStatus",
+	}
+
 	s := xsdgate.MustLoad(t)
 	for _, name := range required {
 		if !covered[name] {
@@ -340,4 +371,40 @@ func TestSchemaGateCoversKnownResources(t *testing.T) {
 			t.Errorf("resource %q is not a complexType in the vendored schema", name)
 		}
 	}
+	for _, name := range populated {
+		if _, ok := s.ComplexType(name); !ok {
+			t.Errorf("resource %q needs a populated fixture but is not a complexType in the vendored schema", name)
+		}
+	}
+}
+
+// TestSchemaGateDetectsScalarForComplexType pins the gate's ability to catch
+// the IEEECORE-055 defect class: a schema complexType modelled in Go as a bare
+// scalar, so the element carries chardata instead of the required child
+// elements.
+//
+// It validates raw bytes rather than a marshalled struct on purpose. A test
+// built on the struct would silently stop testing this the moment the struct
+// is correct; these bytes are the exact defective wire form the server emitted
+// before the fix, so the assertion keeps its meaning permanently. The mirror
+// image of this defect is what broke the PUT path: encoding/xml could not
+// parse a spec-correct client's nested stateOfChargeStatus into a *uint16 and
+// the server answered 400.
+func TestSchemaGateDetectsScalarForComplexType(t *testing.T) {
+	const defective = `<DERStatus xmlns="urn:ieee:std:2030.5:ns">
+  <readingTime>1604963587</readingTime>
+  <stateOfChargeStatus>7500</stateOfChargeStatus>
+</DERStatus>`
+
+	s := xsdgate.MustLoad(t)
+	problems, err := s.Validate("DERStatus", []byte(defective))
+	if err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+
+	want := []string{
+		"missing-element DERStatus/stateOfChargeStatus/dateTime",
+		"missing-element DERStatus/stateOfChargeStatus/value",
+	}
+	assertPinned(t, "marshalled-output", "DERStatus(defective-fixture)", problems.Summary(), want)
 }
