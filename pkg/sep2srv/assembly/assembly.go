@@ -129,6 +129,23 @@ type RouterConfig struct {
 	DSTStart    int64 // DST start (unix seconds)
 	DSTEnd      int64 // DST end (unix seconds)
 	TimeQuality uint8 // sep2.TimeQuality* values
+
+	// PostRateProvider supplies the server's preferred
+	// MirrorUsagePoint.postRate for the client creating a mirror, keyed on
+	// that client's LFDI. It is threaded to POST /mup; see
+	// metering.PostRateProvider for the sep.xsd:6487 basis and the override
+	// semantics.
+	//
+	// Nil (the zero value) means the server states no preference, and POST
+	// /mup stores whatever postRate the client supplied, which is the
+	// behavior every consumer had before this field existed. It lives on
+	// RouterConfig rather than as a new BuildProtocolRouter parameter so
+	// adding it breaks no existing caller.
+	//
+	// Rate policy is server-owned, not core-owned: core deliberately ships
+	// no default here, because "how often may this client post to me" is an
+	// ingest-budget question only the deploying server can answer.
+	PostRateProvider coremetering.PostRateProvider
 }
 
 // AuthPolicy bundles the three auth touch points the protocol router and the
@@ -231,7 +248,7 @@ func BuildProtocolRouter(
 
 	if stores != nil {
 		registerEndDeviceRoutes(protocolMux, stores, authPolicy, notifier)
-		registerMirrorRoutes(protocolMux, stores, authPolicy)
+		registerMirrorRoutes(protocolMux, stores, authPolicy, cfg.PostRateProvider)
 		registerDERRoutes(protocolMux, stores)
 		registerMeteringRoutes(protocolMux, stores)
 		registerNewFunctionSetRoutes(protocolMux, stores)
@@ -365,7 +382,7 @@ func registerEndDeviceRoutes(mux routeRegistrar, stores *Stores, authPolicy Auth
 	}
 }
 
-func registerMirrorRoutes(mux routeRegistrar, stores *Stores, authPolicy AuthPolicy) {
+func registerMirrorRoutes(mux routeRegistrar, stores *Stores, authPolicy AuthPolicy, postRateProvider coremetering.PostRateProvider) {
 	if stores.MirrorUsagePoints == nil {
 		return
 	}
@@ -379,7 +396,7 @@ func registerMirrorRoutes(mux routeRegistrar, stores *Stores, authPolicy AuthPol
 	mux.HandleFunc("GET /mup", corelisthandler.ListHandler[sep2.MirrorUsagePoint, sep2.MirrorUsagePointList](
 		stores.MirrorUsagePoints, coremetering.BuildMirrorUsagePointList, 300,
 	))
-	mux.HandleFunc("POST /mup", coremetering.HandleCreateMirrorUsagePoint(stores.MirrorUsagePoints, lfdiProvider))
+	mux.HandleFunc("POST /mup", coremetering.HandleCreateMirrorUsagePoint(stores.MirrorUsagePoints, lfdiProvider, postRateProvider))
 	mux.HandleFunc("GET /mup/{id}", coremetering.HandleMirrorUsagePoint(stores.MirrorUsagePoints, lfdiProvider))
 	mux.HandleFunc("POST /mup/{id}/mr", coremetering.HandlePostMirrorMeterReading(
 		stores.MirrorUsagePoints, stores.MirrorMeterReadings, lfdiProvider,
