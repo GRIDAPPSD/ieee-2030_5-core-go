@@ -13,7 +13,9 @@ type DeviceInformation struct {
 	// XSD element order (2023):
 	ConnectionPointID string `xml:"connectionPointID,omitempty"` // 2023: NEW
 	// DRLCCapabilities omitted (complex sub-type, deferred)
-	FunctionsImplemented *uint64 `xml:"functionsImplemented,omitempty"` // bitmap
+	// functionsImplemented is HexBinary64 in sep.xsd (sep.xsd:647), so it
+	// serializes as hex text, not decimal.
+	FunctionsImplemented *HexBinary64 `xml:"functionsImplemented,omitempty"`
 	// GPSLocation omitted (complex sub-type, deferred)
 	LFDI           string `xml:"lFDI,omitempty"`
 	MfDate         int64  `xml:"mfDate,omitempty"`

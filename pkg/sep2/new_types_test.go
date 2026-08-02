@@ -215,7 +215,7 @@ func TestResponseSetMarshalAndCopy(t *testing.T) {
 }
 
 func TestDERControlResponseMarshal(t *testing.T) {
-	modes := uint32(0xFF)
+	modes := sep2.DERControlType(0xFF)
 	dcr := sep2.DERControlResponse{ModesResponded: &modes}
 	dcr.Subject = "ctrl1"
 

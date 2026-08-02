@@ -157,7 +157,7 @@ func TestDERProgramCopy(t *testing.T) {
 }
 
 func TestDERCapabilityCopy(t *testing.T) {
-	modes := uint32(0xFF)
+	modes := sep2.DERControlType(0xFF)
 	maxW := sep2.ActivePower{Value: 5000}
 	maxA := int32(20)
 	dtype := uint8(1)
@@ -176,7 +176,7 @@ func TestDERCapabilityCopy(t *testing.T) {
 }
 
 func TestDERSettingsCopy(t *testing.T) {
-	modes := uint32(0x0F)
+	modes := sep2.DERControlType(0x0F)
 	settings := sep2.DERSettings{ModesEnabled: &modes}
 	copied := settings.Copy()
 	*copied.ModesEnabled = 0
@@ -201,7 +201,7 @@ func TestDERAvailabilityCopy(t *testing.T) {
 }
 
 func TestDERStatusCopy(t *testing.T) {
-	alarm := uint32(0x01)
+	alarm := sep2.HexBinary32(0x01)
 	soc := uint16(85)
 	status := sep2.DERStatus{
 		AlarmStatus:           &alarm,
@@ -310,7 +310,7 @@ func TestDRLCCopy(t *testing.T) {
 }
 
 func TestEndDeviceControlCopy(t *testing.T) {
-	cat := uint32(0xFF)
+	cat := sep2.DeviceCategoryType(0xFF)
 	edc := sep2.EndDeviceControl{DeviceCategory: &cat}
 	edc.EventStatus = &sep2.EventStatus{CurrentStatus: 2}
 	edc.Interval = &sep2.DateTimeInterval{Start: 500}

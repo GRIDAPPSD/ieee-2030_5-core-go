@@ -3,7 +3,7 @@ package sep2
 import "encoding/xml"
 
 // DERControlBase contains all DER operating mode parameters.
-// Spec reference: IEEE 2030.5 §10.10.
+// Spec reference: IEEE 2030.5 section 10.10.
 //
 // Curve-reference fields (OpModVoltVar, OpModVoltWatt, OpModFreqWatt,
 // OpModLVRT*, OpModHVRT*, OpModLFRT*, OpModHFRT*) are typed as *int32
@@ -166,10 +166,10 @@ type DERControlList struct {
 }
 
 // DefaultDERControl is the default operating parameters when no active control.
-// Spec reference: IEEE 2030.5 §10.11.
+// Spec reference: IEEE 2030.5 section 10.11.
 //
 // SetGradW and SetSoftGradW are device-level default ramp rates
-// (hundredths of percent per second) per IEEE 2030.5 §10.11. They live
+// (hundredths of percent per second) per IEEE 2030.5 section 10.11. They live
 // on DefaultDERControl directly rather than DERControlBase because the
 // spec scopes them as device defaults, not per-event overrides.
 type DefaultDERControl struct {
@@ -302,13 +302,13 @@ type DERList struct {
 type DERCapability struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns DERCapability"`
 	Resource
-	ModesSupported       *uint32        `xml:"modesSupported,omitempty"`
-	RTGMaxA              *int32         `xml:"rtgMaxA,omitempty"`
-	RTGMaxChargeRateW    *ActivePower   `xml:"rtgMaxChargeRateW,omitempty"`
-	RTGMaxDischargeRateW *ActivePower   `xml:"rtgMaxDischargeRateW,omitempty"`
-	RTGMaxVar            *ReactivePower `xml:"rtgMaxVar,omitempty"`
-	RTGMaxW              *ActivePower   `xml:"rtgMaxW,omitempty"`
-	Type                 *uint8         `xml:"type,omitempty"`
+	ModesSupported       *DERControlType `xml:"modesSupported,omitempty"`
+	RTGMaxA              *int32          `xml:"rtgMaxA,omitempty"`
+	RTGMaxChargeRateW    *ActivePower    `xml:"rtgMaxChargeRateW,omitempty"`
+	RTGMaxDischargeRateW *ActivePower    `xml:"rtgMaxDischargeRateW,omitempty"`
+	RTGMaxVar            *ReactivePower  `xml:"rtgMaxVar,omitempty"`
+	RTGMaxW              *ActivePower    `xml:"rtgMaxW,omitempty"`
+	Type                 *uint8          `xml:"type,omitempty"`
 }
 
 // Copy returns an independent copy.
@@ -353,12 +353,12 @@ func (d DERCapability) Copy() DERCapability {
 type DERSettings struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns DERSettings"`
 	SubscribableResource
-	ModesEnabled         *uint32        `xml:"modesEnabled,omitempty"`
-	SetMaxChargeRateW    *ActivePower   `xml:"setMaxChargeRateW,omitempty"`
-	SetMaxDischargeRateW *ActivePower   `xml:"setMaxDischargeRateW,omitempty"`
-	SetMaxVar            *ReactivePower `xml:"setMaxVar,omitempty"`
-	SetMaxW              *ActivePower   `xml:"setMaxW,omitempty"`
-	UpdatedTime          int64          `xml:"updatedTime,omitempty"`
+	ModesEnabled         *DERControlType `xml:"modesEnabled,omitempty"`
+	SetMaxChargeRateW    *ActivePower    `xml:"setMaxChargeRateW,omitempty"`
+	SetMaxDischargeRateW *ActivePower    `xml:"setMaxDischargeRateW,omitempty"`
+	SetMaxVar            *ReactivePower  `xml:"setMaxVar,omitempty"`
+	SetMaxW              *ActivePower    `xml:"setMaxW,omitempty"`
+	UpdatedTime          int64           `xml:"updatedTime,omitempty"`
 }
 
 // Copy returns an independent copy.
@@ -387,10 +387,13 @@ func (d DERSettings) Copy() DERSettings {
 	return c
 }
 
-// ConnectStatusType reports connection state.
+// ConnectStatusType reports connection state. Its value element is
+// HexBinary8 in sep.xsd (sep.xsd:4471), unlike the sibling
+// InverterStatusType and OperationalModeStatusType value elements, which
+// are UInt8 (sep.xsd:4500, sep.xsd:4559) and stay decimal.
 type ConnectStatusType struct {
-	DateTime int64 `xml:"dateTime"`
-	Value    uint8 `xml:"value"`
+	DateTime int64      `xml:"dateTime"`
+	Value    HexBinary8 `xml:"value"`
 }
 
 // InverterStatusType reports inverter state.
@@ -413,7 +416,7 @@ type OperationalModeStatusType struct {
 type DERStatus struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns DERStatus"`
 	SubscribableResource
-	AlarmStatus           *uint32                    `xml:"alarmStatus,omitempty"`
+	AlarmStatus           *HexBinary32               `xml:"alarmStatus,omitempty"`
 	GenConnectStatus      *ConnectStatusType         `xml:"genConnectStatus,omitempty"`
 	InverterStatus        *InverterStatusType        `xml:"inverterStatus,omitempty"`
 	OperationalModeStatus *OperationalModeStatusType `xml:"operationalModeStatus,omitempty"`
