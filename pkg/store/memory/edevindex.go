@@ -188,6 +188,21 @@ func (x *EndDeviceIndex) loadFromFile(path string) error {
 		if err != nil {
 			return fmt.Errorf("non-numeric index %q for device key %q in snapshot", r.Index, r.DeviceKey)
 		}
+		// Reject non-canonical decimal (leading zeros, e.g. "01") before it
+		// enters byIndex. persistLocked looks entries up by the canonical
+		// string it derives from the numeric range, so a non-canonical entry
+		// would silently vanish from the very next snapshot write: the
+		// record is not overwritten, it is dropped, and the device becomes
+		// unreachable at the URL it was actually given out under.
+		if canonical := strconv.FormatUint(n, 10); canonical != r.Index {
+			return fmt.Errorf("non-canonical index %q (want %q) for device key %q in snapshot", r.Index, canonical, r.DeviceKey)
+		}
+		// firstIndex=1 is the numbering floor; "0" reads as a sentinel or an
+		// uninitialized value at the wire (see firstIndex's own comment), so
+		// a snapshot claiming index 0 is corrupt, not merely unusual.
+		if n < firstIndex {
+			return fmt.Errorf("index %q for device key %q in snapshot is below firstIndex %d", r.Index, r.DeviceKey, firstIndex)
+		}
 		x.byKey[r.DeviceKey] = r.Index
 		x.byIndex[r.Index] = r.DeviceKey
 		if n > highest {
