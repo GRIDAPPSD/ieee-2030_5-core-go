@@ -231,6 +231,26 @@ func TestHandleCreateEndDeviceMethodNotAllowed(t *testing.T) {
 	}
 }
 
+// TestHandleCreateEndDevicePanicsOnNilIndexer: idx is a required
+// collaborator. A mis-wired caller that passes nil must fail loudly at
+// construction (once, at router-assembly time) rather than on the first
+// live POST /edev, where a nil-pointer panic would be swallowed by
+// net/http's per-request recover and surfaced as a bare connection reset
+// or a silent 500 to every subsequent caller.
+func TestHandleCreateEndDevicePanicsOnNilIndexer(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("HandleCreateEndDevice(nil idx) did not panic")
+		}
+	}()
+
+	s := memory.NewEndDeviceStore()
+	_ = coreedev.HandleCreateEndDevice(s, nil, identityOK(testLFDI, testSFDI), sfdiFirst8)
+}
+
 // ----- PUT /edev/{id} -----
 
 func TestHandleUpdateEndDevice(t *testing.T) {
