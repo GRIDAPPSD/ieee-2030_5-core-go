@@ -264,6 +264,22 @@ func TestEndDeviceIndexRejectsCorruptSnapshot(t *testing.T) {
 			body: `{"version":1,"records":[{"device_key":"a","index":"AABB"}]}`,
 		},
 		{
+			name: "zero index",
+			body: `{"version":1,"records":[{"device_key":"a","index":"0"}]}`,
+		},
+		{
+			name: "leading zero index",
+			body: `{"version":1,"records":[{"device_key":"a","index":"01"}]}`,
+		},
+		{
+			name: "leading zero multi digit index",
+			body: `{"version":1,"records":[{"device_key":"a","index":"007"}]}`,
+		},
+		{
+			name: "negative index",
+			body: `{"version":1,"records":[{"device_key":"a","index":"-1"}]}`,
+		},
+		{
 			name: "blank device key",
 			body: `{"version":1,"records":[{"device_key":"","index":"1"}]}`,
 		},
