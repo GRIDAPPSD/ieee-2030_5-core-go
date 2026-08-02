@@ -380,9 +380,9 @@ func registerMirrorRoutes(mux routeRegistrar, stores *Stores, authPolicy AuthPol
 		stores.MirrorUsagePoints, coremetering.BuildMirrorUsagePointList, 300,
 	))
 	mux.HandleFunc("POST /mup", coremetering.HandleCreateMirrorUsagePoint(stores.MirrorUsagePoints, lfdiProvider))
-	mux.HandleFunc("GET /mup/{id}", coremetering.HandleMirrorUsagePoint(stores.MirrorUsagePoints))
+	mux.HandleFunc("GET /mup/{id}", coremetering.HandleMirrorUsagePoint(stores.MirrorUsagePoints, lfdiProvider))
 	mux.HandleFunc("POST /mup/{id}/mr", coremetering.HandlePostMirrorMeterReading(
-		stores.MirrorUsagePoints, stores.MirrorMeterReadings,
+		stores.MirrorUsagePoints, stores.MirrorMeterReadings, lfdiProvider,
 	))
 
 	// IEEE 2030.5-2018 section 10.11.3 rule (d): the client posts readings
@@ -395,11 +395,12 @@ func registerMirrorRoutes(mux routeRegistrar, stores *Stores, authPolicy AuthPol
 	// process_response reads http_location() on the POST /mup response and
 	// posts the follow-up MirrorMeterReading to that literal path, not to
 	// our /mr convention). Mounting it against the identical handler used
-	// for POST /mup/{id}/mr means both routes share stampMirrorMeterReading,
-	// so the two can never drift into minting different href shapes for the
-	// same resource kind.
+	// for POST /mup/{id}/mr means both routes share stampMirrorMeterReading
+	// and the section 10.11.3 rule (e) ownership gate, so the two can never
+	// drift into minting different href shapes, or into enforcing creator
+	// scope on one path and not the other, for the same resource kind.
 	mux.HandleFunc("POST /mup/{id}", coremetering.HandlePostMirrorMeterReading(
-		stores.MirrorUsagePoints, stores.MirrorMeterReadings,
+		stores.MirrorUsagePoints, stores.MirrorMeterReadings, lfdiProvider,
 	))
 }
 
