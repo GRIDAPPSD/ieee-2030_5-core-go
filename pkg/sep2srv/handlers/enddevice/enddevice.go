@@ -122,6 +122,21 @@ func HandleEndDevice(s store.EndDeviceStore) http.HandlerFunc {
 // what every ownership check compares against; the index only decides which
 // URL the record is served under.
 func HandleCreateEndDevice(s store.EndDeviceStore, idx EndDeviceIndexer, identity IdentityFunc, sfdiPrefix SFDIPrefixFunc) http.HandlerFunc {
+	// idx is a required collaborator: every code path below that reaches
+	// registration calls idx.Allocate. A nil idx would panic on the first
+	// POST /edev, inside net/http's per-request recover, which turns a
+	// mis-wired server into a silent 500 (or a bare connection reset) for
+	// every caller instead of a loud failure at boot. Fail here, at
+	// construction, which happens once when the router is assembled: this
+	// is the exported package's own wiring point, independent of whatever a
+	// given assembler layers on top of it. The production assembler
+	// (pkg/sep2srv/assembly) already resolves a nil Stores.EndDeviceIndexes
+	// to a substitute before it ever calls this constructor, so that path
+	// never trips this panic; this check is for any other caller of this
+	// exported constructor that passes nil directly.
+	if idx == nil {
+		panic("enddevice: HandleCreateEndDevice: idx (EndDeviceIndexer) must not be nil")
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			encoding.MethodNotAllowed(w, "POST")
