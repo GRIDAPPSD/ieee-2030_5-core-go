@@ -173,7 +173,7 @@ func TestHandleCreateMirrorUsagePoint_Created(t *testing.T) {
 	t.Parallel()
 	s := memory.NewStore[sep2.MirrorUsagePoint]()
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /mup", metering.HandleCreateMirrorUsagePoint(s, identityProvider("TEST_LFDI_ABCDEF")))
+	mux.HandleFunc("POST /mup", metering.HandleCreateMirrorUsagePoint(s, identityProvider("TEST_LFDI_ABCDEF"), nil))
 
 	mup := sep2.MirrorUsagePoint{
 		MRID:        "INV001",
@@ -243,7 +243,7 @@ func TestHandleCreateMirrorUsagePoint_InlineReadingsAreServerStamped(t *testing.
 	t.Parallel()
 	s := memory.NewStore[sep2.MirrorUsagePoint]()
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /mup", metering.HandleCreateMirrorUsagePoint(s, identityProvider("TEST_LFDI_ABCDEF")))
+	mux.HandleFunc("POST /mup", metering.HandleCreateMirrorUsagePoint(s, identityProvider("TEST_LFDI_ABCDEF"), nil))
 
 	const forgedHref = "/mup/VICTIM/mr/00000000000000000001"
 	const forgedTime = int64(1)
@@ -351,7 +351,7 @@ func TestHandleCreateMirrorUsagePoint_NoIdentity(t *testing.T) {
 	})
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /mup", metering.HandleCreateMirrorUsagePoint(s, noIdentity))
+	mux.HandleFunc("POST /mup", metering.HandleCreateMirrorUsagePoint(s, noIdentity, nil))
 
 	req := httptest.NewRequest(http.MethodPost, "/mup", bytes.NewBufferString("<MirrorUsagePoint/>"))
 	w := httptest.NewRecorder()
@@ -475,7 +475,7 @@ func TestHandlePostMirrorMeterReading_ViaLocationHeader(t *testing.T) {
 	mmrStore := memory.NewScopedStore[sep2.MirrorMeterReading]()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /mup", metering.HandleCreateMirrorUsagePoint(mupStore, identityProvider("DEVICE_A_LFDI")))
+	mux.HandleFunc("POST /mup", metering.HandleCreateMirrorUsagePoint(mupStore, identityProvider("DEVICE_A_LFDI"), nil))
 	mux.HandleFunc("GET /mup/{id}", metering.HandleMirrorUsagePoint(mupStore, identityProvider("DEVICE_A_LFDI")))
 	mux.HandleFunc("POST /mup/{id}", metering.HandlePostMirrorMeterReading(mupStore, mmrStore, identityProvider("DEVICE_A_LFDI")))
 
@@ -780,7 +780,7 @@ func TestHandlePostMirrorMeterReading_AggregatorOwnsMultipleMirrors(t *testing.T
 	mmrStore := memory.NewScopedStore[sep2.MirrorMeterReading]()
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /mup", metering.HandleCreateMirrorUsagePoint(mupStore, identityProvider(aggregatorLFDI)))
+	mux.HandleFunc("POST /mup", metering.HandleCreateMirrorUsagePoint(mupStore, identityProvider(aggregatorLFDI), nil))
 	aggPost := metering.HandlePostMirrorMeterReading(mupStore, mmrStore, identityProvider(aggregatorLFDI))
 	mux.HandleFunc("POST /mup/{id}", aggPost)
 	mux.HandleFunc("POST /mup/{id}/mr", aggPost)
@@ -1187,7 +1187,7 @@ const (
 // real server does with several client certificates.
 func createMirrorMux(s *memory.Store[sep2.MirrorUsagePoint], caller string) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /mup", metering.HandleCreateMirrorUsagePoint(s, identityProvider(caller)))
+	mux.HandleFunc("POST /mup", metering.HandleCreateMirrorUsagePoint(s, identityProvider(caller), nil))
 	return mux
 }
 
