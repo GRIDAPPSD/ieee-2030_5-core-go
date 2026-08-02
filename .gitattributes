@@ -1,3 +1,0 @@
-# The vendored IEEE 2030.5 schema is byte-faithful upstream data. Git must not
-# normalise its CRLF line endings or the recorded md5 provenance stops matching.
-schema/sep.xsd -text
