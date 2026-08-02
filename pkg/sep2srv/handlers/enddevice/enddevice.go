@@ -43,7 +43,28 @@ type IdentityFunc func(ctx context.Context) (lfdi, sfdi string, ok bool)
 // SFDIPrefixFunc derives the EndDevice id prefix from an SFDI string.
 // Replaces auth.ExtractSFDIPrefix (IEEE-014 short-SFDI guard). The server
 // wires auth.ExtractSFDIPrefix; tests supply a trivial truncation.
+//
+// Its RETURN VALUE is no longer used to address the device: resource URLs
+// now carry the opaque index allocated by EndDeviceIndexer (see below). It
+// is still called, and its error still rejects the registration, because the
+// IEEE-014 guard is a validity check on the SFDI itself and dropping the
+// call would silently drop that check along with the addressing change.
 type SFDIPrefixFunc func(sfdi string) (string, error)
+
+// EndDeviceIndexer allocates the opaque, server-chosen index that identifies
+// a device in resource URLs: the "3" in "/edev/3/rg". Declared here at the
+// consumer; *memory.EndDeviceIndex is the production implementation.
+//
+// deviceKey is the most durable identity the caller has for the device. On
+// this self-registration path the device is known only by its certificate,
+// so the LFDI is the only key available. That means a device presenting a
+// ROTATED certificate is an unknown key and receives a new index; surviving
+// rotation requires out-of-band provisioning under a certificate-independent
+// key, which this path by construction does not have. See the
+// memory.EndDeviceIndex doc comment for the full discussion.
+type EndDeviceIndexer interface {
+	Allocate(deviceKey string) (string, error)
+}
 
 // BuildEndDeviceList constructs an EndDeviceList from store results.
 func BuildEndDeviceList(href string, result store.ListResult[sep2.EndDevice], pollRate uint32) sep2.EndDeviceList {
@@ -90,9 +111,17 @@ func HandleEndDevice(s store.EndDeviceStore) http.HandlerFunc {
 }
 
 // HandleCreateEndDevice returns a handler for POST /edev.
-// It creates a new EndDevice, setting identity from the injected IdentityFunc
-// and using SFDIPrefixFunc to derive the device-id prefix (IEEE-014 guard).
-func HandleCreateEndDevice(s store.EndDeviceStore, identity IdentityFunc, sfdiPrefix SFDIPrefixFunc) http.HandlerFunc {
+//
+// It creates a new EndDevice, setting identity from the injected
+// IdentityFunc, validating the SFDI through SFDIPrefixFunc (IEEE-014
+// short-SFDI guard), and addressing the device by the opaque index allocated
+// from idx.
+//
+// Identity and addressing are separate concerns here and must stay separate.
+// The stored EndDevice keeps the certificate-derived LFDI and SFDI, which is
+// what every ownership check compares against; the index only decides which
+// URL the record is served under.
+func HandleCreateEndDevice(s store.EndDeviceStore, idx EndDeviceIndexer, identity IdentityFunc, sfdiPrefix SFDIPrefixFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			encoding.MethodNotAllowed(w, "POST")
@@ -135,11 +164,22 @@ func HandleCreateEndDevice(s store.EndDeviceStore, identity IdentityFunc, sfdiPr
 			return
 		}
 
-		// Generate ID and href: sfdiPrefix guards against short SFDI (IEEE-014).
-		id, err := sfdiPrefix(sfdi)
-		if err != nil {
+		// IEEE-014 guard: reject a malformed or too-short SFDI before the
+		// device is admitted. The returned prefix is intentionally discarded;
+		// it used to be the device id, and addressing now comes from idx.
+		if _, err := sfdiPrefix(sfdi); err != nil {
 			log.Printf("edev create: %v", err)
 			http.Error(w, "invalid device identity", http.StatusInternalServerError)
+			return
+		}
+
+		// Address the device by an opaque server-chosen index. The LFDI is
+		// the only device key this path has (the device is known solely by
+		// its certificate), so a rotated certificate yields a new index here.
+		id, err := idx.Allocate(lfdi)
+		if err != nil {
+			log.Printf("edev create: allocate index: %v", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 		dev.Href = "/edev/" + id
