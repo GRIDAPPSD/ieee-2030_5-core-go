@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/xml"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -301,5 +302,62 @@ func TestHandleCreateUsagePoint_RaceLossSurfacesError(t *testing.T) {
 	}
 	if body := w.Body.String(); strings.Contains(body, "<") {
 		t.Errorf("error body carries XML markup, want a plain-text reason: %q", body)
+	}
+}
+
+// TestUsagePointItemMethodsNotMounted is the Annex A.4.4.2 check: PUT and POST
+// on /upt/{id1} are marked Error, so neither may be reachable. This asserts the
+// current state rather than changing it.
+//
+// Both halves matter. The mux must not route those methods to any handler, and
+// the handler behind GET /upt/{uptId} must refuse them on its own, so that a
+// consumer mounting it at a bare pattern does not silently acquire a write
+// path the standard forbids.
+func TestUsagePointItemMethodsNotMounted(t *testing.T) {
+	t.Parallel()
+	s := memory.NewStore[sep2.UsagePoint]()
+	if err := s.Create(context.Background(), "upt1", sep2.UsagePoint{
+		SubscribableResource: sep2.SubscribableResource{Resource: sep2.Resource{Href: "/upt/upt1"}},
+		MRID:                 "ORIGINAL",
+	}); err != nil {
+		t.Fatalf("seed UsagePoint: %v", err)
+	}
+
+	// Mounted exactly as assembly.go mounts it: method-qualified GET only.
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /upt/{uptId}", metering.HandleUsagePoint(s))
+
+	// And mounted method-agnostically, to prove the handler itself refuses
+	// rather than relying on the pattern to do it.
+	bare := http.NewServeMux()
+	bare.HandleFunc("/upt/{uptId}", metering.HandleUsagePoint(s))
+
+	body, err := xml.Marshal(&sep2.UsagePoint{MRID: "OVERWRITTEN"})
+	if err != nil {
+		t.Fatalf("marshal UsagePoint: %v", err)
+	}
+
+	for _, method := range []string{http.MethodPut, http.MethodPost} {
+		for name, m := range map[string]*http.ServeMux{"method-qualified mount": mux, "bare mount": bare} {
+			t.Run(fmt.Sprintf("%s %s", method, name), func(t *testing.T) {
+				req := httptest.NewRequest(method, "/upt/upt1", bytes.NewReader(body))
+				w := httptest.NewRecorder()
+				m.ServeHTTP(w, req)
+
+				if w.Code != http.StatusMethodNotAllowed {
+					t.Errorf("%s /upt/{id1} status = %d, want 405 (A.4.4.2 marks it Error); body = %s",
+						method, w.Code, w.Body.String())
+				}
+			})
+		}
+	}
+
+	// The seeded record is untouched by any of those attempts.
+	stored, err := s.Get(context.Background(), "upt1")
+	if err != nil {
+		t.Fatalf("get UsagePoint: %v", err)
+	}
+	if stored.MRID != "ORIGINAL" {
+		t.Errorf("stored MRID = %q, want ORIGINAL: a forbidden method mutated the resource", stored.MRID)
 	}
 }
