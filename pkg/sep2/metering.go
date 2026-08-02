@@ -7,11 +7,11 @@ import "encoding/xml"
 type UsagePoint struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns UsagePoint"`
 	SubscribableResource
-	MRID                string `xml:"mRID,omitempty"`
-	Description         string `xml:"description,omitempty"`
-	RoleFlags           uint16 `xml:"roleFlags,omitempty"`
-	ServiceCategoryKind uint8  `xml:"serviceCategoryKind"`
-	Status              uint8  `xml:"status"`
+	MRID                string         `xml:"mRID,omitempty"`
+	Description         string         `xml:"description,omitempty"`
+	RoleFlags           RoleFlagsValue `xml:"roleFlags,omitempty"`
+	ServiceCategoryKind uint8          `xml:"serviceCategoryKind"`
+	Status              uint8          `xml:"status"`
 
 	MeterReadingListLink *ListLink `xml:"MeterReadingListLink,omitempty"`
 }
@@ -90,7 +90,7 @@ type Reading struct {
 	Resource
 	Value        *int64            `xml:"value,omitempty"`
 	TimePeriod   *DateTimeInterval `xml:"timePeriod,omitempty"`
-	QualityFlags *uint16           `xml:"qualityFlags,omitempty"`
+	QualityFlags *HexBinary16      `xml:"qualityFlags,omitempty"`
 }
 
 // Copy returns an independent copy.

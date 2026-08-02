@@ -42,7 +42,7 @@ type Event struct {
 	// IEEE 2030.5 Table 32: bit 0 = message received, bit 1 = specific
 	// response, bit 2 = response on transition. Spec: section 10.1.3 and
 	// 2023 XSD `RespondableResource.responseRequired` (HexBinary8).
-	ResponseRequired *uint8 `xml:"responseRequired,omitempty"`
+	ResponseRequired *HexBinary8 `xml:"responseRequired,omitempty"`
 
 	MRID        string `xml:"mRID,omitempty"`
 	Description string `xml:"description,omitempty"`

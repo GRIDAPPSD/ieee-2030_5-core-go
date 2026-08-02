@@ -70,7 +70,15 @@ type DERControlResponse struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns DERControlResponse"`
 	Response
 
-	ModesResponded *uint32 `xml:"modesResponded,omitempty"` // DERControlType bitmap
+	// ModesResponded carries a DERControlType bitmap, so it serializes as
+	// hexBinary like every other DERControlType-valued field. The 2023
+	// edition introduced this element; the 2018 canonical schema this
+	// package is otherwise audited against defines DERControlResponse as a
+	// bare extension of Response (sep.xsd:440-447) and so carries no line
+	// to cite for the element itself. The type citation still holds:
+	// DERControlType extends HexBinary32 (sep.xsd:3952). Leaving it decimal
+	// would reproduce the modesSupported defect on a second field.
+	ModesResponded *DERControlType `xml:"modesResponded,omitempty"`
 }
 
 // Copy returns an independent copy.
@@ -84,11 +92,11 @@ func (d DERControlResponse) Copy() DERControlResponse {
 	return c
 }
 
-// ResponseStatus constants per IEEE 2030.5-2023 §10.10 Table 31
+// ResponseStatus constants per IEEE 2030.5-2023 section 10.10 Table 31
 // ("Response types by function set"). The 2018 revision called this
 // table number 27; the contents (wire values) are unchanged.
 //
-// Wire values are NORMATIVE — they appear in the `<status>` element of a
+// Wire values are NORMATIVE : they appear in the `<status>` element of a
 // `Response` POST and are interpreted by the server-side handler. The
 // pre-IEEE-044a values in this enum were off-by-one against Table 31
 // (EventReceived was 0 instead of 1, EventCancelled was 5 instead of 6),
@@ -104,7 +112,7 @@ const (
 	// received by the client.
 	ResponseStatusEventReceived uint8 = 1
 	// ResponseStatusEventStarted (2): Event or DefaultDERControl
-	// started — currently being applied by the client.
+	// started : currently being applied by the client.
 	ResponseStatusEventStarted uint8 = 2
 	// ResponseStatusEventCompleted (3): Event completed (without
 	// error, fully and successfully).
@@ -115,22 +123,22 @@ const (
 	// ResponseStatusOptIn (5): User has chosen to opt in to the
 	// event (DRLC). Can occur before event begins.
 	ResponseStatusOptIn uint8 = 5
-	// ResponseStatusEventCancelled (6): Spec name "Cancelled" — the
+	// ResponseStatusEventCancelled (6): Spec name "Cancelled" : the
 	// event has been cancelled or the executing DefaultDERControl
 	// value has been removed.
 	ResponseStatusEventCancelled uint8 = 6
 	// ResponseStatusEventSuperseded (7): "Superseded, Same Function
-	// Set Instance" — event was superseded by another event or
+	// Set Instance" : event was superseded by another event or
 	// DefaultDERControl from the same function set instance.
 	ResponseStatusEventSuperseded uint8 = 7
 	// ResponseStatusEventPartialOptOut (8): "Partial Complete,
-	// Opt-Out" — event partially completed with user opt-out.
+	// Opt-Out" : event partially completed with user opt-out.
 	ResponseStatusEventPartialOptOut uint8 = 8
 	// ResponseStatusEventPartialOptIn (9): "Partial Complete,
-	// Opt-In" — event partially completed due to user opt-in.
+	// Opt-In" : event partially completed due to user opt-in.
 	ResponseStatusEventPartialOptIn uint8 = 9
 	// ResponseStatusEventCompletedNoApply (10): "Complete, No
-	// Participation" — event completed with no user participation
+	// Participation" : event completed with no user participation
 	// (previous opt-out).
 	ResponseStatusEventCompletedNoApply uint8 = 10
 	// ResponseStatusEventAcknowledged (11): User has acknowledged
@@ -140,14 +148,14 @@ const (
 	// display the message (Messaging function set only).
 	ResponseStatusEventCannotBeDisplayed uint8 = 12
 	// ResponseStatusEventSupersededAlternateServer (13): "Superseded,
-	// Alternate Server" — event superseded by an event from a
+	// Alternate Server" : event superseded by an event from a
 	// different function set instance on a different server.
 	ResponseStatusEventSupersededAlternateServer uint8 = 13
 	// ResponseStatusEventSupersededAlternateProgram (14):
-	// "Superseded, Alternate Program" — event superseded by an event
+	// "Superseded, Alternate Program" : event superseded by an event
 	// from a different function set instance on the same server.
 	ResponseStatusEventSupersededAlternateProgram uint8 = 14
-	// ResponseStatusEventResumed (15): Event resumed — the client
+	// ResponseStatusEventResumed (15): Event resumed : the client
 	// has resumed an overlapped event after the overlapping one
 	// completed.
 	ResponseStatusEventResumed uint8 = 15
