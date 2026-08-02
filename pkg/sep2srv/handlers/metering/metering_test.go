@@ -1399,9 +1399,11 @@ func TestHandleCreateMirrorUsagePoint_CollisionKeepsACLIntact(t *testing.T) {
 
 // TestHandleCreateMirrorUsagePoint_LocationIsBounded asserts the Location the
 // create path emits stays inside the client's 127-byte URI buffer and is never
-// empty, for every mRID shape a client can send: absent, ordinary, hostile
+// empty, for every mRID shape a conformant client can send: ordinary, hostile
 // length, and hostile characters. A client-supplied mRID must never be able to
-// size or shape the URI we hand back.
+// size or shape the URI we hand back. An absent mRID is covered separately by
+// TestHandleCreateMirrorUsagePoint_NoMRID_Rejected: it is refused outright
+// (see IEEECORE-MUPKEY fix 1) rather than reaching this create path at all.
 func TestHandleCreateMirrorUsagePoint_LocationIsBounded(t *testing.T) {
 	t.Parallel()
 
@@ -1409,7 +1411,6 @@ func TestHandleCreateMirrorUsagePoint_LocationIsBounded(t *testing.T) {
 		name string
 		mrid string
 	}{
-		{"absent", ""},
 		{"ordinary hexBinary128", "0123456789ABCDEF0123456789ABCDEF"},
 		{"over-long", strings.Repeat("A", 4000)},
 		{"path separators", "../../etc/passwd"},
@@ -1429,17 +1430,47 @@ func TestHandleCreateMirrorUsagePoint_LocationIsBounded(t *testing.T) {
 			assertUsableLocation(t, created, "create")
 
 			// The re-POST collision path emits a Location too, and it is the
-			// one the field defect exercised; hold it to the same bound. An
-			// absent mRID mints a fresh resource per POST by design, so only
-			// the identified cases can collide.
-			if tc.mrid == "" {
-				return
-			}
+			// one the field defect exercised; hold it to the same bound.
 			collided := postMirror(t, mux, tc.mrid)
 			if collided.Code != http.StatusOK {
 				t.Fatalf("re-post: status = %d, want 200; body = %s", collided.Code, collided.Body.String())
 			}
 			assertUsableLocation(t, collided, "re-post collision")
 		})
+	}
+}
+
+// TestHandleCreateMirrorUsagePoint_NoMRID_Rejected asserts IEEE 2030.5-2018
+// section 10.11.3 rule (a)(1): a POST /mup that omits the MirrorUsagePoint
+// mRID is refused with 400, and nothing is stored. See mirror.go's fix-1
+// comment on HandleCreateMirrorUsagePoint for the three independent sources
+// (sep.xsd minOccurs, the rule text, the EPRI client's own schema table) that
+// make mRID mandatory here, and why a synthetic per-request key is the wrong
+// fix.
+func TestHandleCreateMirrorUsagePoint_NoMRID_Rejected(t *testing.T) {
+	t.Parallel()
+	s := memory.NewStore[sep2.MirrorUsagePoint]()
+	mux := createMirrorMux(s, mupKeyLFDIA)
+
+	mup := sep2.MirrorUsagePoint{Description: "no mRID supplied"}
+	body, err := xml.Marshal(&mup)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/mup", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("POST /mup with no mRID: status = %d, want 400; body = %s", w.Code, w.Body.String())
+	}
+
+	count, err := s.Count(context.Background())
+	if err != nil {
+		t.Fatalf("count mirrors: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("stored MirrorUsagePoint count = %d, want 0: a rejected POST must not store anything", count)
 	}
 }

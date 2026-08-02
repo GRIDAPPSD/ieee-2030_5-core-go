@@ -303,19 +303,28 @@ func HandleCreateMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint], 
 			return
 		}
 
+		// IEEE 2030.5-2018 section 10.11.3 rule (a)(1): the POST "SHALL
+		// contain at least... the MirrorUsagePoint mRID". IdentifiedObject.mRID
+		// (sep.xsd:5331) is minOccurs="1", inherited by MirrorUsagePoint via
+		// UsagePointBase (sep.xsd:6472-6477, 6571-6576); the EPRI reference
+		// client's own generated schema table (se_schema.c:428) carries
+		// .min=1 on the MirrorUsagePoint mRID entry directly, not merely by
+		// inheritance. A client that omits mRID has by definition given the
+		// server nothing to dedupe future POSTs against (rule (a)(4) can
+		// never be satisfied for it) and no identity it can later
+		// re-address (rule (c) and the mandatory PUT/DELETE /mup/{id}
+		// presume an addressable resource), so this is refused outright
+		// rather than papered over with a synthetic per-request key.
+		if mup.MRID == "" {
+			http.Error(w, "MirrorUsagePoint mRID is required", http.StatusBadRequest)
+			return
+		}
+
 		// Set DeviceLFDI from cert (override client-supplied value)
 		mup.DeviceLFDI = lfdi
 
-		// The resource identity is (creating device, client mRID). An absent
-		// mRID names no resource the client can re-address, so each such POST
-		// mints a fresh one: a per-request token stands in for the mRID, which
-		// keeps the derivation total without making every mRID-less POST from
-		// one device collapse onto a single record.
-		clientKey := mup.MRID
-		if clientKey == "" {
-			clientKey = fmt.Sprintf("mup-%d", time.Now().UnixNano())
-		}
-		id := MirrorStoreID(lfdi, clientKey)
+		// The resource identity is (creating device, client mRID).
+		id := MirrorStoreID(lfdi, mup.MRID)
 		mup.Href = MirrorHref(id)
 
 		// Stamp the server-owned fields on every inline reading, matching
