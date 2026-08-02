@@ -72,6 +72,99 @@ func stripMirrorMeterReadings(mup sep2.MirrorUsagePoint) sep2.MirrorUsagePoint {
 	return mup
 }
 
+// authorizeMirrorOwner resolves the caller's certificate-derived LFDI and
+// confirms the caller is the client that CREATED the MirrorUsagePoint at id.
+//
+// IEEE 2030.5-2018 section 10.11.3 rule (e): "The Metering Mirror server
+// SHOULD only accept POSTs to a given MirrorUsagePoint from the client that
+// created the mirror."
+//
+// The scope key is the CREATOR, not the device whose readings the mirror
+// describes. HandleCreateMirrorUsagePoint stamps MirrorUsagePoint.DeviceLFDI
+// from the caller's identity, overriding whatever the client claimed in the
+// body, so the stored DeviceLFDI IS the creator's identity and comparing the
+// caller against it implements rule (e) directly rather than by proxy.
+//
+// This composes with CSIP aggregators, which is the case a naive
+// one-mirror-per-certificate rule would break. An aggregator acting for many
+// DERs legitimately creates many mirrors; each is stamped with the
+// aggregator's own LFDI at creation, so the aggregator retains access to all
+// of them. Nothing here assumes a single mirror per certificate.
+//
+// The check lives in core rather than in a consumer's middleware because core
+// owns protocol behavior: /mup is not /edev-scoped, so no path-shaped ACL rule
+// a server writes can express "the creator of this record", which is a fact
+// only the stored resource carries. An authorization rule enforced solely in a
+// consumer is a rule core cannot guarantee, and that is exactly the shape that
+// lets one route drift out of compliance with its sibling.
+//
+// Fails closed on every indeterminate case: a nil provider, no identity, an
+// empty caller LFDI, or a stored record carrying no DeviceLFDI. A mirror with
+// no recorded creator has nobody who can claim it, so it accepts no writes and
+// serves no reads; treating an empty stored DeviceLFDI as "matches anyone"
+// would be the unsafe fallback that converts a missing value into open access.
+//
+// Denial status is 403, not 404, on both the write and the read path:
+//
+//   - 403 is "authenticated but not authorized", which is precisely the
+//     condition here, and it matches the ownership precedent already set by
+//     registration.go for GET /edev/{id}/rg.
+//   - 404 would be the choice if denial had to avoid confirming the resource
+//     exists, but it buys nothing today: GET /mup is a server-wide list that
+//     already enumerates every MirrorUsagePoint to every authenticated client
+//     (deliberately, per 6.2.3.1). Masking existence on one route while the
+//     adjacent list discloses it is theater. If the list is ever scoped per
+//     client, revisit 404 for the read path at the same time so the two stay
+//     consistent.
+//
+// On denial the response body is a fixed plain-text string. It never echoes
+// the request body, the stored record, or either LFDI, so a probe learns
+// nothing beyond "denied".
+//
+// On success the already-fetched record is returned so callers need not
+// re-read the store.
+func authorizeMirrorOwner(
+	w http.ResponseWriter,
+	r *http.Request,
+	s store.ResourceStore[sep2.MirrorUsagePoint],
+	lfdiProvider LFDIProvider,
+	id string,
+) (sep2.MirrorUsagePoint, bool) {
+	var zero sep2.MirrorUsagePoint
+
+	if lfdiProvider == nil {
+		// A consumer that wired no identity source gets a closed door, not a
+		// nil-func panic and not an open one.
+		log.Printf("mup: nil LFDIProvider, denying (path=%s)", r.URL.Path)
+		http.Error(w, "identity required", http.StatusForbidden)
+		return zero, false
+	}
+
+	lfdi, ok := lfdiProvider(r.Context())
+	if !ok || lfdi == "" {
+		http.Error(w, "identity required", http.StatusForbidden)
+		return zero, false
+	}
+
+	mup, err := s.Get(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			http.Error(w, "mirror usage point not found", http.StatusNotFound)
+			return zero, false
+		}
+		log.Printf("mup: ownership lookup id=%q: %v (path=%s)", id, err, r.URL.Path)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return zero, false
+	}
+
+	if mup.DeviceLFDI == "" || mup.DeviceLFDI != lfdi {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return zero, false
+	}
+
+	return mup, true
+}
+
 // BuildMirrorUsagePointList constructs a MirrorUsagePointList from store results.
 func BuildMirrorUsagePointList(href string, result store.ListResult[sep2.MirrorUsagePoint], pollRate uint32) sep2.MirrorUsagePointList {
 	items := make([]sep2.MirrorUsagePoint, len(result.Items))
@@ -193,22 +286,24 @@ func HandleCreateMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint], 
 }
 
 // HandleMirrorUsagePoint returns a handler for GET /mup/{id}.
-func HandleMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint]) http.HandlerFunc {
+//
+// Scoped to the creating client, same rule as the POST routes: see
+// authorizeMirrorOwner. Rule (e) governs POSTs only, and the WADL marks this
+// GET Optional (section 4.2 item (c) makes those modes normative), so scoping
+// it costs nothing in conformance while metering readings are customer data
+// that an unscoped GET hands to any authenticated peer.
+//
+// Rule (c) still holds on the owner's own record: the response carries only
+// first-level elements, MirrorMeterReading children stripped.
+func HandleMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint], lfdiProvider LFDIProvider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			encoding.MethodNotAllowed(w, "GET, HEAD")
 			return
 		}
 
-		id := r.PathValue("id")
-		mup, err := s.Get(r.Context(), id)
-		if err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				http.Error(w, "not found", http.StatusNotFound)
-				return
-			}
-			log.Printf("mup: GET id=%q: %v (path=%s)", id, err, r.URL.Path)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+		mup, ok := authorizeMirrorOwner(w, r, s, lfdiProvider, r.PathValue("id"))
+		if !ok {
 			return
 		}
 
@@ -217,11 +312,23 @@ func HandleMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint]) http.H
 	}
 }
 
-// HandlePostMirrorMeterReading returns a handler for POST /mup/{id}/mr.
-// Inverters POST metering data (power, energy, etc.) to this endpoint.
+// HandlePostMirrorMeterReading returns a handler for POST /mup/{id}/mr and,
+// mounted identically, POST /mup/{id}. Inverters POST metering data (power,
+// energy, etc.) to this endpoint.
+//
+// Both routes share this one handler so the ownership gate, the href shape,
+// and the server-owned field stamping cannot drift between them. Enforcing
+// rule (e) on one route and not its sibling is the failure shape this
+// arrangement exists to prevent.
+//
+// Ownership: the caller's LFDI must equal the parent MirrorUsagePoint's stored
+// DeviceLFDI, which is the LFDI of the client that created the mirror. See
+// authorizeMirrorOwner for the rule, the CSIP aggregator case, and the choice
+// of 403 over 404.
 func HandlePostMirrorMeterReading(
 	mupStore store.ResourceStore[sep2.MirrorUsagePoint],
 	mmrStore *memory.ScopedStore[sep2.MirrorMeterReading],
+	lfdiProvider LFDIProvider,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -231,13 +338,10 @@ func HandlePostMirrorMeterReading(
 
 		parentID := r.PathValue("id")
 
-		// Verify parent exists
-		if _, err := mupStore.Get(r.Context(), parentID); err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				http.Error(w, "mirror usage point not found", http.StatusNotFound)
-				return
-			}
-			http.Error(w, "internal error", http.StatusInternalServerError)
+		// Ownership gate: resolves identity, confirms the parent exists, and
+		// confirms the caller created it. Runs before the body is read so an
+		// unauthorized caller's payload is never parsed, let alone stored.
+		if _, ok := authorizeMirrorOwner(w, r, mupStore, lfdiProvider, parentID); !ok {
 			return
 		}
 
