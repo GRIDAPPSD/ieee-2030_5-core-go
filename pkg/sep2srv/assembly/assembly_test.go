@@ -421,7 +421,7 @@ func TestAssembly_ScopedListRoutesMounted(t *testing.T) {
 		t.Errorf("GET /edev/e1/fsa/f1/derp/p1/derc status = %d, want 200", resp3.StatusCode)
 	}
 
-	// GET /mup (mirror usage point list — exercises registerMirrorRoutes)
+	// GET /mup (mirror usage point list, exercises registerMirrorRoutes)
 	resp4, err := http.Get(srv.URL + "/mup")
 	if err != nil {
 		t.Fatalf("GET /mup: %v", err)
@@ -431,7 +431,7 @@ func TestAssembly_ScopedListRoutesMounted(t *testing.T) {
 		t.Errorf("GET /mup status = %d, want 200", resp4.StatusCode)
 	}
 
-	// GET /upt (usage point list — exercises registerMeteringRoutes)
+	// GET /upt (usage point list, exercises registerMeteringRoutes)
 	resp5, err := http.Get(srv.URL + "/upt")
 	if err != nil {
 		t.Fatalf("GET /upt: %v", err)
@@ -492,6 +492,124 @@ func TestAssembly_AsNotifyRemoved(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Errorf("DELETE /edev/e1/sub/s1 status = %d, want 204", resp.StatusCode)
+	}
+}
+
+// TestAssembly_PostMirrorUsagePointReading_ViaLocationHeader exercises the
+// real assembled router (not a hand-mounted test mux) end to end: POST /mup,
+// then POST the reading to exactly the Location value the server returned.
+// IEEE 2030.5-2018 section 10.11.3 rule (d): the client posts readings "to
+// the resource identified in the Metering server's response... (e.g.,
+// /mup/3)". Before "POST /mup/{id}" was mounted alongside "GET /mup/{id}",
+// this returned 405, since only GET was registered at that pattern.
+func TestAssembly_PostMirrorUsagePointReading_ViaLocationHeader(t *testing.T) {
+	t.Parallel()
+
+	stores := testStores()
+	handler, patterns := assembly.BuildProtocolRouter(
+		assembly.RouterConfig{},
+		stores,
+		testAuthPolicy(),
+		"serverSFDI", "serverLFDI",
+		nil,
+	)
+
+	found := false
+	for _, p := range patterns {
+		if p == "POST /mup/{id}" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("POST /mup/{id} not in pattern list; patterns = %v", patterns)
+	}
+
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	mup := sep2.MirrorUsagePoint{MRID: "INV001"}
+	body, err := xml.Marshal(&mup)
+	if err != nil {
+		t.Fatalf("marshal MirrorUsagePoint: %v", err)
+	}
+	createResp, err := http.Post(srv.URL+"/mup", "application/xml", strings.NewReader(string(body)))
+	if err != nil {
+		t.Fatalf("POST /mup: %v", err)
+	}
+	createResp.Body.Close()
+	if createResp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST /mup status = %d, want 201", createResp.StatusCode)
+	}
+	loc := createResp.Header.Get("Location")
+	if loc == "" {
+		t.Fatal("POST /mup: no Location header")
+	}
+
+	val := int64(4200)
+	uom := sep2.UomWatts
+	mmr := sep2.MirrorMeterReading{
+		MRID:        "MMR01",
+		ReadingType: &sep2.ReadingType{Uom: &uom},
+		Reading:     &sep2.Reading{Value: &val},
+	}
+	mmrBody, err := xml.Marshal(&mmr)
+	if err != nil {
+		t.Fatalf("marshal MirrorMeterReading: %v", err)
+	}
+
+	// Follow the header value verbatim: the point under test is that our own
+	// advertised Location and our own accepted POST target agree.
+	postResp, err := http.Post(srv.URL+loc, "application/xml", strings.NewReader(string(mmrBody)))
+	if err != nil {
+		t.Fatalf("POST %s: %v", loc, err)
+	}
+	postBody, _ := io.ReadAll(postResp.Body)
+	postResp.Body.Close()
+
+	if postResp.StatusCode == http.StatusMethodNotAllowed {
+		t.Fatalf("POST %s returned 405: server's own Location header rejected (IEEECORE-MUPPOST regression); body=%s", loc, postBody)
+	}
+	if postResp.StatusCode != http.StatusCreated {
+		t.Fatalf("POST %s status = %d, want 201; body=%s", loc, postResp.StatusCode, postBody)
+	}
+
+	mmrLoc := postResp.Header.Get("Location")
+	const prefix = "/mup/INV001/mr/"
+	if !strings.HasPrefix(mmrLoc, prefix) {
+		t.Fatalf("MirrorMeterReading Location = %q, want prefix %q", mmrLoc, prefix)
+	}
+	id := strings.TrimPrefix(mmrLoc, prefix)
+	stored, err := stores.MirrorMeterReadings.Get(context.Background(), "INV001", id)
+	if err != nil {
+		t.Fatalf("get stored MirrorMeterReading: %v", err)
+	}
+	if stored.Reading == nil || stored.Reading.Value == nil || *stored.Reading.Value != val {
+		t.Errorf("stored Reading value not preserved: %+v", stored.Reading)
+	}
+
+	// deviceLFDI override invariant: unaffected by this route, cert-derived
+	// identity is stamped only at MirrorUsagePoint creation.
+	parent, err := stores.MirrorUsagePoints.Get(context.Background(), "INV001")
+	if err != nil {
+		t.Fatalf("get stored MirrorUsagePoint: %v", err)
+	}
+	if parent.DeviceLFDI != testLFDI {
+		t.Errorf("parent DeviceLFDI = %q, want %q (cert override unaffected by reading POST)", parent.DeviceLFDI, testLFDI)
+	}
+
+	// Rule (c) regression check against the real router.
+	getResp, err := http.Get(srv.URL + "/mup/INV001")
+	if err != nil {
+		t.Fatalf("GET /mup/INV001: %v", err)
+	}
+	getBody, _ := io.ReadAll(getResp.Body)
+	getResp.Body.Close()
+	if getResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /mup/INV001 status = %d, want 200", getResp.StatusCode)
+	}
+	if strings.Contains(string(getBody), "MirrorMeterReading") {
+		t.Errorf("GET /mup/INV001 served a MirrorMeterReading element, violates rule (c); body=%s", getBody)
 	}
 }
 
