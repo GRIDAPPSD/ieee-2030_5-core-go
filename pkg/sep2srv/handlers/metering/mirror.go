@@ -1,6 +1,7 @@
 package metering
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -560,6 +561,117 @@ func HandleMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint], lfdiPr
 	}
 }
 
+// sep2Namespace is the IEEE 2030.5 XML namespace a request document must
+// carry on its root element.
+//
+// Requiring it is not new strictness. Every sep2 struct in this package tags
+// XMLName with this namespace, and encoding/xml rejects a namespace-less
+// document against such a tag ("expected element <X> in name space ... but
+// have no name space"), so the single-reading path already refused documents
+// without it. Naming the constant here keeps the explicit root-element check
+// below exactly as strict as the unmarshal it dispatches to, rather than
+// letting the two disagree about what a valid document is.
+const sep2Namespace = "urn:ieee:std:2030.5:ns"
+
+// errNoRootElement reports a body that parsed but contained no element at all
+// (empty, or comments and processing instructions only).
+var errNoRootElement = errors.New("document has no root element")
+
+// errEmptyReadingList reports a MirrorMeterReadingList carrying no
+// MirrorMeterReading children.
+var errEmptyReadingList = errors.New("MirrorMeterReadingList contains no MirrorMeterReading")
+
+// rootElementName returns the qualified name of body's root element.
+//
+// It reads tokens rather than unmarshalling so the caller can decide which
+// type to decode into BEFORE any decode is attempted. The name is read from
+// the document itself, so no struct tag has to be trusted to be the thing
+// that rejects a mismatch.
+func rootElementName(body []byte) (xml.Name, error) {
+	dec := xml.NewDecoder(bytes.NewReader(body))
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return xml.Name{}, errNoRootElement
+			}
+			return xml.Name{}, err
+		}
+		if se, ok := tok.(xml.StartElement); ok {
+			return se.Name, nil
+		}
+	}
+}
+
+// decodeMirrorMeterReadings decodes a POST body into the readings it carries.
+//
+// IEEE 2030.5-2018 Annex A.4.4.11 lists TWO request representations for POST
+// on /mup/{id1}: MirrorMeterReading and MirrorMeterReadingList. Both are
+// accepted here and both yield the same []MirrorMeterReading, so a batching
+// client and a one-at-a-time client take an identical path through stamping,
+// ownership, and storage. A batch is not a way around any rule that applies
+// to a single reading.
+//
+// Discrimination is by explicit root-element name, decided before any
+// unmarshal is attempted. That ordering is the point. The obvious alternative,
+// "unmarshal into one type and fall back to the other on error", is unsafe as
+// a general technique because encoding/xml is happy to produce a zero value
+// from a document it did not really match: a list decoded as a single would be
+// an empty single, which stores nothing and looks like success. Here the type
+// is chosen from the document's own root name and nothing else, so a
+// MirrorMeterReadingList is never handed to the single-reading decoder and a
+// MirrorMeterReading is never handed to the list decoder. A root that is
+// neither is refused outright rather than defaulting to either.
+//
+// (encoding/xml's XMLName tag matching would in fact catch a crossed decode
+// today, because both sep2 types tag XMLName with a fixed element name and a
+// mismatch is an error rather than a zero value. That is a second barrier, not
+// the first one: it holds only as long as nobody drops or loosens an XMLName
+// tag, and it is asserted directly in the tests. The dispatch above does not
+// depend on it.)
+//
+// An empty MirrorMeterReadingList is an error, not a no-op success. A 201 is
+// a claim that something was created at Location, and an empty batch creates
+// nothing to point Location at. Serving 201 with an empty Location is
+// specifically harmful: the EPRI reference client takes strlen of the header
+// with no guard and dereferences the result of its failed URI parse.
+//
+// Error messages never echo client-supplied element names or namespaces back
+// in the response body, so a probe learns only that its document was the wrong
+// shape.
+func decodeMirrorMeterReadings(body []byte) ([]sep2.MirrorMeterReading, error) {
+	root, err := rootElementName(body)
+	if err != nil {
+		return nil, fmt.Errorf("invalid XML: %w", err)
+	}
+
+	if root.Space != sep2Namespace {
+		return nil, errors.New("invalid XML: root element is not in the IEEE 2030.5 name space")
+	}
+
+	switch root.Local {
+	case "MirrorMeterReading":
+		var mmr sep2.MirrorMeterReading
+		if err := xml.Unmarshal(body, &mmr); err != nil {
+			return nil, fmt.Errorf("invalid XML: %w", err)
+		}
+		return []sep2.MirrorMeterReading{mmr}, nil
+
+	case "MirrorMeterReadingList":
+		var list sep2.MirrorMeterReadingList
+		if err := xml.Unmarshal(body, &list); err != nil {
+			return nil, fmt.Errorf("invalid XML: %w", err)
+		}
+		if len(list.MirrorMeterReading) == 0 {
+			return nil, errEmptyReadingList
+		}
+		return list.MirrorMeterReading, nil
+
+	default:
+		return nil, errors.New("invalid XML: expected a MirrorMeterReading or MirrorMeterReadingList root element")
+	}
+}
+
 // HandlePostMirrorMeterReading returns a handler for POST /mup/{id}/mr and,
 // mounted identically, POST /mup/{id}. Inverters POST metering data (power,
 // energy, etc.) to this endpoint.
@@ -572,7 +684,16 @@ func HandleMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint], lfdiPr
 // Ownership: the caller's LFDI must equal the parent MirrorUsagePoint's stored
 // DeviceLFDI, which is the LFDI of the client that created the mirror. See
 // authorizeMirrorOwner for the rule, the CSIP aggregator case, and the choice
-// of 403 over 404.
+// of 403 over 404. The gate runs before the body is read, so it covers a batch
+// exactly as it covers a single reading: an unauthorized caller's payload is
+// never parsed, and no member of its batch is ever stamped or stored.
+//
+// The body may be a single MirrorMeterReading or a MirrorMeterReadingList,
+// both of which Annex A.4.4.11 lists as request representations for POST on
+// /mup/{id1}. See decodeMirrorMeterReadings for how the two are told apart.
+// Because this one handler serves both mounted routes, /mup/{id}/mr accepts
+// the list form too; splitting the body grammar between the two routes would
+// reintroduce exactly the drift that sharing the handler exists to prevent.
 func HandlePostMirrorMeterReading(
 	mupStore store.ResourceStore[sep2.MirrorUsagePoint],
 	mmrStore *memory.ScopedStore[sep2.MirrorMeterReading],
@@ -599,24 +720,57 @@ func HandlePostMirrorMeterReading(
 			return
 		}
 
-		var mmr sep2.MirrorMeterReading
-		if err := xml.Unmarshal(body, &mmr); err != nil {
-			http.Error(w, "invalid XML: "+err.Error(), http.StatusBadRequest)
+		readings, err := decodeMirrorMeterReadings(body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		// Generate time-based ID for sorted ordering, and override the
-		// client-supplied href and lastUpdateTime. Shared with the inline
-		// MirrorUsagePoint.MirrorMeterReading path so both mint the same
-		// href shape.
-		id := stampMirrorMeterReading(&mmr, parentID, time.Now().UnixNano())
-
-		if err := mmrStore.Create(r.Context(), parentID, id, mmr); err != nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
+		// Generate time-based IDs for sorted ordering, and override the
+		// client-supplied href and lastUpdateTime on EVERY reading. Shared
+		// with the inline MirrorUsagePoint.MirrorMeterReading path so all
+		// three sites mint the same href shape.
+		//
+		// One clock read plus the index, not a fresh time.Now() per element:
+		// on a coarse monotonic clock repeated reads inside a loop can return
+		// the same nanosecond, which would mint colliding ids for distinct
+		// readings. The id is the store's ordering key, so distinct ids are
+		// required, and deriving lastUpdateTime from the same instant keeps a
+		// record's timestamp and its ordering key from disagreeing.
+		baseNanos := time.Now().UnixNano()
+		ids := make([]string, len(readings))
+		for i := range readings {
+			ids[i] = stampMirrorMeterReading(&readings[i], parentID, baseNanos+int64(i))
 		}
 
-		w.Header().Set("Location", mmr.Href)
+		// All-or-nothing: a batch either lands whole or lands not at all.
+		// A half-stored batch is a state no client can describe: the response
+		// says 500 while some readings are queryable and some are not, and
+		// nothing in the reply says which. The store exposes no transaction,
+		// so this is a compensating rollback rather than an atomic write:
+		// every reading THIS request created is deleted before the error is
+		// returned. A rollback delete that itself fails is logged rather than
+		// swallowed, because at that point the invariant is genuinely broken
+		// and the operator needs to know.
+		for i := range readings {
+			if err := mmrStore.Create(r.Context(), parentID, ids[i], readings[i]); err != nil {
+				log.Printf("mup: store reading %d of %d under parent=%q: %v", i+1, len(readings), parentID, err)
+				for _, done := range ids[:i] {
+					if delErr := mmrStore.Delete(r.Context(), parentID, done); delErr != nil {
+						log.Printf("mup: rollback of reading id=%q under parent=%q failed, batch is partially stored: %v", done, parentID, delErr)
+					}
+				}
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+		}
+
+		// readings is never empty: the single form yields exactly one and the
+		// list form rejects an empty list, so Location always names a resource
+		// this request actually created. For a batch it names the first, which
+		// is both deterministic and the earliest in the id ordering the store
+		// sorts by.
+		w.Header().Set("Location", readings[0].Href)
 		w.WriteHeader(http.StatusCreated)
 	}
 }
