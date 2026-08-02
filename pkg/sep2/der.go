@@ -408,11 +408,30 @@ type OperationalModeStatusType struct {
 	Value    uint8 `xml:"value"`
 }
 
+// StateOfChargeStatusType reports state of charge. Its value element is
+// PerCent in sep.xsd (sep.xsd:4566-4582, sep.xsd:5945-5952), a UInt16 in
+// hundredths of a percent spanning 0 to 10000, where 10000 is 100%. That
+// is why Value is uint16 rather than the uint8 the sibling
+// InverterStatusType and OperationalModeStatusType value elements use.
+type StateOfChargeStatusType struct {
+	DateTime int64  `xml:"dateTime"`
+	Value    uint16 `xml:"value"`
+}
+
+// StorageModeStatusType reports storage mode: 0 charging, 1 discharging,
+// 2 holding, all other values reserved (sep.xsd:4583-4602). Its value
+// element is UInt8.
+type StorageModeStatusType struct {
+	DateTime int64 `xml:"dateTime"`
+	Value    uint8 `xml:"value"`
+}
+
 // DERStatus reports current DER operational status.
 //
 // Field order matches the sep.xsd DERStatus sequence (subset present
 // here): alarmStatus, genConnectStatus, inverterStatus,
-// operationalModeStatus, readingTime, stateOfChargeStatus.
+// operationalModeStatus, readingTime, stateOfChargeStatus,
+// storageModeStatus.
 type DERStatus struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns DERStatus"`
 	SubscribableResource
@@ -421,7 +440,8 @@ type DERStatus struct {
 	InverterStatus        *InverterStatusType        `xml:"inverterStatus,omitempty"`
 	OperationalModeStatus *OperationalModeStatusType `xml:"operationalModeStatus,omitempty"`
 	ReadingTime           int64                      `xml:"readingTime,omitempty"`
-	StateOfChargeStatus   *uint16                    `xml:"stateOfChargeStatus,omitempty"`
+	StateOfChargeStatus   *StateOfChargeStatusType   `xml:"stateOfChargeStatus,omitempty"`
+	StorageModeStatus     *StorageModeStatusType     `xml:"storageModeStatus,omitempty"`
 }
 
 // Copy returns an independent copy.
@@ -446,6 +466,10 @@ func (d DERStatus) Copy() DERStatus {
 	if d.StateOfChargeStatus != nil {
 		v := *d.StateOfChargeStatus
 		c.StateOfChargeStatus = &v
+	}
+	if d.StorageModeStatus != nil {
+		v := *d.StorageModeStatus
+		c.StorageModeStatus = &v
 	}
 	return c
 }

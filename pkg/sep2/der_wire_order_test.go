@@ -95,14 +95,14 @@ func TestDERSettingsWireOrder(t *testing.T) {
 // after readingTime, instead of first.
 func TestDERStatusWireOrder(t *testing.T) {
 	alarm := sep2.HexBinary32(0x01)
-	soc := uint16(85)
 	status := sep2.DERStatus{
 		AlarmStatus:           &alarm,
 		GenConnectStatus:      &sep2.ConnectStatusType{Value: 1},
 		InverterStatus:        &sep2.InverterStatusType{Value: 2},
 		OperationalModeStatus: &sep2.OperationalModeStatusType{Value: 3},
 		ReadingTime:           1604963587,
-		StateOfChargeStatus:   &soc,
+		StateOfChargeStatus:   &sep2.StateOfChargeStatusType{DateTime: 1604963587, Value: 8500},
+		StorageModeStatus:     &sep2.StorageModeStatusType{DateTime: 1604963587, Value: 1},
 	}
 
 	data, err := xml.Marshal(&status)
@@ -118,6 +118,7 @@ func TestDERStatusWireOrder(t *testing.T) {
 		"<operationalModeStatus>",
 		"<readingTime>",
 		"<stateOfChargeStatus>",
+		"<storageModeStatus>",
 	})
 }
 

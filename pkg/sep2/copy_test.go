@@ -202,19 +202,31 @@ func TestDERAvailabilityCopy(t *testing.T) {
 
 func TestDERStatusCopy(t *testing.T) {
 	alarm := sep2.HexBinary32(0x01)
-	soc := uint16(85)
 	status := sep2.DERStatus{
 		AlarmStatus:           &alarm,
-		StateOfChargeStatus:   &soc,
+		StateOfChargeStatus:   &sep2.StateOfChargeStatusType{DateTime: 1604963587, Value: 8500},
+		StorageModeStatus:     &sep2.StorageModeStatusType{DateTime: 1604963587, Value: 1},
 		GenConnectStatus:      &sep2.ConnectStatusType{Value: 1},
 		InverterStatus:        &sep2.InverterStatusType{Value: 2},
 		OperationalModeStatus: &sep2.OperationalModeStatusType{Value: 3},
 	}
 	copied := status.Copy()
 	*copied.AlarmStatus = 0
+	copied.StateOfChargeStatus.Value = 0
+	copied.StorageModeStatus.Value = 2
 
 	if *status.AlarmStatus != 0x01 {
 		t.Error("original mutated")
+	}
+	// The status types are pointers to structs, so a shallow copy would
+	// alias them and let a mutation through the copy reach the original.
+	if status.StateOfChargeStatus.Value != 8500 {
+		t.Errorf("original stateOfChargeStatus mutated: value = %d, want 8500",
+			status.StateOfChargeStatus.Value)
+	}
+	if status.StorageModeStatus.Value != 1 {
+		t.Errorf("original storageModeStatus mutated: value = %d, want 1",
+			status.StorageModeStatus.Value)
 	}
 }
 
