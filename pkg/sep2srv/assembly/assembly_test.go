@@ -574,13 +574,17 @@ func TestAssembly_PostMirrorUsagePointReading_ViaLocationHeader(t *testing.T) {
 		t.Fatalf("POST %s status = %d, want 201; body=%s", loc, postResp.StatusCode, postBody)
 	}
 
+	// The parent id is server-assigned and derived from the creating device's
+	// identity together with its mRID (metering.MirrorStoreID), so the client
+	// addresses it by the Location it was handed, never by its own mRID.
+	parentID := strings.TrimPrefix(loc, "/mup/")
 	mmrLoc := postResp.Header.Get("Location")
-	const prefix = "/mup/INV001/mr/"
+	prefix := "/mup/" + parentID + "/mr/"
 	if !strings.HasPrefix(mmrLoc, prefix) {
 		t.Fatalf("MirrorMeterReading Location = %q, want prefix %q", mmrLoc, prefix)
 	}
 	id := strings.TrimPrefix(mmrLoc, prefix)
-	stored, err := stores.MirrorMeterReadings.Get(context.Background(), "INV001", id)
+	stored, err := stores.MirrorMeterReadings.Get(context.Background(), parentID, id)
 	if err != nil {
 		t.Fatalf("get stored MirrorMeterReading: %v", err)
 	}
@@ -590,7 +594,7 @@ func TestAssembly_PostMirrorUsagePointReading_ViaLocationHeader(t *testing.T) {
 
 	// deviceLFDI override invariant: unaffected by this route, cert-derived
 	// identity is stamped only at MirrorUsagePoint creation.
-	parent, err := stores.MirrorUsagePoints.Get(context.Background(), "INV001")
+	parent, err := stores.MirrorUsagePoints.Get(context.Background(), parentID)
 	if err != nil {
 		t.Fatalf("get stored MirrorUsagePoint: %v", err)
 	}
@@ -599,17 +603,17 @@ func TestAssembly_PostMirrorUsagePointReading_ViaLocationHeader(t *testing.T) {
 	}
 
 	// Rule (c) regression check against the real router.
-	getResp, err := http.Get(srv.URL + "/mup/INV001")
+	getResp, err := http.Get(srv.URL + loc)
 	if err != nil {
-		t.Fatalf("GET /mup/INV001: %v", err)
+		t.Fatalf("GET %s: %v", loc, err)
 	}
 	getBody, _ := io.ReadAll(getResp.Body)
 	getResp.Body.Close()
 	if getResp.StatusCode != http.StatusOK {
-		t.Fatalf("GET /mup/INV001 status = %d, want 200", getResp.StatusCode)
+		t.Fatalf("GET %s status = %d, want 200", loc, getResp.StatusCode)
 	}
 	if strings.Contains(string(getBody), "MirrorMeterReading") {
-		t.Errorf("GET /mup/INV001 served a MirrorMeterReading element, violates rule (c); body=%s", getBody)
+		t.Errorf("GET %s served a MirrorMeterReading element, violates rule (c); body=%s", loc, getBody)
 	}
 }
 
@@ -662,6 +666,12 @@ func TestAssembly_MirrorOwnershipIsWiredOnEveryMupRoute(t *testing.T) {
 	if createResp.StatusCode != http.StatusCreated {
 		t.Fatalf("POST /mup status = %d, want 201", createResp.StatusCode)
 	}
+	// The mirror's URL is server-assigned; the owner learns it from Location.
+	ownedPath := createResp.Header.Get("Location")
+	if ownedPath == "" {
+		t.Fatal("POST /mup: no Location header")
+	}
+	ownedID := strings.TrimPrefix(ownedPath, "/mup/")
 
 	val := int64(99)
 	uom := sep2.UomWatts
@@ -674,7 +684,7 @@ func TestAssembly_MirrorOwnershipIsWiredOnEveryMupRoute(t *testing.T) {
 		t.Fatalf("marshal MirrorMeterReading: %v", err)
 	}
 
-	for _, path := range []string{"/mup/OWNED", "/mup/OWNED/mr"} {
+	for _, path := range []string{ownedPath, ownedPath + "/mr"} {
 		resp, err := http.Post(otherSrv.URL+path, "application/xml", strings.NewReader(string(mmrBody)))
 		if err != nil {
 			t.Fatalf("POST %s: %v", path, err)
@@ -689,21 +699,21 @@ func TestAssembly_MirrorOwnershipIsWiredOnEveryMupRoute(t *testing.T) {
 		}
 	}
 
-	getResp, err := http.Get(otherSrv.URL + "/mup/OWNED")
+	getResp, err := http.Get(otherSrv.URL + ownedPath)
 	if err != nil {
-		t.Fatalf("GET /mup/OWNED: %v", err)
+		t.Fatalf("GET %s: %v", ownedPath, err)
 	}
 	getBody, _ := io.ReadAll(getResp.Body)
 	getResp.Body.Close()
 	if getResp.StatusCode != http.StatusForbidden {
-		t.Errorf("GET /mup/OWNED as a non-creator: status = %d, want 403; body = %s", getResp.StatusCode, getBody)
+		t.Errorf("GET %s as a non-creator: status = %d, want 403; body = %s", ownedPath, getResp.StatusCode, getBody)
 	}
 	if strings.Contains(string(getBody), "<") || strings.Contains(string(getBody), testLFDI) {
 		t.Errorf("GET denial body leaks content: %s", getBody)
 	}
 
 	// Nothing was persisted by any of the denied writes.
-	count, err := stores.MirrorMeterReadings.Count(context.Background(), "OWNED")
+	count, err := stores.MirrorMeterReadings.Count(context.Background(), ownedID)
 	if err != nil {
 		t.Fatalf("count readings: %v", err)
 	}
@@ -712,22 +722,22 @@ func TestAssembly_MirrorOwnershipIsWiredOnEveryMupRoute(t *testing.T) {
 	}
 
 	// The creator is unaffected: same stores, same routes, 200 and 201.
-	okResp, err := http.Post(ownerSrv.URL+"/mup/OWNED", "application/xml", strings.NewReader(string(mmrBody)))
+	okResp, err := http.Post(ownerSrv.URL+ownedPath, "application/xml", strings.NewReader(string(mmrBody)))
 	if err != nil {
-		t.Fatalf("owner POST /mup/OWNED: %v", err)
+		t.Fatalf("owner POST %s: %v", ownedPath, err)
 	}
 	okResp.Body.Close()
 	if okResp.StatusCode != http.StatusCreated {
-		t.Errorf("owner POST /mup/OWNED status = %d, want 201", okResp.StatusCode)
+		t.Errorf("owner POST %s status = %d, want 201", ownedPath, okResp.StatusCode)
 	}
-	ownerGet, err := http.Get(ownerSrv.URL + "/mup/OWNED")
+	ownerGet, err := http.Get(ownerSrv.URL + ownedPath)
 	if err != nil {
-		t.Fatalf("owner GET /mup/OWNED: %v", err)
+		t.Fatalf("owner GET %s: %v", ownedPath, err)
 	}
 	ownerGetBody, _ := io.ReadAll(ownerGet.Body)
 	ownerGet.Body.Close()
 	if ownerGet.StatusCode != http.StatusOK {
-		t.Errorf("owner GET /mup/OWNED status = %d, want 200", ownerGet.StatusCode)
+		t.Errorf("owner GET %s status = %d, want 200", ownedPath, ownerGet.StatusCode)
 	}
 	// Rule (c) still holds for the owner through the real router.
 	if strings.Contains(string(ownerGetBody), "MirrorMeterReading") {
@@ -750,6 +760,135 @@ func TestAssembly_MirrorOwnershipIsWiredOnEveryMupRoute(t *testing.T) {
 	}
 	if !strings.Contains(string(listBody), "<mRID>OWNED</mRID>") {
 		t.Errorf("GET /mup omitted a mirror the caller did not create; the list was scoped, which this change does not do. body = %s", listBody)
+	}
+}
+
+// TestAssembly_SameMRIDFromTwoDevicesStaysIsolated reproduces the field
+// condition through the real router: nine devices holding nine distinct
+// certificates POSTed only three distinct MirrorUsagePoint mRIDs between them,
+// because nothing coordinates a client-chosen mRID across devices. Keyed
+// globally on that mRID, the second device to use one was answered 200 with a
+// Location pointing at the FIRST device's mirror, and would then have posted
+// its readings into another device's resource.
+//
+// Two devices, one shared mRID, one shared set of stores: each must end up
+// with its own mirror, its own URL, and no access to the other's.
+func TestAssembly_SameMRIDFromTwoDevicesStaysIsolated(t *testing.T) {
+	t.Parallel()
+
+	const otherLFDI = "FFEEDDCCBBAA998877665544332211009988776655443322"
+	const sharedMRID = "0123456789ABCDEF0123456789ABCDEF"
+
+	stores := testStores()
+
+	deviceAHandler, _ := assembly.BuildProtocolRouter(
+		assembly.RouterConfig{}, stores, testAuthPolicy(), "serverSFDI", "serverLFDI", nil,
+	)
+	deviceASrv := httptest.NewServer(deviceAHandler)
+	defer deviceASrv.Close()
+
+	bPolicy := testAuthPolicy()
+	bPolicy.Identity = func(_ context.Context) (lfdi, sfdi string, ok bool) {
+		return otherLFDI, testSFDI, true
+	}
+	deviceBHandler, _ := assembly.BuildProtocolRouter(
+		assembly.RouterConfig{}, stores, bPolicy, "serverSFDI", "serverLFDI", nil,
+	)
+	deviceBSrv := httptest.NewServer(deviceBHandler)
+	defer deviceBSrv.Close()
+
+	body, err := xml.Marshal(&sep2.MirrorUsagePoint{MRID: sharedMRID})
+	if err != nil {
+		t.Fatalf("marshal MirrorUsagePoint: %v", err)
+	}
+
+	create := func(srv *httptest.Server, who string) string {
+		t.Helper()
+		resp, err := http.Post(srv.URL+"/mup", "application/xml", strings.NewReader(string(body)))
+		if err != nil {
+			t.Fatalf("%s POST /mup: %v", who, err)
+		}
+		respBody, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("%s POST /mup: status = %d, want 201 (its own mirror); body = %s", who, resp.StatusCode, respBody)
+		}
+		loc := resp.Header.Get("Location")
+		if loc == "" {
+			t.Fatalf("%s POST /mup: empty Location", who)
+		}
+		if len(loc) >= 128 {
+			t.Errorf("%s POST /mup: Location = %q has length %d, want < 128", who, loc, len(loc))
+		}
+		return loc
+	}
+
+	locA := create(deviceASrv, "device A")
+	locB := create(deviceBSrv, "device B")
+
+	if locA == locB {
+		t.Fatalf("device B was handed device A's mirror: both Locations are %q", locA)
+	}
+
+	// Each stored record carries its own creator's LFDI, cert-derived.
+	for _, tc := range []struct{ loc, owner, who string }{
+		{locA, testLFDI, "device A"},
+		{locB, otherLFDI, "device B"},
+	} {
+		stored, err := stores.MirrorUsagePoints.Get(context.Background(), strings.TrimPrefix(tc.loc, "/mup/"))
+		if err != nil {
+			t.Fatalf("%s: get stored mirror at %q: %v", tc.who, tc.loc, err)
+		}
+		if stored.DeviceLFDI != tc.owner {
+			t.Errorf("%s: stored DeviceLFDI = %q, want %q", tc.who, stored.DeviceLFDI, tc.owner)
+		}
+		if stored.MRID != sharedMRID {
+			t.Errorf("%s: stored mRID = %q, want %q preserved", tc.who, stored.MRID, sharedMRID)
+		}
+		if stored.Href != tc.loc {
+			t.Errorf("%s: stored Href = %q, want %q (must agree with Location)", tc.who, stored.Href, tc.loc)
+		}
+	}
+
+	// The ownership gate still holds across the pair: device A may not write
+	// or read device B's mirror even though they share an mRID.
+	uom := sep2.UomWatts
+	val := int64(7)
+	mmrBody, err := xml.Marshal(&sep2.MirrorMeterReading{
+		MRID:        "FORGED",
+		ReadingType: &sep2.ReadingType{Uom: &uom},
+		Reading:     &sep2.Reading{Value: &val},
+	})
+	if err != nil {
+		t.Fatalf("marshal MirrorMeterReading: %v", err)
+	}
+	for _, path := range []string{locB, locB + "/mr"} {
+		resp, err := http.Post(deviceASrv.URL+path, "application/xml", strings.NewReader(string(mmrBody)))
+		if err != nil {
+			t.Fatalf("device A POST %s: %v", path, err)
+		}
+		respBody, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("device A POST %s (device B's mirror): status = %d, want 403; body = %s", path, resp.StatusCode, respBody)
+		}
+	}
+	getResp, err := http.Get(deviceASrv.URL + locB)
+	if err != nil {
+		t.Fatalf("device A GET %s: %v", locB, err)
+	}
+	getBody, _ := io.ReadAll(getResp.Body)
+	getResp.Body.Close()
+	if getResp.StatusCode != http.StatusForbidden {
+		t.Errorf("device A GET %s (device B's mirror): status = %d, want 403; body = %s", locB, getResp.StatusCode, getBody)
+	}
+
+	count, err := stores.MirrorMeterReadings.Count(context.Background(), strings.TrimPrefix(locB, "/mup/"))
+	if err != nil {
+		t.Fatalf("count readings under device B's mirror: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("readings stored under device B's mirror by device A = %d, want 0", count)
 	}
 }
 
