@@ -2,12 +2,16 @@ package metering
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
@@ -184,11 +188,93 @@ func BuildMirrorUsagePointList(href string, result store.ListResult[sep2.MirrorU
 	}
 }
 
+// mirrorIDBytes is the length in bytes of the derived MirrorUsagePoint id,
+// rendered as 2*mirrorIDBytes uppercase hex characters. 16 bytes matches the
+// width of a sep2 hexBinary128 mRID, so a derived id is indistinguishable in
+// shape from the identifiers already carried on this resource, and 128 bits of
+// a SHA-256 digest keeps accidental collision between two owners' ids beyond
+// any realistic device population.
+const mirrorIDBytes = 16
+
+// MirrorStoreID derives the server-assigned MirrorUsagePoint id from the
+// identity of the client that creates it and the mRID that client supplied.
+//
+// MirrorUsagePoint identity is per owning device, not global. The mRID on a
+// POSTed MirrorUsagePoint is client-supplied and nothing coordinates it across
+// devices: observed in the field, nine devices holding nine distinct
+// certificates POSTed only three distinct mRIDs between them. Keying the store
+// on that mRID alone made the second device to use a given mRID collide with
+// the first device's record, and the create path answered the collision with
+// 200 plus a Location pointing at the FIRST device's MirrorUsagePoint. The
+// second device would then post its readings into another device's resource.
+// That is an ownership-isolation defect independent of the rule (e) gate: the
+// gate compares a caller against a stored DeviceLFDI, and on the create path
+// the collision happens before any such comparison is reachable.
+//
+// Deriving rather than scoping the store is deliberate. /mup carries no owner
+// path segment, so a URL must identify exactly one resource server-wide:
+//
+//   - GET /mup/{id} resolves from the path alone. If two owners shared a URL,
+//     the same URL would mean different resources to different callers.
+//   - The MirrorMeterReading ScopedStore is keyed by the {id} path segment, so
+//     two owners sharing an id would share a readings namespace, which is the
+//     original defect moved one level down rather than fixed.
+//   - GET /mup is a deliberately server-wide list over one flat store
+//     (section 6.2.3.1), which a per-owner ScopedStore cannot serve: it has no
+//     cross-parent iteration.
+//
+// Hashing rather than concatenating owner and mRID also bounds the URI:
+//
+//   - The output is always 32 characters, so Location is 37 characters
+//     whatever the client sends. A client-supplied mRID is unvalidated in
+//     length and charset (sep2.MirrorUsagePoint.MRID is a plain string), so
+//     using it verbatim let a client size and shape the URI we hand back: a
+//     4000-character mRID produced a 4005-character Location, and an mRID of
+//     "../../etc/passwd" produced a Location with path traversal in it. The
+//     EPRI reference client parses Location into a 127-byte buffer with no
+//     length guard and dereferences the result unguarded, so an over-long or
+//     unparseable Location crashes it.
+//   - The owner LFDI stays out of the URL. GET /mup hands every mirror's href
+//     to every authenticated client, so a concatenated id would publish which
+//     certificate created which mirror in the path itself.
+//
+// The digest input is length-prefixed rather than separator-joined so no pair
+// of (owner, mRID) values can be framed two ways into the same digest,
+// whatever characters either string contains.
+//
+// The derivation is deterministic, which is what preserves the idempotent
+// re-POST behavior: the same device POSTing the same mRID lands on the same
+// id, takes the ErrAlreadyExists branch, and is served its own record.
+func MirrorStoreID(ownerLFDI, clientMRID string) string {
+	h := sha256.New()
+	_, _ = io.WriteString(h, strconv.Itoa(len(ownerLFDI)))
+	_, _ = io.WriteString(h, ":")
+	_, _ = io.WriteString(h, ownerLFDI)
+	_, _ = io.WriteString(h, strconv.Itoa(len(clientMRID)))
+	_, _ = io.WriteString(h, ":")
+	_, _ = io.WriteString(h, clientMRID)
+	sum := h.Sum(nil)
+	return strings.ToUpper(hex.EncodeToString(sum[:mirrorIDBytes]))
+}
+
+// MirrorHref returns the canonical MirrorUsagePoint href for a store id.
+// One function mints the href so the stored Resource.Href, the Location header
+// on 201, and the Location header on the ErrAlreadyExists branch cannot drift
+// into three different strings for one resource.
+func MirrorHref(id string) string {
+	return "/mup/" + id
+}
+
 // HandleCreateMirrorUsagePoint returns a handler for POST /mup.
 // Inverters create MirrorUsagePoints to register for metering data reporting.
 // lfdiProvider extracts the client LFDI from the request context; the server
 // passes a closure over auth.GetIdentity so that the auth package does not
 // become a dependency of core.
+//
+// The created resource's id is derived from the caller's certificate identity
+// and its mRID together (see MirrorStoreID), so two devices POSTing the same
+// mRID each get their own MirrorUsagePoint and neither is ever handed the
+// other's Location.
 func HandleCreateMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint], lfdiProvider LFDIProvider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -197,7 +283,10 @@ func HandleCreateMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint], 
 		}
 
 		lfdi, ok := lfdiProvider(r.Context())
-		if !ok {
+		if !ok || lfdi == "" {
+			// An empty-but-present identity would key every such caller onto
+			// one derived id, collapsing them back into the shared-record
+			// defect this handler exists to prevent. Fail closed instead.
 			http.Error(w, "identity required", http.StatusForbidden)
 			return
 		}
@@ -217,12 +306,17 @@ func HandleCreateMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint], 
 		// Set DeviceLFDI from cert (override client-supplied value)
 		mup.DeviceLFDI = lfdi
 
-		// Generate ID from MRID or timestamp
-		id := mup.MRID
-		if id == "" {
-			id = fmt.Sprintf("mup-%d", time.Now().UnixNano())
+		// The resource identity is (creating device, client mRID). An absent
+		// mRID names no resource the client can re-address, so each such POST
+		// mints a fresh one: a per-request token stands in for the mRID, which
+		// keeps the derivation total without making every mRID-less POST from
+		// one device collapse onto a single record.
+		clientKey := mup.MRID
+		if clientKey == "" {
+			clientKey = fmt.Sprintf("mup-%d", time.Now().UnixNano())
 		}
-		mup.Href = "/mup/" + id
+		id := MirrorStoreID(lfdi, clientKey)
+		mup.Href = MirrorHref(id)
 
 		// Stamp the server-owned fields on every inline reading, matching
 		// what HandlePostMirrorMeterReading below does for the out-of-band
@@ -249,16 +343,39 @@ func HandleCreateMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint], 
 
 		if err := s.Create(r.Context(), id, mup); err != nil {
 			if errors.Is(err, store.ErrAlreadyExists) {
-				// Race condition: another goroutine registered this MUP.
-				// If the record was deleted between Create and Get, return 5xx
-				// rather than a zero-value 200 (silent data loss).
+				// The caller already holds a mirror under this mRID, or
+				// another goroutine created it for the same caller between
+				// this Create and the Get below. If the record was deleted in
+				// that window, return 5xx rather than a zero-value 200
+				// (silent data loss).
 				existing, getErr := s.Get(r.Context(), id)
 				if getErr != nil {
 					log.Printf("mup: race-loss after ErrAlreadyExists for id=%q: %v", id, getErr)
 					http.Error(w, "registration race", http.StatusInternalServerError)
 					return
 				}
-				w.Header().Set("Location", existing.Href)
+
+				// Ownership is re-checked rather than inferred from the
+				// derivation. Per-owner keying already means only this
+				// caller's own record can occupy this id, but the store is
+				// also writable by a consumer that seeds it directly, and
+				// handing a caller a resource it does not own is precisely
+				// the defect being fixed. Two independent barriers, not one.
+				if existing.DeviceLFDI == "" || existing.DeviceLFDI != lfdi {
+					log.Printf("mup: create collided with a record owned by another device (id=%q)", id)
+					http.Error(w, "forbidden", http.StatusForbidden)
+					return
+				}
+
+				// Location and the served href are both minted from the id
+				// just resolved, never echoed from storage. A record seeded
+				// directly into the store may carry an empty or foreign Href,
+				// and an empty Location is not merely wrong: the EPRI client
+				// takes strlen of it with no guard and dereferences the NULL
+				// that its failed URI parse returns.
+				href := MirrorHref(id)
+				existing.Href = href
+				w.Header().Set("Location", href)
 				encoding.WriteXML(w, http.StatusOK, &existing)
 				return
 			}
