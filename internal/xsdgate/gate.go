@@ -2,6 +2,7 @@ package xsdgate
 
 import (
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"reflect"
 	"sync"
@@ -16,26 +17,58 @@ var (
 	loadErr  error
 )
 
-// Load parses the vendored normative IEEE 2030.5 schema, once per process.
+// Load reads and parses the normative IEEE 2030.5 schema, once per process.
+//
+// The schema is supplied by the operator rather than distributed with this
+// project; see package schema and the NOTICE file. When no copy is
+// available the error wraps schema.ErrNotFound.
 //
 // Parsing the whole 6922-line schema takes a few milliseconds, so memoising
 // keeps the gate cheap enough to apply to every marshalling test rather than
 // only to a curated few.
 func Load() (*Schema, error) {
 	loadOnce.Do(func() {
-		loaded, loadErr = ParseSchema(schema.SEP2)
+		data, _, err := schema.Load()
+		if err != nil {
+			loadErr = err
+			return
+		}
+		loaded, loadErr = ParseSchema(data)
 	})
 	return loaded, loadErr
 }
 
-// MustLoad is Load for tests, failing the test rather than returning an error.
+// MustLoad is Load for tests. It SKIPS the calling test when no schema copy
+// is available, so a contributor without an IEEE copy runs the suite green,
+// and it FAILS for every other error, so a wrong, unreadable, or unparseable
+// schema is never mistaken for a pass.
+//
+// Setting schema.EnvRequired turns the skip into a failure. That is the
+// switch CI flips once it supplies a schema: without it, a rotated secret or
+// a typo in the path variable would skip the whole gate and still report
+// green, which is the exact failure mode the gate exists to prevent.
 func MustLoad(t *testing.T) *Schema {
 	t.Helper()
-	s, err := Load()
-	if err != nil {
-		t.Fatalf("load vendored sep.xsd: %v", err)
+
+	// Checked before the load result so a malformed SEP2_SCHEMA_REQUIRED is
+	// reported even on a run where a schema happens to be present.
+	required, rerr := schema.Required()
+	if rerr != nil {
+		t.Fatalf("schema gate configuration: %v", rerr)
 	}
-	return s
+
+	s, err := Load()
+	switch {
+	case err == nil:
+		return s
+	case errors.Is(err, schema.ErrNotFound) && !required:
+		t.Skipf("schema-gated test skipped: %v (set %s=1 to make this a failure)", err, schema.EnvRequired)
+	case errors.Is(err, schema.ErrNotFound):
+		t.Fatalf("%s is set but no schema is available: %v", schema.EnvRequired, err)
+	default:
+		t.Fatalf("load IEEE 2030.5 schema: %v", err)
+	}
+	return nil
 }
 
 // AssertValid marshals v, validates the result against the schema type
