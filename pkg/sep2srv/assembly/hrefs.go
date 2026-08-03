@@ -211,7 +211,18 @@ func MintableHrefs() []MintableHref {
 		{"/edev/{}/frq/{}", http.MethodGet, "handlers/flow_reservation.HandlePostFlowReservationRequest", "the Location header returned by POST /edev/{}/frq"},
 		{"/edev/{}/frp/{}", http.MethodGet, "handlers/flow_reservation.HandlePostFlowReservationRequest", "the FlowReservationResponse href stamped alongside the request, which the client polls for the server's decision"},
 		{"/msg/{}/tm/{}", http.MethodGet, "handlers/messaging.HandlePostTextMessage", "the Location header returned by POST /msg/{}/tm"},
-		{"/rsps/{}/rsp/{}", http.MethodGet, "handlers/flow_reservation.HandlePostResponse", "the Location header returned by POST /rsps/{}/rsp"},
+		{"/rsps/{}/rsp/{}", http.MethodGet, "handlers/response.MemberHref", "the Location header returned by POST /rsps/{}/rsp, and the Response's own self href"},
+
+		// The Response function set. The POST entry is not a follow of a
+		// Location header like the block above: it is the follow of an EVENT's
+		// replyTo, which handlers/der.StampResponseRequest puts on every
+		// DERControl this server serves (IEEECORE-067). A replyTo that does
+		// not accept a POST is the same defect one function set over: the
+		// client would have been told to acknowledge an event at a URI that
+		// refuses the acknowledgement.
+		{"/rsps/{}", http.MethodGet, "handlers/response.SetHref", "the ResponseSet self href, and the member href of every set in GET /rsps"},
+		{"/rsps/{}/rsp", http.MethodGet, "handlers/response.ListHref", "ResponseSet.ResponseListLink: a client reads back the responses the server recorded"},
+		{"/rsps/{}/rsp", http.MethodPost, "handlers/response.ListHref", "the replyTo stamped on every served DERControl; a conforming client POSTs its Response here"},
 
 		// Metering mirrors. POST /mup/{} is the EPRI reference client's
 		// literal reading of section 10.11.3 rule (d): it posts the follow-up
@@ -243,7 +254,6 @@ var knownUnroutedHrefs = map[string]string{
 	"GET /edev/{}/frq/{}": "IEEECORE-065: POST /edev/{id}/frq returns this Location and nothing serves it",
 	"GET /edev/{}/frp/{}": "IEEECORE-065: the FlowReservationResponse href a client polls for the server's decision is not served",
 	"GET /msg/{}/tm/{}":   "IEEECORE-065: POST /msg/{msgId}/tm returns this Location and nothing serves it",
-	"GET /rsps/{}/rsp/{}": "IEEECORE-065: POST /rsps/{rspsId}/rsp returns this Location and nothing serves it",
 	"GET /mup/{}/mr/{}":   "IEEECORE-065: POST /mup/{id}/mr and POST /mup/{id} both return this Location and nothing serves it",
 }
 

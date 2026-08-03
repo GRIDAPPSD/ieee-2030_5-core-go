@@ -60,6 +60,7 @@ import (
 	coremetering "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/handlers/metering"
 	corepowerstatus "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/handlers/power_status"
 	corereg "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/handlers/registration"
+	coreresponse "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/handlers/response"
 	coresdev "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/handlers/sdev"
 	coresep2time "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/handlers/sep2time"
 	coresingleton "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/handlers/singleton"
@@ -509,7 +510,7 @@ func registerDERRoutes(mux routeRegistrar, stores *Stores) {
 	// reachable only under the device path it was stored beneath. Read-only:
 	// the DOWN path writes controls through the store, never over HTTP.
 	mux.HandleFunc("GET /edev/{id}/fsa/{fsaId}/derp/{derpId}/derc/{dercId}",
-		scopedResourceHandlerDeep[sep2.DERControl](stores.DERControls, "dercId"))
+		scopedResourceHandlerDeep[sep2.DERControl](stores.DERControls, "dercId", coreder.StampResponseRequest))
 
 	// DefaultDERControl
 	mux.HandleFunc("GET /edev/{id}/fsa/{fsaId}/derp/{derpId}/dderc",
@@ -619,9 +620,17 @@ func deepScopeKey(r *http.Request) string {
 //   - A store error other than not-found is a 500, because it means the store
 //     failed rather than that the resource is absent, and collapsing the two
 //     would report a broken server as a missing resource.
+//
+// stamp, when non-nil, is applied to the copy about to be served. It exists so
+// a resource kind whose LIST is stamped on the way out (DERControl's replyTo
+// and responseRequired, IEEECORE-067) is stamped identically here: the two
+// routes serve the same resource, and a field present on one and absent on the
+// other is a conformance trap, which TestSingleDERControlBytesMatchListMember
+// exists to catch.
 func scopedResourceHandlerDeep[T store.Copier[T]](
 	scopedStore *memory.ScopedStore[T],
 	idParam string,
+	stamp func(*T),
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -637,6 +646,10 @@ func scopedResourceHandlerDeep[T store.Copier[T]](
 			}
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
+		}
+
+		if stamp != nil {
+			stamp(&resource)
 		}
 
 		encoding.WriteXML(w, http.StatusOK, &resource)
@@ -730,9 +743,22 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 	}
 
 	if stores.ResponseSets != nil {
+		// Seed the default ResponseSet before the routes that serve it.
+		//
+		// Every DERControl this server emits carries a replyTo pointing into
+		// this set (IEEECORE-067), so an unseeded set would leave that href
+		// dangling: the POST route would answer, but GET /rsps would list
+		// nothing and GET /rsps/{id} would 404, and a client cannot tell an
+		// empty channel from a server that invented one. Seeding is
+		// idempotent and yields to a set a consumer created under the same id.
+		if err := coreresponse.SeedDefaultSet(context.Background(), stores.ResponseSets); err != nil {
+			log.Printf("assembly: seeding the default ResponseSet: %v; replyTo hrefs will not resolve", err)
+		}
+
 		mux.HandleFunc("GET /rsps", corelisthandler.ListHandler[sep2.ResponseSet, sep2.ResponseSetList](
 			stores.ResponseSets, coreflowrsv.BuildResponseSetList, 900,
 		))
+		mux.HandleFunc("GET /rsps/{rspsId}", coreresponse.HandleResponseSet(stores.ResponseSets))
 		mux.HandleFunc("GET /rsps/{rspsId}/rsp", func(w http.ResponseWriter, r *http.Request) {
 			rspsID := r.PathValue("rspsId")
 			inner := stores.Responses.ForParent(rspsID)
@@ -741,6 +767,7 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 			)(w, r)
 		})
 		mux.HandleFunc("POST /rsps/{rspsId}/rsp", coreflowrsv.HandlePostResponse(stores.Responses))
+		mux.HandleFunc("GET /rsps/{rspsId}/rsp/{rspId}", coreresponse.HandleResponse(stores.Responses))
 	}
 }
 
