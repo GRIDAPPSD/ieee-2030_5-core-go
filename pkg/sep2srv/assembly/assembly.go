@@ -503,7 +503,7 @@ func registerDERRoutes(mux routeRegistrar, stores *Stores) {
 	// to a 405 carrying an Allow header derived from itemMethods, which section
 	// 4.3 c) 4) requires and an unmounted path could not produce: it would 404.
 	derInstance := scopedResourceHandler[sep2.DER](
-		stores.DERs, "derId", itemMethods{Put: true}, coreder.StampDERInstance(derLinks),
+		stores.DERs, "id", "derId", itemMethods{Put: true}, coreder.StampDERInstance(derLinks),
 	)
 	mux.HandleFunc("GET /edev/{id}/der/{derId}", derInstance)
 	mux.HandleFunc("PUT /edev/{id}/der/{derId}", derInstance)
@@ -534,7 +534,7 @@ func registerDERRoutes(mux routeRegistrar, stores *Stores) {
 	// what says so, and it renders exactly the Allow this route answered with
 	// before the method set became declarative: GET, HEAD.
 	mux.HandleFunc("GET /edev/{id}/fsa/{fsaId}/derp/{derpId}",
-		scopedResourceHandler[sep2.DERProgram](stores.DERPrograms.ScopedStore, "derpId", itemMethods{}, nil))
+		scopedResourceHandler[sep2.DERProgram](stores.DERPrograms.ScopedStore, "id", "derpId", itemMethods{}, nil))
 
 	// DERControl under DERProgram
 	mux.HandleFunc("GET /edev/{id}/fsa/{fsaId}/derp/{derpId}/derc",
@@ -707,9 +707,18 @@ func (m itemMethods) allow() string {
 	return "GET, HEAD"
 }
 
-// scopedResourceHandler creates a single-resource handler scoped by the {id}
-// path value (the device id) alone, keyed within that scope by the path value
+// scopedResourceHandler creates a single-resource handler scoped by the path
+// value named parentParam alone, keyed within that scope by the path value
 // named idParam.
+//
+// parentParam is passed rather than hardcoded to "id" because the parent
+// wildcard is not called {id} on every mounted shape: the messaging family
+// names it {msgId}. r.PathValue on a wildcard the pattern does not declare
+// returns "", which would key every lookup under the empty parent, so the
+// resource would be unreachable under its own parent and reachable under every
+// other one. That is a silent wrong-scope defect rather than a visible error,
+// and naming the parameter at the mount is what prevents it (IEEECORE-059
+// records the same defect in the sibling list helper, which is not fixed here).
 //
 // It mirrors [scopedResourceHandlerDeep] one scope level up and keeps that
 // function's contract on the non-happy paths, whose reasoning is argued there
@@ -734,12 +743,13 @@ func (m itemMethods) allow() string {
 // needs no completion.
 func scopedResourceHandler[T store.Copier[T]](
 	scopedStore *memory.ScopedStore[T],
+	parentParam string,
 	idParam string,
 	methods itemMethods,
 	stamp func(r *http.Request, resource *T),
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		parentKey := r.PathValue("id")
+		parentKey := r.PathValue(parentParam)
 		id := r.PathValue(idParam)
 
 		switch {
@@ -868,6 +878,22 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 			stores.TextMessages, coremessaging.BuildTextMessageList, 900,
 		))
 		mux.HandleFunc("POST /msg/{msgId}/tm", coremessaging.HandlePostTextMessage(stores.TextMessages))
+
+		// The TextMessage instance (IEEECORE-081). The POST above returns this
+		// href in a Location header and nothing served it, so a client that
+		// followed the URI the server had just handed it got a 404.
+		//
+		// GET and HEAD are Mandatory (sep_wadl.xml:2851 and 2857). PUT and POST
+		// are mode E and DELETE is mode D, and none is implemented here, so each
+		// answers 405: with only a GET pattern registered http.ServeMux produces
+		// that 405 itself and derives Allow from the registered method set, which
+		// is why the empty itemMethods below cannot disagree with what is served.
+		//
+		// Scoped by {msgId}, named explicitly: the parent wildcard on this shape
+		// is not called {id}, and reading an undeclared one would silently key
+		// every message under the empty parent.
+		mux.HandleFunc("GET /msg/{msgId}/tm/{tmId}",
+			scopedResourceHandler[sep2.TextMessage](stores.TextMessages, "msgId", "tmId", itemMethods{}, nil))
 	}
 
 	if stores.FlowReservationRequests != nil {
@@ -880,6 +906,31 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 		mux.HandleFunc("GET /edev/{id}/frp", scopedListHandler[sep2.FlowReservationResponse, sep2.FlowReservationResponseList](
 			stores.FlowReservationResponses, coreflowrsv.BuildFlowReservationResponseList, 900,
 		))
+
+		// The two FlowReservation instances (IEEECORE-081). One POST mints both
+		// hrefs: the Location header for the request it just created, and the
+		// FlowReservationResponse href the client polls for the server's
+		// decision. Neither was served, so a client that made a reservation
+		// could not read the reservation back nor learn whether it was granted.
+		//
+		// GET and HEAD are Mandatory on both (sep_wadl.xml:3956 and 3962 for the
+		// request, 4033 and 4039 for the response). Every other declared method
+		// answers 405 rather than 404, from http.ServeMux, which derives Allow
+		// from the registered method set.
+		//
+		// Read-only here, deliberately. PUT on FlowReservationRequest is mode M
+		// (sep_wadl.xml:3963) and is NOT mounted: it is a write surface, and a
+		// write with no ownership binding lets any authenticated device rewrite
+		// another device's reservation. Ownership is IEEECORE-031's sweep, and
+		// the missing Mandatory PUT is carried as a finding rather than mounted
+		// dark here.
+		frqInstance := scopedResourceHandler[sep2.FlowReservationRequest](
+			stores.FlowReservationRequests, "id", "frqId", itemMethods{}, nil)
+		mux.HandleFunc("GET /edev/{id}/frq/{frqId}", frqInstance)
+
+		frpInstance := scopedResourceHandler[sep2.FlowReservationResponse](
+			stores.FlowReservationResponses, "id", "frpId", itemMethods{}, nil)
+		mux.HandleFunc("GET /edev/{id}/frp/{frpId}", frpInstance)
 	}
 
 	if stores.ResponseSets != nil {
