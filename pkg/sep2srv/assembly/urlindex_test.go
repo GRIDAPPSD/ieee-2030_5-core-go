@@ -241,11 +241,9 @@ func TestURLIndex_EveryEndDeviceLinkResolves(t *testing.T) {
 
 	ctx := context.Background()
 	// Seed the resources those links point at, keyed by the INDEX, which is
-	// what the path now carries.
-	reg := sep2.Registration{PIN: 111115}
-	if err := stores.Registrations.Create(ctx, "1", reg); err != nil {
-		t.Fatalf("seed Registration: %v", err)
-	}
+	// what the path now carries. The Registration is deliberately NOT among
+	// them: registering the device created it (IEEECORE-083), and seeding
+	// one here would make this test pass whether or not that coupling holds.
 	derCap := sep2.DERCapability{}
 	derCap.Href = "/edev/1/der/1/dercap"
 	if err := stores.DERCapabilities.Create(ctx, "1/1", coresingleton.SingletonKey, derCap); err != nil {
@@ -326,9 +324,7 @@ func TestURLIndex_NoLFDIAppearsInAnyServedHref(t *testing.T) {
 	register(t, srv, deviceLFDIB)
 
 	ctx := context.Background()
-	if err := stores.Registrations.Create(ctx, "1", sep2.Registration{PIN: 111115}); err != nil {
-		t.Fatalf("seed Registration: %v", err)
-	}
+	// No Registration seed: registering the devices above created theirs.
 	derCap := sep2.DERCapability{}
 	derCap.Href = "/edev/1/der/1/dercap"
 	if err := stores.DERCapabilities.Create(ctx, "1/1", coresingleton.SingletonKey, derCap); err != nil {
@@ -411,22 +407,18 @@ func TestURLIndex_NoLFDIAppearsInAnyServedHref(t *testing.T) {
 func TestURLIndex_OwnershipGateDeniesCrossDeviceAccess(t *testing.T) {
 	t.Parallel()
 
-	srv, stores := indexTestServer(t, filepath.Join(t.TempDir(), "edevindex.json"))
+	srv, _ := indexTestServer(t, filepath.Join(t.TempDir(), "edevindex.json"))
 	devA := register(t, srv, deviceLFDIA)
 	register(t, srv, deviceLFDIB)
 
-	const secretPIN = 424242
-	if err := stores.Registrations.Create(context.Background(), "1", sep2.Registration{PIN: secretPIN}); err != nil {
-		t.Fatalf("seed Registration: %v", err)
-	}
-
+	// No Registration seed: device A's was created with device A.
 	// Control: the owner gets it.
 	status, body := do(t, srv, http.MethodGet, devA.RegistrationLink.Href, deviceLFDIA)
 	if status != http.StatusOK {
 		t.Fatalf("owner GET %s: status %d, want 200; body=%s", devA.RegistrationLink.Href, status, body)
 	}
-	if !strings.Contains(body, "424242") {
-		t.Fatalf("owner GET did not return the seeded PIN; body=%s", body)
+	if !strings.Contains(body, itoa(testFixturePIN)) {
+		t.Fatalf("owner GET did not return the provisioned PIN; body=%s", body)
 	}
 
 	// Device B, presenting its own certificate, asks for device A's index.
@@ -435,7 +427,7 @@ func TestURLIndex_OwnershipGateDeniesCrossDeviceAccess(t *testing.T) {
 		t.Errorf("cross-device GET %s as %s: status %d, want 403; body=%s",
 			devA.RegistrationLink.Href, deviceLFDIB, status, body)
 	}
-	assertNoRegistrationLeak(t, body, secretPIN)
+	assertNoRegistrationLeak(t, body, testFixturePIN)
 
 	// No certificate at all is also denied, and also leaks nothing.
 	status, body = do(t, srv, http.MethodGet, devA.RegistrationLink.Href, "")
@@ -443,7 +435,7 @@ func TestURLIndex_OwnershipGateDeniesCrossDeviceAccess(t *testing.T) {
 		t.Errorf("unauthenticated GET %s: status %d, want 403; body=%s",
 			devA.RegistrationLink.Href, status, body)
 	}
-	assertNoRegistrationLeak(t, body, secretPIN)
+	assertNoRegistrationLeak(t, body, testFixturePIN)
 }
 
 // TestURLIndex_StaleIndexPointingAtAnotherDeviceIs403 is the safety net for
@@ -474,17 +466,17 @@ func TestURLIndex_StaleIndexPointingAtAnotherDeviceIs403(t *testing.T) {
 
 	// Second boot with independent index state and the opposite provisioning
 	// order: now "/edev/1" is device B.
-	secondBoot, stores := indexTestServer(t, filepath.Join(t.TempDir(), "second.json"))
+	secondBoot, _ := indexTestServer(t, filepath.Join(t.TempDir(), "second.json"))
 	devB := register(t, secondBoot, deviceLFDIB)
 	register(t, secondBoot, deviceLFDIA)
 	if devB.Href != "/edev/1" {
 		t.Fatalf("precondition: device B did not take index 1, got %q", devB.Href)
 	}
 
-	const secretPIN = 987654
-	if err := stores.Registrations.Create(context.Background(), "1", sep2.Registration{PIN: secretPIN}); err != nil {
-		t.Fatalf("seed device B Registration: %v", err)
-	}
+	// Device B's Registration under index 1 exists because device B was
+	// registered, not because this test put it there. That is what makes the
+	// leak assertion below meaningful: there is a real record behind the URL
+	// device A is being denied.
 
 	// Device A follows its stale URL, presenting device A's certificate. The
 	// index now resolves to device B's record, whose stored LFDI is B's, so
@@ -494,7 +486,7 @@ func TestURLIndex_StaleIndexPointingAtAnotherDeviceIs403(t *testing.T) {
 		t.Errorf("stale index %s followed by %s: status %d, want 403; body=%s",
 			staleHref, deviceLFDIA, status, body)
 	}
-	assertNoRegistrationLeak(t, body, secretPIN)
+	assertNoRegistrationLeak(t, body, testFixturePIN)
 
 	// And the device that DOES own that index is still served, so the gate
 	// denies on identity rather than by breaking the route.

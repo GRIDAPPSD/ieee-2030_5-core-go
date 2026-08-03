@@ -121,6 +121,13 @@ func HandleEndDevice(s store.EndDeviceStore) http.HandlerFunc {
 // The stored EndDevice keeps the certificate-derived LFDI and SFDI, which is
 // what every ownership check compares against; the index only decides which
 // URL the record is served under.
+//
+// RegistrationLink is NOT stamped here and is not this handler's to decide
+// (IEEECORE-083). Whether a device may advertise a Registration depends on
+// whether the server holds one, which only the store knows. Pass a
+// *memory.RegisteredEndDeviceStore for s to get the coupled behavior; with
+// any other store no device carries a RegistrationLink, which is what 2018
+// section 4.4 p.19 requires when the function set is not populated.
 func HandleCreateEndDevice(s store.EndDeviceStore, idx EndDeviceIndexer, identity IdentityFunc, sfdiPrefix SFDIPrefixFunc) http.HandlerFunc {
 	// idx is a required collaborator: every code path below that reaches
 	// registration calls idx.Allocate. A nil idx would panic on the first
@@ -198,8 +205,15 @@ func HandleCreateEndDevice(s store.EndDeviceStore, idx EndDeviceIndexer, identit
 			return
 		}
 		dev.Href = "/edev/" + id
-		dev.RegistrationLink = &sep2.Link{Href: fmt.Sprintf("/edev/%s/rg", id)}
 		dev.FunctionSetAssignmentsListLink = &sep2.ListLink{Href: fmt.Sprintf("/edev/%s/fsa", id)}
+
+		// RegistrationLink is deliberately NOT stamped here (IEEECORE-083).
+		// It used to be, unconditionally, while nothing ever wrote a
+		// Registration record, so every device advertised a resource that
+		// answered 404. The link now comes from the store, which stamps it
+		// only when it wrote the Registration to go with it, and that is
+		// why the response below is re-read rather than serving the local
+		// copy: this handler no longer knows which links the device has.
 
 		if err := s.Create(r.Context(), id, dev); err != nil {
 			if errors.Is(err, store.ErrAlreadyExists) {
@@ -221,8 +235,22 @@ func HandleCreateEndDevice(s store.EndDeviceStore, idx EndDeviceIndexer, identit
 			return
 		}
 
-		w.Header().Set("Location", dev.Href)
-		encoding.WriteXML(w, http.StatusCreated, &dev)
+		// Serve what the store holds, not what was handed to it. A store
+		// that couples the EndDevice to its Registration decides at Create
+		// time whether the device may advertise a RegistrationLink, and a
+		// 201 body built from the local copy would report links the server
+		// will not serve. A read that fails here is a real error: the
+		// record was just written, so its absence means the store is not
+		// answering, and a zero-value 200 would be silent data loss.
+		created, err := s.Get(r.Context(), id)
+		if err != nil {
+			log.Printf("edev: re-read after create id=%q: %v (path=%s)", id, err, r.URL.Path)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Location", created.Href)
+		encoding.WriteXML(w, http.StatusCreated, &created)
 	}
 }
 

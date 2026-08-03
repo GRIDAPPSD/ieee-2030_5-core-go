@@ -97,7 +97,28 @@ type Stores struct {
 	// Store[sep2.Registration]. The embedded *Store gives back-compat
 	// method promotion (Get/List/Count) for call sites that don't need
 	// the persistence flush.
-	Registrations       *memory.RegistrationStore
+	Registrations *memory.RegistrationStore
+
+	// RegistrationPolicy supplies the pIN and pollRate for the Registration
+	// that is created with every EndDevice (IEEECORE-083).
+	//
+	// The zero value provisions nothing, and that is fail-closed rather
+	// than degraded: a server that cannot say what a device's pIN is has no
+	// Registration to serve, so the device is served with no
+	// RegistrationLink at all instead of one that answers 404. Wiring a
+	// PIN resolver is what turns registration on.
+	//
+	// It is honored only when Registrations is non-nil, which is the same
+	// condition that mounts GET /edev/{id}/rg: link and route are enabled
+	// by one decision, so neither can exist without the other.
+	//
+	// An EndDevices store that is ALREADY a *memory.RegisteredEndDeviceStore
+	// is left alone and this field is ignored for it. That is the path an
+	// embedder that seeds devices at boot must take: the coupling has to be
+	// in place before the first seeded Create, which happens before this
+	// router is built.
+	RegistrationPolicy memory.RegistrationPolicy
+
 	MirrorUsagePoints   *memory.Store[sep2.MirrorUsagePoint]
 	MirrorMeterReadings *memory.ScopedStore[sep2.MirrorMeterReading]
 
@@ -378,6 +399,32 @@ func asNotifyRemoved(n ResourceNotifier) func(context.Context, sep2.Subscription
 	return nil
 }
 
+// registrationBoundEndDevices returns the EndDevice store the /edev routes
+// must use: one that writes an EndDevice and its Registration as a single
+// act and serves a RegistrationLink only when the record behind it exists
+// (IEEECORE-083).
+//
+// It decorates rather than replaces, and it declines to decorate twice. An
+// embedder that seeds devices at boot has to build the binding itself,
+// because seeding happens before this router is assembled; when it hands us
+// the bound store it already has, wrapping it again would put a second
+// binding with an empty policy in front of the configured one and silently
+// deprovision the fleet.
+//
+// A nil Registrations store means the /rg route is not mounted at all, so
+// there is nothing to bind to and nothing to advertise. The undecorated
+// store is returned and no EndDevice carries a RegistrationLink, which is
+// what 2018 section 4.4 p.19 requires of an unimplemented function set.
+func registrationBoundEndDevices(stores *Stores) store.EndDeviceStore {
+	if stores.EndDevices == nil || stores.Registrations == nil {
+		return stores.EndDevices
+	}
+	if bound, ok := stores.EndDevices.(*memory.RegisteredEndDeviceStore); ok {
+		return bound
+	}
+	return memory.NewRegisteredEndDeviceStore(stores.EndDevices, stores.Registrations, stores.RegistrationPolicy)
+}
+
 func registerEndDeviceRoutes(mux routeRegistrar, stores *Stores, authPolicy AuthPolicy, notifier ResourceNotifier) {
 	// A nil index allocator is substituted rather than rejected so a
 	// zero-value Stores stays usable, but the substitute is process-local:
@@ -389,17 +436,24 @@ func registerEndDeviceRoutes(mux routeRegistrar, stores *Stores, authPolicy Auth
 		edevIndexes = memory.NewEndDeviceIndex()
 	}
 
+	// IEEECORE-083: every EndDevice route reads and writes through the
+	// registration-bound store, so the EndDevice and its Registration are
+	// one act on the write side and one derivation on the read side. Every
+	// route below takes edevs, not stores.EndDevices: a route left on the
+	// undecorated store would be the one that reintroduces the drift.
+	edevs := registrationBoundEndDevices(stores)
+
 	mux.HandleFunc("GET /edev", corelisthandler.ListHandler[sep2.EndDevice, sep2.EndDeviceList](
-		stores.EndDevices, coreedev.BuildEndDeviceList, 900,
+		edevs, coreedev.BuildEndDeviceList, 900,
 	))
-	mux.HandleFunc("POST /edev", coreedev.HandleCreateEndDevice(stores.EndDevices, edevIndexes, authPolicy.Identity, authPolicy.SFDIPrefix))
-	mux.HandleFunc("GET /edev/{id}", coreedev.HandleEndDevice(stores.EndDevices))
-	mux.HandleFunc("PUT /edev/{id}", coreedev.HandleUpdateEndDevice(stores.EndDevices))
-	mux.HandleFunc("DELETE /edev/{id}", coreedev.HandleDeleteEndDevice(stores.EndDevices, notifier))
+	mux.HandleFunc("POST /edev", coreedev.HandleCreateEndDevice(edevs, edevIndexes, authPolicy.Identity, authPolicy.SFDIPrefix))
+	mux.HandleFunc("GET /edev/{id}", coreedev.HandleEndDevice(edevs))
+	mux.HandleFunc("PUT /edev/{id}", coreedev.HandleUpdateEndDevice(edevs))
+	mux.HandleFunc("DELETE /edev/{id}", coreedev.HandleDeleteEndDevice(edevs, notifier))
 
 	// IEEE-101: Registration GET handler at /edev/{id}/rg.
 	if stores.Registrations != nil {
-		mux.HandleFunc("GET /edev/{id}/rg", corereg.HandleGetRegistration(stores.EndDevices, stores.Registrations, authPolicy.Identity))
+		mux.HandleFunc("GET /edev/{id}/rg", corereg.HandleGetRegistration(edevs, stores.Registrations, authPolicy.Identity))
 	}
 
 	// FSA endpoints

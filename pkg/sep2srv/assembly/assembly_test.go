@@ -20,6 +20,29 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
+// testFixturePIN is an obvious stand-in for a provisioned registration pIN.
+// It is not a real secret and exists only so tests can assert that the value
+// the policy supplied is the value served. Its digits sum to 20, so it also
+// happens to satisfy the 2018 section 6.3.5 check-digit rule; core neither
+// generates nor validates pIN values (IEEECORE-050, IEEECORE-073), so that
+// property is a fixture nicety rather than anything this package enforces.
+const testFixturePIN uint32 = 123455
+
+// testRegistrationPolicy provisions testFixturePIN for every device, which
+// is what turns registration on for assembly tests. A Stores with no policy
+// provisions nothing and serves no RegistrationLink at all, so tests that
+// exercise the registration surface must wire one.
+func testRegistrationPolicy() memory.RegistrationPolicy {
+	return memory.RegistrationPolicy{
+		PIN: func(lfdi string) (uint32, bool) {
+			if lfdi == "" {
+				return 0, false
+			}
+			return testFixturePIN, true
+		},
+	}
+}
+
 // testStores builds a fully-populated Stores instance for assembly tests.
 // Populated stores cause all optional route-registration branches to fire,
 // driving coverage on registerMirrorRoutes, registerMeteringRoutes, and
@@ -29,6 +52,7 @@ func testStores() *assembly.Stores {
 	return &assembly.Stores{
 		EndDevices:          memory.NewEndDeviceStore(),
 		Registrations:       memory.NewRegistrationStore(),
+		RegistrationPolicy:  testRegistrationPolicy(),
 		MirrorUsagePoints:   memory.NewStore[sep2.MirrorUsagePoint](),
 		MirrorMeterReadings: memory.NewScopedStore[sep2.MirrorMeterReading](),
 
