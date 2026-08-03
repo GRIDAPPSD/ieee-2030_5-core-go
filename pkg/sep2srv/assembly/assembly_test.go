@@ -15,6 +15,7 @@ import (
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/assembly"
+	coreder "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/handlers/der"
 	coreedev "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/handlers/enddevice"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
@@ -439,6 +440,67 @@ func TestAssembly_ScopedListRoutesMounted(t *testing.T) {
 	resp5.Body.Close()
 	if resp5.StatusCode != http.StatusOK {
 		t.Errorf("GET /upt status = %d, want 200", resp5.StatusCode)
+	}
+}
+
+// TestAssembly_DERProgramMemberHrefResolves walks the FSA-to-DERProgramList
+// discovery chain per CSIP v2.0 s5.2.3.1: GET the FSA-scoped DERProgramList,
+// take a member's own href, then GET that href. IEEECORE-082: a
+// DERProgramList member must advertise an href that resolves against a
+// mounted route, since that link walk is the only path a conforming client
+// has to the control surface.
+func TestAssembly_DERProgramMemberHrefResolves(t *testing.T) {
+	t.Parallel()
+
+	stores := testStores()
+	edevID, fsaID, derpID := "e1", "f1", "p1"
+	wantHref := coreder.DERProgramHref(edevID, fsaID, derpID)
+	program := sep2.DERProgram{SubscribableResource: sep2.SubscribableResource{Resource: sep2.Resource{Href: wantHref}}}
+	if err := stores.DERPrograms.Create(context.Background(), edevID, derpID, program); err != nil {
+		t.Fatalf("seed DERProgram: %v", err)
+	}
+
+	handler, _ := assembly.BuildProtocolRouter(
+		assembly.RouterConfig{},
+		stores,
+		testAuthPolicy(),
+		"serverSFDI", "serverLFDI",
+		nil,
+	)
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	listResp, err := http.Get(srv.URL + "/edev/" + edevID + "/fsa/" + fsaID + "/derp")
+	if err != nil {
+		t.Fatalf("GET DERProgramList: %v", err)
+	}
+	defer listResp.Body.Close()
+	if listResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET DERProgramList status = %d, want 200", listResp.StatusCode)
+	}
+	body, err := io.ReadAll(listResp.Body)
+	if err != nil {
+		t.Fatalf("read DERProgramList body: %v", err)
+	}
+	var list sep2.DERProgramList
+	if err := xml.Unmarshal(body, &list); err != nil {
+		t.Fatalf("decode DERProgramList: %v", err)
+	}
+	if len(list.DERProgram) != 1 {
+		t.Fatalf("DERProgramList members = %d, want 1", len(list.DERProgram))
+	}
+	memberHref := list.DERProgram[0].Href
+	if memberHref != wantHref {
+		t.Errorf("member href = %q, want %q", memberHref, wantHref)
+	}
+
+	memberResp, err := http.Get(srv.URL + memberHref)
+	if err != nil {
+		t.Fatalf("GET member href %q: %v", memberHref, err)
+	}
+	defer memberResp.Body.Close()
+	if memberResp.StatusCode != http.StatusOK {
+		t.Errorf("GET member href %q status = %d, want 200: the FSA-to-DERProgram link walk must resolve", memberHref, memberResp.StatusCode)
 	}
 }
 

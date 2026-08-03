@@ -46,6 +46,18 @@ func BuildDERProgramList(href string, result store.ListResult[sep2.DERProgram], 
 	}
 }
 
+// DERProgramHref returns the canonical href for a single DERProgram member,
+// matching the only route this package mounts a DERProgram under: GET
+// /edev/{id}/fsa/{fsaId}/derp/{derpId} (IEEECORE-082). A DERProgram's own
+// href is server-assigned, so every site that builds one (seeding code,
+// admin creation, bootfixture and conformance-test data) MUST call this
+// instead of hand-rolling the path. IEEECORE-082 found the FSA segment
+// dropped in three independently-written call sites once already, which is
+// exactly the drift a single shared builder exists to prevent.
+func DERProgramHref(edevID, fsaID, derpID string) string {
+	return fmt.Sprintf("/edev/%s/fsa/%s/derp/%s", edevID, fsaID, derpID)
+}
+
 // BuildDERControlList constructs a DERControlList from store results.
 func BuildDERControlList(href string, result store.ListResult[sep2.DERControl], pollRate uint32) sep2.DERControlList {
 	return sep2.DERControlList{
