@@ -58,6 +58,16 @@ func TestSchemaGateCleanResources(t *testing.T) {
 		{"Reading", sep2.Reading{}},
 		{"ReadingType", sep2.ReadingType{}},
 		{"MirrorMeterReading", sep2.MirrorMeterReading{}},
+		// LogEvent and its list are gated by IEEECORE-084, which put the
+		// function set on a client-reachable address for the first time. A
+		// resource nothing could reach was a resource nothing could be wrong
+		// about; now that an EndDevice advertises the list and a device POSTs
+		// alarms into it, the wire form is load-bearing and belongs here. The
+		// list is gated as well as the member because a LogEventList carries
+		// its own paging attributes, and an all or results emitted as an
+		// element rather than an attribute is invisible to a round trip.
+		{"LogEvent", sep2.LogEvent{}},
+		{"LogEventList", sep2.LogEventList{}},
 	}
 
 	for _, tc := range tests {
@@ -111,6 +121,35 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 			},
 		},
 		{
+			// A POPULATED LogEvent, because the zero value leaves details and
+			// extendedData absent (both are omitempty) and the marshalled
+			// check then has nothing to inspect for either. extendedData is
+			// the one that matters: sep.xsd types it UInt32 while the Go field
+			// is a *int64, so a negative value marshals to a document the
+			// schema rejects. The gate catches that lexically, which is why a
+			// populated fixture is the entry and not the zero value.
+			typeName: "LogEvent",
+			v:        populatedLogEvent(),
+		},
+		{
+			// The list carries its own paging attributes, and pollRate is
+			// stamped by the server rather than by any client, so a fixture
+			// that leaves them at zero asserts nothing about how they reach
+			// the wire.
+			typeName: "LogEventList",
+			v: sep2.LogEventList{
+				ListResource: sep2.ListResource{
+					SubscribableResource: sep2.SubscribableResource{
+						Resource: sep2.Resource{Href: "/edev/1/lel"},
+					},
+					All:      1,
+					Results:  1,
+					PollRate: 900,
+				},
+				LogEvent: []sep2.LogEvent{populatedLogEvent()},
+			},
+		},
+		{
 			typeName: "Registration",
 			v: sep2.Registration{
 				Resource:           sep2.Resource{Href: "/edev/1/rg"},
@@ -154,6 +193,29 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 		t.Run(tc.typeName, func(t *testing.T) {
 			xsdgate.AssertValid(t, tc.typeName, tc.v)
 		})
+	}
+}
+
+// populatedLogEvent is the fixture shared by the LogEvent and LogEventList
+// entries above, so the member a client reads inside the list and the member it
+// reads at its own href are gated as the same document.
+//
+// details is 18 characters. sep.xsd types it String32, and this gate does not
+// enforce maxLength, so a longer fixture would pass here while being invalid on
+// the standard's terms; keeping it short means the fixture is not itself the
+// thing that is wrong.
+func populatedLogEvent() sep2.LogEvent {
+	extendedData := int64(9007)
+	return sep2.LogEvent{
+		Resource:        sep2.Resource{Href: "/edev/1/lel/00000000001604963587"},
+		CreatedDateTime: 1604963587,
+		Details:         "gen software alarm",
+		ExtendedData:    &extendedData,
+		FunctionSet:     sep2.FunctionSetLogEvent,
+		LogEventCode:    27,
+		LogEventID:      7,
+		LogEventPEN:     54465,
+		ProfileID:       2,
 	}
 }
 
@@ -609,11 +671,19 @@ func TestSchemaGateCoversKnownResources(t *testing.T) {
 	// CI. A gate's coverage list is only as good as the argument for what is
 	// on it, so the rule now is explicit: every resource this server SERVES is
 	// in scope, not only the ones an old card happened to enumerate.
+	//
+	// LogEvent and LogEventList were added by IEEECORE-084. They were out of
+	// scope for the old enumeration because the function set was unreachable:
+	// it was served at /edev/{id}/log while the WADL declares /edev/{id}/lel,
+	// and no EndDevice advertised a LogEventListLink at either address. That is
+	// no longer true, so the rule stated above applies to them: this server
+	// serves them, therefore they are in scope.
 	required := []string{
 		"DERCapability", "DERSettings", "DERStatus",
 		"MirrorUsagePoint", "MirrorMeterReading", "Registration",
 		"EndDevice", "Reading", "ReadingType",
 		"DERControl", "EndDeviceControl", "FlowReservationResponse", "TextMessage",
+		"LogEvent", "LogEventList",
 	}
 
 	covered := map[string]bool{
@@ -622,6 +692,7 @@ func TestSchemaGateCoversKnownResources(t *testing.T) {
 		"DERStatus": true, "MirrorUsagePoint": true, "UsagePoint": true,
 		"EndDevice": true, "DERControl": true, "EndDeviceControl": true,
 		"FlowReservationResponse": true, "TextMessage": true,
+		"LogEvent": true, "LogEventList": true,
 	}
 
 	// Appearing in the zero-value tables is NOT full coverage. A resource
@@ -633,6 +704,7 @@ func TestSchemaGateCoversKnownResources(t *testing.T) {
 	populated := []string{
 		"Registration", "Reading", "ReadingType", "MirrorMeterReading", "DERStatus",
 		"DERControl", "EndDeviceControl", "FlowReservationResponse", "TextMessage",
+		"LogEvent", "LogEventList",
 	}
 
 	// The respondable types must be populated, not merely present. Their two
