@@ -17,9 +17,11 @@ import (
 // A handler that calls r.PathValue("id") on a route whose pattern declares no
 // {id} gets the empty string back. No panic, no error, no log line: the handler
 // carries on and scopes a store lookup by "", which is a different collection
-// from the one the client asked for. Two live instances exist today, both from
-// scopedListHandler being mounted on patterns that name their wildcard
-// something other than "id" (GET /upt/{uptId}/mr and GET /msg/{msgId}/tm).
+// from the one the client asked for. Two live instances existed when this guard
+// was written, both from scopedListHandler being mounted on patterns that name
+// their wildcard something other than "id" (GET /upt/{uptId}/mr and
+// GET /msg/{msgId}/tm); both are fixed, and this guard is what keeps a third
+// from being mounted quietly.
 //
 // This shares the AST harness with the mintable-href scan in hrefsource_test.go
 // rather than the runtime probe in hrefs.go, and the reason is worth stating.
@@ -58,11 +60,16 @@ var patternWildcard = regexp.MustCompile(`\{([a-zA-Z0-9_]+)(\.\.\.)?\}`)
 // exist today are tolerated by name, anything new fails, and an entry that
 // starts passing fails the test so the set has to shrink.
 //
+// It is EMPTY, and that is the fixed state of this defect class rather than an
+// absence of coverage. The two entries it carried, GET /upt/{uptId}/mr and
+// GET /msg/{msgId}/tm, were both scopedListHandler mounts reading a hardcoded
+// "id"; IEEECORE-059 gave that helper the parentParam argument its sibling
+// scopedResourceHandler already had, so there is no longer a mount that can read
+// a name without naming it. An entry added here again is a route knowingly
+// serving the wrong scope, and it needs the card that will remove it.
+//
 // Keys are "PATTERN reads NAME".
-var knownPathValueMismatches = map[string]string{
-	`GET /upt/{uptId}/mr reads "id"`: "IEEECORE-059: scopedListHandler scopes MeterReadings by PathValue(\"id\"), which this pattern does not declare, so every request scopes by the empty string",
-	`GET /msg/{msgId}/tm reads "id"`: "IEEECORE-059: scopedListHandler scopes TextMessages by PathValue(\"id\"), which this pattern does not declare, so every request scopes by the empty string",
-}
+var knownPathValueMismatches = map[string]string{}
 
 // TestRoutePatternsDeclareEveryPathValueTheirHandlersRead is the guard.
 func TestRoutePatternsDeclareEveryPathValueTheirHandlersRead(t *testing.T) {
