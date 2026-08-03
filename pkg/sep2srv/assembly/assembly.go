@@ -405,7 +405,7 @@ func registerEndDeviceRoutes(mux routeRegistrar, stores *Stores, authPolicy Auth
 	// FSA endpoints
 	if stores.FSAs != nil {
 		mux.HandleFunc("GET /edev/{id}/fsa", scopedListHandler[sep2.FunctionSetAssignments, sep2.FunctionSetAssignmentsList](
-			stores.FSAs, corefsa.BuildFSAList, 900,
+			stores.FSAs, "id", corefsa.BuildFSAList, 900,
 		))
 		mux.HandleFunc("GET /edev/{id}/fsa/{fsaId}", corefsa.HandleFSA(stores.FSAs))
 	}
@@ -485,7 +485,7 @@ func registerDERRoutes(mux routeRegistrar, stores *Stores) {
 	}
 
 	mux.HandleFunc("GET /edev/{id}/der", scopedListHandler[sep2.DER, sep2.DERList](
-		stores.DERs, coreder.DERListBuilder(derLinks), 900,
+		stores.DERs, "id", coreder.DERListBuilder(derLinks), 900,
 	))
 
 	// The DER instance itself (IEEECORE-052). Every DERList member carries this
@@ -521,7 +521,7 @@ func registerDERRoutes(mux routeRegistrar, stores *Stores) {
 	// signature stays unchanged. Writes through stores.DERPrograms.Create
 	// still go through the persistent wrapper (the list handler is read-only).
 	mux.HandleFunc("GET /edev/{id}/fsa/{fsaId}/derp", scopedListHandler[sep2.DERProgram, sep2.DERProgramList](
-		stores.DERPrograms.ScopedStore, coreder.BuildDERProgramList, 900,
+		stores.DERPrograms.ScopedStore, "id", coreder.BuildDERProgramList, 900,
 	))
 
 	// A DERProgram's own href, so the FSA-to-DERProgramList-to-member link
@@ -574,14 +574,27 @@ func registerDERRoutes(mux routeRegistrar, stores *Stores) {
 	))
 }
 
-// scopedListHandler creates a list handler that scopes by the {id} path value.
+// scopedListHandler creates a list handler scoped by the path value named
+// parentParam.
+//
+// parentParam is passed rather than hardcoded to "id" for the reason argued at
+// [scopedResourceHandler], and this helper is where that defect actually shipped
+// (IEEECORE-059). The parent wildcard is not called {id} on every mounted shape:
+// the metering family names it {uptId} and the messaging family {msgId}.
+// r.PathValue on a wildcard the pattern does not declare returns "" rather than
+// failing, so a hardcoded "id" scoped every lookup on those two shapes under the
+// empty parent, and both lists served empty forever with a 200 and no log line.
+// Naming the parameter at the mount is what prevents it: a wrong name is now a
+// visible mismatch between the mount and the pattern, which the guard in
+// pathvalue_test.go reads directly.
 func scopedListHandler[T store.Copier[T], L any](
 	scopedStore *memory.ScopedStore[T],
+	parentParam string,
 	buildList func(href string, result store.ListResult[T], pollRate uint32) L,
 	pollRate uint32,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		parentID := r.PathValue("id")
+		parentID := r.PathValue(parentParam)
 		st := scopedStore.ForParent(parentID)
 		h := corelisthandler.ListHandler[T, L](st, buildList, pollRate)
 		h.ServeHTTP(w, r)
@@ -717,8 +730,9 @@ func (m itemMethods) allow() string {
 // returns "", which would key every lookup under the empty parent, so the
 // resource would be unreachable under its own parent and reachable under every
 // other one. That is a silent wrong-scope defect rather than a visible error,
-// and naming the parameter at the mount is what prevents it (IEEECORE-059
-// records the same defect in the sibling list helper, which is not fixed here).
+// and naming the parameter at the mount is what prevents it. The sibling list
+// helper [scopedListHandler] carried exactly that defect and now takes the same
+// argument for the same reason (IEEECORE-059).
 //
 // It mirrors [scopedResourceHandlerDeep] one scope level up and keeps that
 // function's contract on the non-happy paths, whose reasoning is argued there
@@ -817,7 +831,7 @@ func registerMeteringRoutes(mux routeRegistrar, stores *Stores) {
 	mux.HandleFunc("GET /upt/{uptId}", coremetering.HandleUsagePoint(stores.UsagePoints))
 
 	mux.HandleFunc("GET /upt/{uptId}/mr", scopedListHandler[sep2.MeterReading, sep2.MeterReadingList](
-		stores.MeterReadings, coremetering.BuildMeterReadingList, 900,
+		stores.MeterReadings, "uptId", coremetering.BuildMeterReadingList, 900,
 	))
 
 	mux.HandleFunc("GET /upt/{uptId}/mr/{mrId}/r", func(w http.ResponseWriter, r *http.Request) {
@@ -860,7 +874,7 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 	}
 	if stores.LogEvents != nil {
 		mux.HandleFunc("GET /edev/{id}/log", scopedListHandler[sep2.LogEvent, sep2.LogEventList](
-			stores.LogEvents, corelogevent.BuildLogEventList, 900,
+			stores.LogEvents, "id", corelogevent.BuildLogEventList, 900,
 		))
 		mux.HandleFunc("POST /edev/{id}/log", corelogevent.HandlePostLogEvent(stores.LogEvents))
 	}
@@ -875,7 +889,7 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 		))
 		mux.HandleFunc("GET /msg/{msgId}", coremessaging.HandleMessagingProgram(stores.MessagingPrograms))
 		mux.HandleFunc("GET /msg/{msgId}/tm", scopedListHandler[sep2.TextMessage, sep2.TextMessageList](
-			stores.TextMessages, coremessaging.BuildTextMessageList, 900,
+			stores.TextMessages, "msgId", coremessaging.BuildTextMessageList, 900,
 		))
 		mux.HandleFunc("POST /msg/{msgId}/tm", coremessaging.HandlePostTextMessage(stores.TextMessages))
 
@@ -898,13 +912,13 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 
 	if stores.FlowReservationRequests != nil {
 		mux.HandleFunc("GET /edev/{id}/frq", scopedListHandler[sep2.FlowReservationRequest, sep2.FlowReservationRequestList](
-			stores.FlowReservationRequests, coreflowrsv.BuildFlowReservationRequestList, 900,
+			stores.FlowReservationRequests, "id", coreflowrsv.BuildFlowReservationRequestList, 900,
 		))
 		mux.HandleFunc("POST /edev/{id}/frq", coreflowrsv.HandlePostFlowReservationRequest(
 			stores.FlowReservationRequests, stores.FlowReservationResponses,
 		))
 		mux.HandleFunc("GET /edev/{id}/frp", scopedListHandler[sep2.FlowReservationResponse, sep2.FlowReservationResponseList](
-			stores.FlowReservationResponses, coreflowrsv.BuildFlowReservationResponseList, 900,
+			stores.FlowReservationResponses, "id", coreflowrsv.BuildFlowReservationResponseList, 900,
 		))
 
 		// The two FlowReservation instances (IEEECORE-081). One POST mints both
