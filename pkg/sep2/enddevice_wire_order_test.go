@@ -32,7 +32,7 @@ func TestEndDeviceWireOrder(t *testing.T) {
 		LFDI:                           "3E4F45AB31EDFE5B67E343E5E4562E31984E23E5",
 		SFDI:                           "167261211391",
 		DERListLink:                    &sep2.ListLink{Href: "/edev/1/der"},
-		LogEventListLink:               &sep2.ListLink{Href: "/edev/1/log"},
+		LogEventListLink:               &sep2.ListLink{Href: "/edev/1/lel"},
 		FunctionSetAssignmentsListLink: &sep2.ListLink{Href: "/edev/1/fsa"},
 		RegistrationLink:               &sep2.Link{Href: "/edev/1/rg"},
 		SubscriptionListLink:           &sep2.ListLink{Href: "/edev/1/sub"},
