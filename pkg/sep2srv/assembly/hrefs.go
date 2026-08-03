@@ -189,6 +189,7 @@ func MintableHrefs() []MintableHref {
 		{"/edev/{}/fsa", http.MethodGet, "handlers/enddevice.buildEndDevice FunctionSetAssignmentsListLink", "the path from an EndDevice to its DERPrograms"},
 		{"/edev/{}/fsa/{}", http.MethodGet, "handlers/fsa.HandleFSA", "a single FunctionSetAssignments"},
 		{"/edev/{}/fsa/{}/derp", http.MethodGet, "handlers/fsa.HandleFSA DERProgramListLink", "the DERProgram list under an FSA"},
+		{"/edev/{}/fsa/{}/derp/{}", http.MethodGet, "handlers/der.DERProgramHref", "a single DERProgram member's self href (IEEECORE-082)"},
 		{"/edev/{}/cfg", http.MethodGet, "handlers/configuration.HandleConfiguration", "Configuration self href"},
 		{"/edev/{}/dstat", http.MethodGet, "assembly.registerNewFunctionSetRoutes DeviceStatus", "DeviceStatus self href"},
 		{"/edev/{}/ps", http.MethodGet, "handlers/power_status.HandlePowerStatus", "PowerStatus self href"},
