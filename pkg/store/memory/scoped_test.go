@@ -91,13 +91,21 @@ func TestScopedStoreHasParent(t *testing.T) {
 	s := memory.NewScopedStore[testItem]()
 	ctx := context.Background()
 
-	if s.HasParent("p1") {
+	has, err := s.HasParent(ctx, "p1")
+	if err != nil {
+		t.Fatalf("HasParent: %v", err)
+	}
+	if has {
 		t.Error("should not have parent before any operations")
 	}
 
 	_ = s.Create(ctx, "p1", "a", testItem{})
 
-	if !s.HasParent("p1") {
+	has, err = s.HasParent(ctx, "p1")
+	if err != nil {
+		t.Fatalf("HasParent: %v", err)
+	}
+	if !has {
 		t.Error("should have parent after create")
 	}
 }

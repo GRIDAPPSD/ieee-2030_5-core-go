@@ -12,7 +12,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// IEEE-097: DERProgram persistence — IEEE-096 FSA records reference
+// IEEE-097: DERProgram persistence. IEEE-096 FSA records reference
 // program hrefs (e.g. "/edev/1/fsa/A/derp/1"). For those hrefs to resolve
 // after a restart, the DERProgramStore has to survive too.
 //
@@ -107,7 +107,15 @@ func TestDERProgramPersistence_MultiDeviceRoundTrip(t *testing.T) {
 		t.Errorf("dev-2/p1 MRID = %q, want M3", got.MRID)
 	}
 	// Verify both devices' stores are populated.
-	if !revived.HasParent("dev-1") || !revived.HasParent("dev-2") {
+	hasDev1, err := revived.HasParent(ctx, "dev-1")
+	if err != nil {
+		t.Fatalf("HasParent(dev-1): %v", err)
+	}
+	hasDev2, err := revived.HasParent(ctx, "dev-2")
+	if err != nil {
+		t.Fatalf("HasParent(dev-2): %v", err)
+	}
+	if !hasDev1 || !hasDev2 {
 		t.Error("revived store missing one of the parents")
 	}
 }

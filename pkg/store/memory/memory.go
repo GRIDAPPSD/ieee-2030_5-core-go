@@ -2,7 +2,9 @@ package memory
 
 import (
 	"context"
+	"fmt"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
@@ -36,15 +38,31 @@ func (s *Store[T]) Get(_ context.Context, id string) (T, error) {
 }
 
 func (s *Store[T]) List(_ context.Context, opts store.ListOptions) (store.ListResult[T], error) {
+	// Reject an unrecognized sort key rather than silently serving the
+	// default order: a caller that asked for an order it did not get would
+	// page through a sequence that does not match what it requested.
+	switch opts.Sort {
+	case store.SortByIDAsc, store.SortByIDDesc:
+	default:
+		return store.ListResult[T]{}, fmt.Errorf("%w: %d", store.ErrUnsupportedSort, uint8(opts.Sort))
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	all := uint32(len(s.keys))
 
-	// Determine starting keys based on After param
+	// s.keys is maintained ascending; descending is a reversed copy so the
+	// store's own slice is never mutated under an RLock.
 	keys := s.keys
+	if opts.Sort == store.SortByIDDesc {
+		keys = slices.Clone(s.keys)
+		slices.Reverse(keys)
+	}
+
+	// Determine starting keys based on After param
 	if opts.After != "" {
-		idx := s.findAfter(opts.After)
+		idx := findAfter(keys, opts.After, opts.Sort)
 		keys = keys[idx:]
 	}
 
@@ -125,9 +143,17 @@ func (s *Store[T]) Count(_ context.Context) (uint32, error) {
 	return uint32(len(s.data)), nil
 }
 
-// findAfter returns the index of the first key strictly greater than after.
-func (s *Store[T]) findAfter(after string) int {
-	idx, found := slices.BinarySearch(s.keys, after)
+// findAfter returns the index of the first key strictly after the given key in
+// the requested sort order. keys must already be ordered per sort.
+//
+// "After" is defined relative to the order, not to byte comparison: under
+// SortByIDDesc the next page starts at the first key strictly less than after.
+func findAfter(keys []string, after string, sort store.SortKey) int {
+	cmp := strings.Compare
+	if sort == store.SortByIDDesc {
+		cmp = func(a, b string) int { return strings.Compare(b, a) }
+	}
+	idx, found := slices.BinarySearchFunc(keys, after, cmp)
 	if found {
 		return idx + 1
 	}
