@@ -3,6 +3,7 @@ package storetest
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 
@@ -211,6 +212,11 @@ func RunResourceStoreSuite(t *testing.T, newStore ResourceStoreFactory) {
 			{"start offsets within the order", store.ListOptions{Start: 5, Limit: 3}, []string{"f", "g", "h"}},
 			{"start past the end yields nothing", store.ListOptions{Start: 20, Limit: 5}, nil},
 			{"limit zero yields nothing", store.ListOptions{Limit: 0}, nil},
+			{"unbounded returns every item in order", store.ListOptions{Unbounded: true}, asc},
+			{"unbounded returns every item in descending order", store.ListOptions{Unbounded: true, Sort: store.SortByIDDesc}, desc},
+			{"unbounded composes with start", store.ListOptions{Start: 7, Unbounded: true}, []string{"h", "i", "j"}},
+			{"unbounded composes with after", store.ListOptions{After: "g", Unbounded: true}, []string{"h", "i", "j"}},
+			{"unbounded past the end yields nothing", store.ListOptions{Start: 20, Unbounded: true}, nil},
 			{"after resumes at the next key", store.ListOptions{After: "c", Limit: 3}, []string{"d", "e", "f"}},
 			{"after is relative to descending order", store.ListOptions{After: "c", Limit: 3, Sort: store.SortByIDDesc}, []string{"b", "a"}},
 			{"after an absent key starts at the next present one", store.ListOptions{After: "cc", Limit: 2}, []string{"d", "e"}},
@@ -238,6 +244,93 @@ func RunResourceStoreSuite(t *testing.T, newStore ResourceStoreFactory) {
 					t.Errorf("All = %d, want 10 regardless of paging", result.All)
 				}
 			})
+		}
+	})
+
+	t.Run("limit zero and unbounded are different requests", func(t *testing.T) {
+		s := newStore(t)
+		seedFlat(t, s)
+
+		// l=0 is a conformant request on the wire: a client is entitled to ask
+		// for the count without the items. It must keep meaning that, which is
+		// why "everything" cannot be spelled with a value of Limit at all.
+		bounded, err := s.List(ctx, store.ListOptions{Limit: 0})
+		if err != nil {
+			t.Fatalf("List with Limit 0: %v", err)
+		}
+		if bounded.Results != 0 || len(bounded.Items) != 0 {
+			t.Errorf("List with Limit 0 returned %d items, want none: l=0 means no items", len(bounded.Items))
+		}
+		if bounded.All != 10 {
+			t.Errorf("List with Limit 0 All = %d, want 10: an empty page still reports the total", bounded.All)
+		}
+
+		unbounded, err := s.List(ctx, store.ListOptions{Unbounded: true})
+		if err != nil {
+			t.Fatalf("List with Unbounded: %v", err)
+		}
+		if got := ids(unbounded.Items); !slices.Equal(got, []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"}) {
+			t.Errorf("unbounded List items = %v, want every item in order", got)
+		}
+		if unbounded.Results != 10 || unbounded.All != 10 {
+			t.Errorf("unbounded List = {All:%d Results:%d}, want both 10", unbounded.All, unbounded.Results)
+		}
+
+		// The two requests differ only in the field that names the intent. If
+		// an implementation ever collapses them, this is where it shows.
+		if len(bounded.Items) == len(unbounded.Items) {
+			t.Error("Limit 0 and Unbounded returned the same number of items: the two intents have been collapsed")
+		}
+	})
+
+	t.Run("unbounded returns more than the wire's largest page", func(t *testing.T) {
+		// The bounded page size that can arrive on the wire is capped, so an
+		// implementation could pass every other assertion here by substituting
+		// some large constant for "unbounded" and never be caught. Seeding past
+		// that cap is what distinguishes a real unbounded read from a big one.
+		const seeded = 300
+
+		s := newStore(t)
+		for i := range seeded {
+			id := fmt.Sprintf("id-%04d", i)
+			if err := s.Create(ctx, id, res(id, "body")); err != nil {
+				t.Fatalf("seed Create(%q): %v", id, err)
+			}
+		}
+
+		result, err := s.List(ctx, store.ListOptions{Unbounded: true})
+		if err != nil {
+			t.Fatalf("unbounded List: %v", err)
+		}
+		if result.Results != seeded || len(result.Items) != seeded {
+			t.Errorf("unbounded List returned %d items (Results=%d), want %d",
+				len(result.Items), result.Results, seeded)
+		}
+		if result.All != seeded {
+			t.Errorf("All = %d, want %d", result.All, seeded)
+		}
+		// Ordering must survive the unbounded path: it is a page of the whole
+		// collection, not a different kind of read.
+		if !slices.IsSorted(ids(result.Items)) {
+			t.Error("unbounded List items are not in ascending id order")
+		}
+	})
+
+	t.Run("list rejects unbounded combined with a limit", func(t *testing.T) {
+		s := newStore(t)
+		seedFlat(t, s)
+
+		// Either interpretation would be wrong silently: honouring Limit
+		// ignores an explicit request for everything, and honouring Unbounded
+		// serves the whole collection to a caller that asked for three. The
+		// combination is a caller bug and is refused, the same way an
+		// unrecognized sort key is refused rather than approximated.
+		result, err := s.List(ctx, store.ListOptions{Limit: 3, Unbounded: true})
+		if !errors.Is(err, store.ErrInvalidListOptions) {
+			t.Fatalf("List with both Limit and Unbounded err = %v, want ErrInvalidListOptions", err)
+		}
+		if len(result.Items) != 0 || result.Results != 0 {
+			t.Errorf("rejected List returned %+v, want no items", result)
 		}
 	})
 
@@ -516,6 +609,9 @@ func RunScopedStoreSuite(t *testing.T, newStore ScopedStoreFactory) {
 			{"start offsets within the order", store.ListOptions{Start: 2, Limit: 2}, []string{"c", "d"}},
 			{"after resumes at the next key", store.ListOptions{After: "b", Limit: 2}, []string{"c", "d"}},
 			{"limit zero yields nothing", store.ListOptions{Limit: 0}, nil},
+			{"unbounded returns every item under the parent", store.ListOptions{Unbounded: true}, asc},
+			{"unbounded returns every item in descending order", store.ListOptions{Unbounded: true, Sort: store.SortByIDDesc}, desc},
+			{"unbounded composes with after", store.ListOptions{After: "b", Unbounded: true}, []string{"c", "d", "e"}},
 		}
 
 		for _, tc := range tests {
@@ -546,6 +642,59 @@ func RunScopedStoreSuite(t *testing.T, newStore ScopedStoreFactory) {
 					t.Errorf("All = %d, want 5: only p1's resources count", result.All)
 				}
 			})
+		}
+	})
+
+	t.Run("limit zero and unbounded are different requests under a parent", func(t *testing.T) {
+		s := newStore(t)
+		for _, id := range []string{"c", "a", "b"} {
+			if err := s.Create(ctx, "p1", id, res(id, "body-"+id)); err != nil {
+				t.Fatalf("Create: %v", err)
+			}
+			// A second parent whose resources must not appear either way.
+			if err := s.Create(ctx, "p2", "other-"+id, res("other-"+id, "body")); err != nil {
+				t.Fatalf("Create under p2: %v", err)
+			}
+		}
+
+		bounded, err := s.List(ctx, "p1", store.ListOptions{Limit: 0})
+		if err != nil {
+			t.Fatalf("List with Limit 0: %v", err)
+		}
+		if bounded.Results != 0 || len(bounded.Items) != 0 {
+			t.Errorf("List with Limit 0 returned %d items, want none: l=0 means no items", len(bounded.Items))
+		}
+		if bounded.All != 3 {
+			t.Errorf("List with Limit 0 All = %d, want 3", bounded.All)
+		}
+
+		unbounded, err := s.List(ctx, "p1", store.ListOptions{Unbounded: true})
+		if err != nil {
+			t.Fatalf("List with Unbounded: %v", err)
+		}
+		if got := ids(unbounded.Items); !slices.Equal(got, []string{"a", "b", "c"}) {
+			t.Errorf("unbounded List items = %v, want p1's three resources in order", got)
+		}
+		if unbounded.Results != 3 || unbounded.All != 3 {
+			t.Errorf("unbounded List = {All:%d Results:%d}, want both 3: unbounded is still scoped to the parent",
+				unbounded.All, unbounded.Results)
+		}
+		if len(bounded.Items) == len(unbounded.Items) {
+			t.Error("Limit 0 and Unbounded returned the same number of items: the two intents have been collapsed")
+		}
+	})
+
+	t.Run("list rejects unbounded combined with a limit", func(t *testing.T) {
+		s := newStore(t)
+		if err := s.Create(ctx, "p1", "a", res("a", "body")); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		result, err := s.List(ctx, "p1", store.ListOptions{Limit: 3, Unbounded: true})
+		if !errors.Is(err, store.ErrInvalidListOptions) {
+			t.Fatalf("List with both Limit and Unbounded err = %v, want ErrInvalidListOptions", err)
+		}
+		if len(result.Items) != 0 || result.Results != 0 {
+			t.Errorf("rejected List returned %+v, want no items", result)
 		}
 	})
 

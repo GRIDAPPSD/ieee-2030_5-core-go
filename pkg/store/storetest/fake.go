@@ -347,6 +347,10 @@ func (f *ScopedFake[T]) Delete(_ context.Context, parentID, id string) error {
 // against the documented semantics rather than copied from the in-memory
 // store, so that agreement between the two is evidence rather than tautology.
 func paginate[T store.Copier[T]](matched []entry[T], opts store.ListOptions) (store.ListResult[T], error) {
+	if err := opts.Validate(); err != nil {
+		return store.ListResult[T]{}, err
+	}
+
 	switch opts.Sort {
 	case store.SortByIDAsc:
 		slices.SortFunc(matched, func(a, b entry[T]) int { return strings.Compare(a.id, b.id) })
@@ -366,11 +370,13 @@ func paginate[T store.Copier[T]](matched []entry[T], opts store.ListOptions) (st
 		matched = matched[cut:]
 	}
 
-	if opts.Start >= uint32(len(matched)) || opts.Limit == 0 {
+	// An unbounded page skips the limit entirely rather than substituting a
+	// large one, so nothing here depends on the collection's size.
+	if opts.Start >= uint32(len(matched)) || (!opts.Unbounded && opts.Limit == 0) {
 		return store.ListResult[T]{All: all}, nil
 	}
 	matched = matched[opts.Start:]
-	if opts.Limit < uint32(len(matched)) {
+	if !opts.Unbounded && opts.Limit < uint32(len(matched)) {
 		matched = matched[:opts.Limit]
 	}
 

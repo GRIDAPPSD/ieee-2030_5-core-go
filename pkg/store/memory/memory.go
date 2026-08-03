@@ -38,6 +38,12 @@ func (s *Store[T]) Get(_ context.Context, id string) (T, error) {
 }
 
 func (s *Store[T]) List(_ context.Context, opts store.ListOptions) (store.ListResult[T], error) {
+	// Self-contradictory options are refused before any state is read: a page
+	// served for them would be one of two different answers chosen silently.
+	if err := opts.Validate(); err != nil {
+		return store.ListResult[T]{}, err
+	}
+
 	// Reject an unrecognized sort key rather than silently serving the
 	// default order: a caller that asked for an order it did not get would
 	// page through a sequence that does not match what it requested.
@@ -72,15 +78,19 @@ func (s *Store[T]) List(_ context.Context, opts store.ListOptions) (store.ListRe
 	}
 	keys = keys[opts.Start:]
 
-	// Apply Limit
-	limit := opts.Limit
-	if limit == 0 {
-		return store.ListResult[T]{All: all, Results: 0, Items: nil}, nil
+	// Apply Limit, unless the caller asked for everything from here on.
+	// opts.Limit is necessarily zero in the unbounded case: Validate rejects
+	// the combination, so this is not a precedence choice made here.
+	if !opts.Unbounded {
+		limit := opts.Limit
+		if limit == 0 {
+			return store.ListResult[T]{All: all, Results: 0, Items: nil}, nil
+		}
+		if limit > uint32(len(keys)) {
+			limit = uint32(len(keys))
+		}
+		keys = keys[:limit]
 	}
-	if limit > uint32(len(keys)) {
-		limit = uint32(len(keys))
-	}
-	keys = keys[:limit]
 
 	// Build result with copies
 	items := make([]T, 0, len(keys))
