@@ -175,6 +175,35 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 			},
 		},
 		{
+			// The document DELETE /mup/{id} serves (IEEECORE-066). Until that
+			// route existed, MirrorUsagePoint appeared in this file only as a
+			// ZERO-VALUE known failure, where mRID and deviceLFDI are dropped by
+			// omitempty and so never reach the wire at all: the pin recorded
+			// their absence, and nothing ever validated a document in which they
+			// were PRESENT. Every other field was in the same blind spot, which
+			// is the IEEECORE-055 shape, an empty document mistaken for
+			// coverage.
+			//
+			// The fixture is deliberately the STRIPPED form, with no
+			// MirrorMeterReading child. That is what both GET and DELETE
+			// actually serve, per section 10.11.3 rule (c), so gating a fixture
+			// carrying children would validate a document this server never
+			// sends. roleFlags is populated at a value below 0x10 because its
+			// hexBinary octet-pairing is the one lexical defect this resource
+			// has already had.
+			typeName: "MirrorUsagePoint",
+			v: sep2.MirrorUsagePoint{
+				Resource:            sep2.Resource{Href: "/mup/0102030405060708090A0B0C0D0E0F10"},
+				MRID:                "0102030405060708090A0B0C0D0E0F10",
+				Description:         "site meter mirror",
+				RoleFlags:           sep2.RoleFlagsValue(9),
+				ServiceCategoryKind: 0,
+				Status:              1,
+				DeviceLFDI:          "0102030405060708090A0B0C0D0E0F1011121314",
+				PostRate:            func() *uint32 { v := uint32(300); return &v }(),
+			},
+		},
+		{
 			typeName: "MirrorMeterReading",
 			v: sep2.MirrorMeterReading{
 				MRID:           "0102030405060708090A0B0C0D0E0F10",
@@ -702,7 +731,7 @@ func TestSchemaGateCoversKnownResources(t *testing.T) {
 	// IEEECORE-055 reached an interop run. Resources listed here must have a
 	// populated fixture in TestSchemaGatePopulatedResources.
 	populated := []string{
-		"Registration", "Reading", "ReadingType", "MirrorMeterReading", "DERStatus",
+		"Registration", "Reading", "ReadingType", "MirrorMeterReading", "MirrorUsagePoint", "DERStatus",
 		"DERControl", "EndDeviceControl", "FlowReservationResponse", "TextMessage",
 		"LogEvent", "LogEventList",
 	}
