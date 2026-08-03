@@ -1,16 +1,28 @@
-// Package sep2_test covers Event-base XML round-tripping for the
-// IEEE-044a additions: `replyTo` and `responseRequired` child elements
-// per IEEE 2030.5 section 10.1.3 (Event rules) / 2023 XSD `RespondableResource`.
+// Package sep2_test covers the Event-base wire format for `replyTo` and
+// `responseRequired`, which IEEE 2030.5 section 10.1.3 (Event rules) and the
+// XSD `RespondableResource` declare as ATTRIBUTES (sep.xsd:5435, sep.xsd:5440).
 //
 // These tests gate the IEEE-044 hook-wiring work: the OnTransition hook
 // reads `ReplyTo` off a decoded DERControl to drive `(*SEP2Client).
 // PostResponse`, and reads the `ResponseRequired` bitmap to decide
-// which transition statuses warrant a Response POST. If either field
-// fails round-trip, IEEE-044's downstream logic is wrong.
+// which transition statuses warrant a Response POST.
+//
+// A ROUND-TRIP TEST CANNOT GATE THIS FILE'S SUBJECT MATTER. Marshalling a
+// DERControl and unmarshalling it back with our own encoder and decoder
+// passes identically whether the two fields are encoded as attributes or as
+// child elements, because our decoder accepts whatever our encoder produced.
+// That symmetry is exactly how IEEECORE-103 shipped: the round-trip tests
+// below were green against the element encoding that made the EPRI reference
+// client abort its parse. Only an assertion over the SERIALIZED BYTES, or a
+// foreign parser, distinguishes the two. Every test here that exists to gate
+// the encoding therefore asserts on the marshalled bytes; the round-trip
+// assertions are kept only to cover value fidelity, which is a different
+// property.
 package sep2_test
 
 import (
 	"encoding/xml"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -54,8 +66,13 @@ func TestEventReplyToRoundTrip(t *testing.T) {
 				return
 			}
 
-			if !strings.Contains(string(data), "<replyTo>"+tc.replyTo+"</replyTo>") {
-				t.Errorf("ReplyTo element missing or wrong; got XML=%s", string(data))
+			// Assert the serialized bytes, not the round trip: the round
+			// trip below passes under the element encoding too.
+			if !strings.Contains(string(data), ` replyTo="`+tc.replyTo+`"`) {
+				t.Errorf("replyTo must be an ATTRIBUTE (sep.xsd:5435); got XML=%s", string(data))
+			}
+			if strings.Contains(string(data), "<replyTo>") {
+				t.Errorf("replyTo emitted as a child element, which is the IEEECORE-103 defect; got XML=%s", string(data))
 			}
 
 			var decoded sep2.DERControl
@@ -100,8 +117,18 @@ func TestEventResponseRequiredRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatalf("marshal: %v", err)
 			}
-			if !strings.Contains(string(data), "<responseRequired>") {
-				t.Errorf("responseRequired element missing; got XML=%s", string(data))
+			// The exact attribute text, not merely its presence. A
+			// HexBinary8 in attribute position needs MarshalXMLAttr to
+			// reach the wire as hex; without it encoding/xml would render
+			// the same value in decimal and a hexBinary parser would read a
+			// different number without erroring.
+			wantAttr := ` responseRequired="` + hexBinary8Text(tc.mask) + `"`
+			if !strings.Contains(string(data), wantAttr) {
+				t.Errorf("responseRequired must be an ATTRIBUTE (sep.xsd:5440) with value %s; got XML=%s",
+					wantAttr, string(data))
+			}
+			if strings.Contains(string(data), "<responseRequired>") {
+				t.Errorf("responseRequired emitted as a child element, which is the IEEECORE-103 defect; got XML=%s", string(data))
 			}
 
 			var decoded sep2.DERControl
@@ -137,11 +164,21 @@ func TestEventResponseRequiredOmitEmpty(t *testing.T) {
 	}
 }
 
-// TestEventElementOrder asserts the XSD-required element order:
-// replyTo, responseRequired come BEFORE mRID, and EventStatus comes
-// AFTER mRID. The encoding/xml package marshals fields in struct
-// declaration order; this test is the on-the-wire sanity check that
-// the struct layout has not been reordered by a future refactor.
+// hexBinary8Text renders the canonical hexBinary lexical form the wire
+// expects for a HexBinary8: two uppercase hex digits.
+func hexBinary8Text(v sep2.HexBinary8) string {
+	return fmt.Sprintf("%02X", uint8(v))
+}
+
+// TestEventElementOrder asserts the XSD-required child element order (mRID
+// before creationTime before EventStatus) and, separately, that replyTo and
+// responseRequired appear on the START TAG rather than among the children.
+//
+// Before IEEECORE-103 this test asserted an ordering among `<replyTo>` and
+// `<responseRequired>` elements, which encoded the defect as the expectation:
+// the test could only pass while the two fields were wrongly modelled. An
+// attribute has no position in the xsd:sequence, so the question the old
+// assertion asked was not a real one.
 func TestEventElementOrder(t *testing.T) {
 	t.Parallel()
 
@@ -150,6 +187,7 @@ func TestEventElementOrder(t *testing.T) {
 	ctrl.MRID = "DERC-ORDER"
 	ctrl.ReplyTo = "/rsp"
 	ctrl.ResponseRequired = &mask
+	ctrl.CreationTime = 1000
 	ctrl.EventStatus = &sep2.EventStatus{CurrentStatus: 1, DateTime: 1000}
 
 	data, err := xml.Marshal(&ctrl)
@@ -158,18 +196,32 @@ func TestEventElementOrder(t *testing.T) {
 	}
 	xmlStr := string(data)
 
-	posReplyTo := strings.Index(xmlStr, "<replyTo>")
-	posRespReq := strings.Index(xmlStr, "<responseRequired>")
+	// The two respondable fields belong on the start tag. Bounding the
+	// search by the end of the start tag is what makes this an assertion
+	// about attribute position and not merely about substring presence.
+	endOfStartTag := strings.Index(xmlStr, ">")
+	if endOfStartTag < 0 {
+		t.Fatalf("no start tag in marshalled XML: %s", xmlStr)
+	}
+	startTag := xmlStr[:endOfStartTag]
+	for _, attr := range []string{`replyTo="/rsp"`, `responseRequired="07"`} {
+		if !strings.Contains(startTag, attr) {
+			t.Errorf("%s must appear on the DERControl start tag; start tag was %q\nXML=%s",
+				attr, startTag, xmlStr)
+		}
+	}
+
 	posMRID := strings.Index(xmlStr, "<mRID>")
+	posCreation := strings.Index(xmlStr, "<creationTime>")
 	posEvtStatus := strings.Index(xmlStr, "<EventStatus>")
 
-	if posReplyTo < 0 || posRespReq < 0 || posMRID < 0 || posEvtStatus < 0 {
-		t.Fatalf("missing element(s): replyTo=%d responseRequired=%d mRID=%d EventStatus=%d\nXML=%s",
-			posReplyTo, posRespReq, posMRID, posEvtStatus, xmlStr)
+	if posMRID < 0 || posCreation < 0 || posEvtStatus < 0 {
+		t.Fatalf("missing element(s): mRID=%d creationTime=%d EventStatus=%d\nXML=%s",
+			posMRID, posCreation, posEvtStatus, xmlStr)
 	}
-	if !(posReplyTo < posRespReq && posRespReq < posMRID && posMRID < posEvtStatus) {
-		t.Errorf("XSD element order violated: replyTo=%d responseRequired=%d mRID=%d EventStatus=%d (want strictly increasing)\nXML=%s",
-			posReplyTo, posRespReq, posMRID, posEvtStatus, xmlStr)
+	if !(posMRID < posCreation && posCreation < posEvtStatus) {
+		t.Errorf("XSD element order violated: mRID=%d creationTime=%d EventStatus=%d (want strictly increasing)\nXML=%s",
+			posMRID, posCreation, posEvtStatus, xmlStr)
 	}
 }
 

@@ -56,6 +56,13 @@ func readBody(t *testing.T, resp *http.Response) []byte {
 // is a HexBinary8: a client reads "07", and a server that emitted "7" or a
 // decimal 7 would decode back to the same Go value here while being wrong on
 // the wire.
+//
+// Both fields are ATTRIBUTES (sep.xsd:5435, sep.xsd:5440). The stamping
+// behaviour this test covers is unchanged by IEEECORE-103; only the wire form
+// the assertions look for moved, because the element form they previously
+// searched for is the defect IEEECORE-103 fixed. Asserting bytes is what let
+// this test be updated meaningfully at all: a round-trip assertion would have
+// stayed green across the fix and told us nothing.
 func TestServedDERControlRequestsAResponse(t *testing.T) {
 	t.Parallel()
 
@@ -63,8 +70,8 @@ func TestServedDERControlRequestsAResponse(t *testing.T) {
 	want := seedDERControl(t, stores, testLFDI, "reply-0", 4100, 1785429793)
 	srv := derControlRouter(t, stores)
 
-	wantReplyTo := "<replyTo>" + coreresponse.ListHref(coreresponse.DefaultSetID) + "</replyTo>"
-	const wantRespReq = "<responseRequired>07</responseRequired>"
+	wantReplyTo := ` replyTo="` + coreresponse.ListHref(coreresponse.DefaultSetID) + `"`
+	const wantRespReq = ` responseRequired="07"`
 
 	for _, href := range []string{
 		want.Href,
@@ -85,6 +92,15 @@ func TestServedDERControlRequestsAResponse(t *testing.T) {
 		if !strings.Contains(body, wantRespReq) {
 			t.Errorf("GET %s served a DERControl without %s, so the EPRI client's responseRequired gate never opens:\n%s",
 				href, wantRespReq, body)
+		}
+		// The element form is what made the client abort the whole
+		// DERControlList parse, taking the dera/dercap/derg PUTs and the
+		// telemetry up-leg down with it (IEEECORE-103).
+		for _, forbidden := range []string{"<replyTo>", "<responseRequired>"} {
+			if strings.Contains(body, forbidden) {
+				t.Errorf("GET %s served %s as a child element; the schema declares it as an attribute and a conforming client fails the parse:\n%s",
+					href, forbidden, body)
+			}
 		}
 	}
 }
@@ -119,10 +135,15 @@ func TestServedDERControlKeepsAnExplicitResponsePolicy(t *testing.T) {
 	}
 	body := string(readBody(t, resp))
 
-	if !strings.Contains(body, "<replyTo>/rsps/operator-set/rsp</replyTo>") {
+	if !strings.Contains(body, ` replyTo="/rsps/operator-set/rsp"`) {
 		t.Errorf("server overwrote a consumer-set replyTo:\n%s", body)
 	}
-	if !strings.Contains(body, "<responseRequired>00</responseRequired>") {
+	// The stored 0x00 is a non-nil pointer to zero. omitempty on an attribute
+	// drops only the field type's own zero value, which for a pointer is nil,
+	// so "explicitly none" still reaches the wire while "unset" still does
+	// not. That distinction is the whole point of the pointer and is the
+	// IEEECORE-067 semantic this assertion guards.
+	if !strings.Contains(body, ` responseRequired="00"`) {
 		t.Errorf("server overwrote an explicit responseRequired=00 (deliberately no response):\n%s", body)
 	}
 }

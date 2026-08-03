@@ -22,27 +22,46 @@ func (e EventStatus) Copy() EventStatus {
 // Event is the base type for schedulable events.
 //
 // Spec reference: IEEE 2030.5 section 10.1.3 (Event rules). Event extends
-// the XSD `RespondableResource` base, which contributes the `replyTo` and
-// `responseRequired` child elements. Element order matches the 2023 XSD:
-// `replyTo`, `responseRequired`, then identified-object fields (`mRID`,
+// the XSD `RespondableResource` base, which contributes `replyTo` and
+// `responseRequired` as XML ATTRIBUTES, not child elements (sep.xsd:5435 and
+// sep.xsd:5440 declare both with `<xs:attribute>`). Element order for the
+// remaining child elements matches the XSD: identified-object fields (`mRID`,
 // `description`), then `creationTime`, `EventStatus`, `interval`. Field
-// declaration order in this struct controls `encoding/xml` marshal order:
-// do not reorder without verifying the XSD.
+// declaration order in this struct controls `encoding/xml` marshal order for
+// the ELEMENTS; attributes are emitted on the start tag regardless of
+// position, so the two attribute fields stay declared first to mirror the
+// XSD's derivation order for readers.
 type Event struct {
 	SubscribableResource
 
 	// ReplyTo is the URI a client POSTs its `Response` resource to when
 	// acknowledging this event. Relative URIs resolve against the
 	// server's base URL; absolute URIs are used verbatim. Spec: section
-	// 10.1.3 and 2023 XSD `RespondableResource.replyTo` (HRef).
-	ReplyTo string `xml:"replyTo,omitempty"`
+	// 10.1.3 and XSD `RespondableResource.replyTo` (HRef).
+	//
+	// ATTRIBUTE, not element: sep.xsd:5435 declares it
+	// `<xs:attribute name="replyTo" use="optional" type="xs:anyURI"/>`.
+	// Emitting it as a child element made the EPRI reference client abort
+	// the whole DERControlList parse (IEEECORE-103).
+	ReplyTo string `xml:"replyTo,attr,omitempty"`
 
 	// ResponseRequired is a HexBinary8 bitmap selecting which transition
 	// statuses require a Response POST from the client. Bits per
 	// IEEE 2030.5 Table 32: bit 0 = message received, bit 1 = specific
 	// response, bit 2 = response on transition. Spec: section 10.1.3 and
-	// 2023 XSD `RespondableResource.responseRequired` (HexBinary8).
-	ResponseRequired *HexBinary8 `xml:"responseRequired,omitempty"`
+	// XSD `RespondableResource.responseRequired` (HexBinary8).
+	//
+	// ATTRIBUTE, not element: sep.xsd:5440 declares it
+	// `<xs:attribute name="responseRequired" use="optional" default="00"
+	// type="HexBinary8"/>`.
+	//
+	// The pointer is load-bearing and must stay a pointer. omitempty on an
+	// attribute omits only the zero value of the field's own type, which for
+	// a pointer is nil, so a non-nil pointer to 0x00 still reaches the wire
+	// as responseRequired="00". That is what lets a server express
+	// "explicitly no response wanted" distinguishably from "unset", which is
+	// the default-versus-override semantic IEEECORE-067 depends on.
+	ResponseRequired *HexBinary8 `xml:"responseRequired,attr,omitempty"`
 
 	MRID        string `xml:"mRID,omitempty"`
 	Description string `xml:"description,omitempty"`
