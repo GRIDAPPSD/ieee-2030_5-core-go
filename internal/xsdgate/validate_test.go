@@ -132,6 +132,25 @@ func TestValidateCatches(t *testing.T) {
 			wantIn:   "bogusAttr",
 		},
 		{
+			// The root-level schemaVer tolerance (IEEECORE-078) is narrow:
+			// it applies to the root element only. A schemaVer attribute
+			// emitted on a non-root, nested complex element is still not
+			// declared by the schema and is still an unknown attribute
+			// there.
+			name:     "schemaVer attribute on a nested, non-root element is still unknown",
+			typeName: "MirrorUsagePoint",
+			doc: `<MirrorUsagePoint ` + ns + `>
+				<mRID>0102030405060708090A0B0C0D0E0F10</mRID>
+				<roleFlags>0013</roleFlags>
+				<serviceCategoryKind>0</serviceCategoryKind>
+				<status>1</status>
+				<deviceLFDI>0102030405060708090A0B0C0D0E0F1011121314</deviceLFDI>
+				<MirrorMeterReading schemaVer="2.2"><mRID>0102030405060708090A0B0C0D0E0F11</mRID></MirrorMeterReading>
+			</MirrorUsagePoint>`,
+			wantKind: xsdgate.KindUnknownAttribute,
+			wantIn:   "schemaVer",
+		},
+		{
 			name:     "wrong root namespace",
 			typeName: "Reading",
 			// The 2013 namespace, which a 2018 peer rejects.
@@ -231,6 +250,16 @@ func TestValidateAcceptsConformantDocuments(t *testing.T) {
 				<MirrorMeterReading><mRID>0102030405060708090A0B0C0D0E0F11</mRID></MirrorMeterReading>
 				<MirrorMeterReading><mRID>0102030405060708090A0B0C0D0E0F12</mRID></MirrorMeterReading>
 			</MirrorUsagePoint>`,
+		},
+		{
+			// IEEE 2030.5-2023 clause 5.6.2 REQUIRES schemaVer on the root
+			// element of every payload. The 2.1 schema this gate checks
+			// against predates that requirement and declares no such
+			// attribute, so a conformant 2023 peer must not be rejected for
+			// carrying it. See IEEECORE-078.
+			name:     "2023 schemaVer attribute on the root element",
+			typeName: "Reading",
+			doc:      `<Reading ` + ns + ` schemaVer="2.2"></Reading>`,
 		},
 	}
 
