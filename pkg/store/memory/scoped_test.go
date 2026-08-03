@@ -109,3 +109,85 @@ func TestScopedStoreHasParent(t *testing.T) {
 		t.Error("should have parent after create")
 	}
 }
+
+// TestScopedStoreDeleteParentRemovesOnlyThatParentsResources is the cascade
+// primitive HandleDeleteMirrorUsagePoint relies on.
+//
+// Two parents are populated, not one. A DeleteParent that dropped the whole
+// stores map, or that cleared the wrong bucket, is indistinguishable from a
+// correct one when only a single parent exists, and a cascade that took a
+// sibling's children with it would be a silent deletion of another device's
+// metering data.
+func TestScopedStoreDeleteParentRemovesOnlyThatParentsResources(t *testing.T) {
+	s := memory.NewScopedStore[testItem]()
+	ctx := context.Background()
+
+	_ = s.Create(ctx, "parent-A", "1", testItem{Name: "a1", Value: 1})
+	_ = s.Create(ctx, "parent-A", "2", testItem{Name: "a2", Value: 2})
+	_ = s.Create(ctx, "parent-B", "1", testItem{Name: "b1", Value: 10})
+
+	removed, err := s.DeleteParent(ctx, "parent-A")
+	if err != nil {
+		t.Fatalf("DeleteParent: %v", err)
+	}
+	if removed != 2 {
+		t.Errorf("removed = %d, want 2", removed)
+	}
+
+	// HasParent is checked before any Count, because ForParent materialises a
+	// bucket on read and a Count would recreate the entry under test.
+	has, err := s.HasParent(ctx, "parent-A")
+	if err != nil {
+		t.Fatalf("HasParent: %v", err)
+	}
+	if has {
+		t.Error("parent-A still present after DeleteParent")
+	}
+
+	if _, err := s.Get(ctx, "parent-A", "1"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("parent-A resource 1 still readable after DeleteParent (err = %v)", err)
+	}
+
+	// The sibling is untouched, values included.
+	got, err := s.Get(ctx, "parent-B", "1")
+	if err != nil {
+		t.Fatalf("parent-B resource 1 was removed by a cascade scoped to parent-A: %v", err)
+	}
+	if got.Name != "b1" || got.Value != 10 {
+		t.Errorf("parent-B resource 1 = %+v, want {b1 10} unchanged", got)
+	}
+	count, err := s.Count(ctx, "parent-B")
+	if err != nil {
+		t.Fatalf("Count: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("parent-B count = %d, want 1", count)
+	}
+}
+
+// TestScopedStoreDeleteParentOnAnAbsentParentIsNotAnError pins the contract the
+// cascade caller depends on: "no bucket" and "an empty bucket" are the same fact
+// for a caller asking that nothing be left behind. Reporting ErrNotFound would
+// make a DELETE of a mirror that never had readings fail, which is a request
+// whose work is already done.
+func TestScopedStoreDeleteParentOnAnAbsentParentIsNotAnError(t *testing.T) {
+	s := memory.NewScopedStore[testItem]()
+	ctx := context.Background()
+
+	removed, err := s.DeleteParent(ctx, "never-existed")
+	if err != nil {
+		t.Fatalf("DeleteParent on an absent parent: %v", err)
+	}
+	if removed != 0 {
+		t.Errorf("removed = %d, want 0", removed)
+	}
+
+	// It did not materialise the parent on the way past.
+	has, err := s.HasParent(ctx, "never-existed")
+	if err != nil {
+		t.Fatalf("HasParent: %v", err)
+	}
+	if has {
+		t.Error("DeleteParent materialised a bucket for an absent parent")
+	}
+}
