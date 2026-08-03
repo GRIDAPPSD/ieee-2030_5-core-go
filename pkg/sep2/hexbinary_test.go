@@ -33,6 +33,24 @@ func hexBinaryElementText(t *testing.T, body, name string) string {
 	return m[1]
 }
 
+// hexBinaryAttrText reads a hexBinary field served in ATTRIBUTE position, and
+// additionally fails if the same name also appears as a child element. The
+// second check is the one with teeth: a field the schema declares as an
+// attribute but the Go type models as an element is IEEECORE-103, and it made
+// the EPRI reference client abandon the whole DERControlList parse.
+func hexBinaryAttrText(t *testing.T, body, name string) string {
+	t.Helper()
+	if strings.Contains(body, "<"+name+">") {
+		t.Fatalf("served bytes carry <%s> as a child ELEMENT; the schema declares it as an attribute; body=%s", name, body)
+	}
+	re := regexp.MustCompile(regexp.QuoteMeta(name) + `="([^"]*)"`)
+	m := re.FindStringSubmatch(body)
+	if m == nil {
+		t.Fatalf("served bytes carry no %s attribute; body=%s", name, body)
+	}
+	return m[1]
+}
+
 // assertHexBinaryText asserts that got is the expected hexBinary text AND
 // that a hexBinary parser reading it recovers wantValue. The second check is
 // the one that would have failed before this change: the text and the number
@@ -55,12 +73,18 @@ func assertHexBinaryText(t *testing.T, field, got, want string, wantValue uint64
 }
 
 // hexBinaryDoc is one converted field: how to build a document carrying it,
-// which element to read, and what the bytes must say.
+// which element or attribute to read, and what the bytes must say.
+//
+// attr selects the XML position the field occupies. It is not cosmetic: the
+// hexBinary family reaches the wire through MarshalXML in element position and
+// through MarshalXMLAttr in attribute position, so the two positions exercise
+// different code and a field checked in the wrong one is not checked at all.
 type hexBinaryDoc struct {
 	name    string
 	elem    string
 	value   uint64
 	want    string
+	attr    bool
 	marshal func() (any, error)
 }
 
@@ -131,7 +155,13 @@ func hexBinaryFieldCases() []hexBinaryDoc {
 			},
 		},
 		{
-			name: "DERControl.responseRequired", elem: "responseRequired", value: 3, want: "03",
+			// ATTRIBUTE position: sep.xsd:5440 declares responseRequired as
+			// an xs:attribute on RespondableResource. This row read the
+			// ELEMENT position until IEEECORE-103, which is why it stayed
+			// green while the served bytes were unparseable to the EPRI
+			// reference client: it was asserting the hex text of a field
+			// that should never have been an element in the first place.
+			name: "DERControl.responseRequired", elem: "responseRequired", value: 3, want: "03", attr: true,
 			marshal: func() (any, error) {
 				mask := sep2.HexBinary8(3)
 				ctrl := sep2.DERControl{}
@@ -210,7 +240,12 @@ func TestHexBinaryFieldsServedBytes(t *testing.T) {
 			if err != nil {
 				t.Fatalf("marshal: %v", err)
 			}
-			got := hexBinaryElementText(t, string(data), tc.elem)
+			var got string
+			if tc.attr {
+				got = hexBinaryAttrText(t, string(data), tc.elem)
+			} else {
+				got = hexBinaryElementText(t, string(data), tc.elem)
+			}
 			assertHexBinaryText(t, tc.name, got, tc.want, tc.value)
 		})
 	}
@@ -415,14 +450,22 @@ func TestHexBinaryFieldsRoundTripFromWire(t *testing.T) {
 		}
 	})
 
+	// responseRequired arrives in ATTRIBUTE position (sep.xsd:5440), so the
+	// inbound path exercises UnmarshalXMLAttr rather than UnmarshalXML. The
+	// document below is the spec-conformant form a conforming peer sends;
+	// before IEEECORE-103 this subtest fed the element form, so it was
+	// asserting that we could read back our own non-conformant output.
 	t.Run("DERControl.responseRequired", func(t *testing.T) {
 		t.Parallel()
 		var got sep2.DERControl
-		if err := xml.Unmarshal([]byte(`<DERControl xmlns="urn:ieee:std:2030.5:ns"><responseRequired>03</responseRequired></DERControl>`), &got); err != nil {
+		if err := xml.Unmarshal([]byte(`<DERControl xmlns="urn:ieee:std:2030.5:ns" replyTo="/rsps/1/rsp" responseRequired="03"></DERControl>`), &got); err != nil {
 			t.Fatalf("unmarshal: %v", err)
 		}
 		if got.ResponseRequired == nil || *got.ResponseRequired != 3 {
 			t.Fatalf("ResponseRequired = %v, want 3", got.ResponseRequired)
+		}
+		if got.ReplyTo != "/rsps/1/rsp" {
+			t.Fatalf("ReplyTo = %q, want %q", got.ReplyTo, "/rsps/1/rsp")
 		}
 	})
 
