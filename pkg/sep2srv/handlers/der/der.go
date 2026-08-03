@@ -14,7 +14,6 @@ import (
 	coreresponse "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/handlers/response"
 	coresingleton "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/handlers/singleton"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
-	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
 // DefaultResponseRequired is the responseRequired bitmap this server stamps on
@@ -143,10 +142,10 @@ func BuildDERCurveList(href string, result store.ListResult[sep2.DERCurve], poll
 // DERSingletonHandlers creates all DER singleton GET/PUT handlers
 // for DERCapability, DERSettings, DERStatus, DERAvailability.
 func DERSingletonHandlers(
-	caps *memory.ScopedStore[sep2.DERCapability],
-	settings *memory.ScopedStore[sep2.DERSettings],
-	statuses *memory.ScopedStore[sep2.DERStatus],
-	avails *memory.ScopedStore[sep2.DERAvailability],
+	caps store.ScopedStore[sep2.DERCapability],
+	settings store.ScopedStore[sep2.DERSettings],
+	statuses store.ScopedStore[sep2.DERStatus],
+	avails store.ScopedStore[sep2.DERAvailability],
 ) (dercap, derg, ders, dera http.HandlerFunc) {
 
 	derParentKey := func(r *http.Request) string {
@@ -185,8 +184,8 @@ func DERSingletonHandlers(
 }
 
 // DefaultDERControlHandler creates a handler for GET/PUT on DefaultDERControl.
-func DefaultDERControlHandler(store *memory.ScopedStore[sep2.DefaultDERControl]) http.HandlerFunc {
-	return coresingleton.HandleSingletonGetPut[sep2.DefaultDERControl](store,
+func DefaultDERControlHandler(ddercStore store.ScopedStore[sep2.DefaultDERControl]) http.HandlerFunc {
+	return coresingleton.HandleSingletonGetPut[sep2.DefaultDERControl](ddercStore,
 		func(r *http.Request) string {
 			return r.PathValue("id") + "/" + r.PathValue("fsaId") + "/" + r.PathValue("derpId")
 		},

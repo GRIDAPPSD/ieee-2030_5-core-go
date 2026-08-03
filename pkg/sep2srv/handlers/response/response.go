@@ -23,7 +23,6 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
-	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
 // DefaultSetID is the id of the ResponseSet this server seeds and points every
@@ -88,7 +87,7 @@ func DefaultSet() sep2.ResponseSet {
 // It is idempotent, and a set a consumer seeded itself under the same id wins:
 // re-seeding over it would replace an operator's own mRID and description with
 // ours, and the mRID is the client-visible identity of the channel.
-func SeedDefaultSet(ctx context.Context, sets *memory.Store[sep2.ResponseSet]) error {
+func SeedDefaultSet(ctx context.Context, sets store.ResourceStore[sep2.ResponseSet]) error {
 	if sets == nil {
 		return nil
 	}
@@ -105,7 +104,7 @@ func SeedDefaultSet(ctx context.Context, sets *memory.Store[sep2.ResponseSet]) e
 // A miss is a clean 404 rather than a synthesized empty set: a client that
 // parsed a zero-valued ResponseSet would read an empty ResponseListLink and
 // post its acknowledgements into the void.
-func HandleResponseSet(sets *memory.Store[sep2.ResponseSet]) http.HandlerFunc {
+func HandleResponseSet(sets store.ResourceStore[sep2.ResponseSet]) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			encoding.MethodNotAllowed(w, "GET, HEAD")
@@ -130,7 +129,7 @@ func HandleResponseSet(sets *memory.Store[sep2.ResponseSet]) http.HandlerFunc {
 // client that followed our own advertised Location got a 404, which is the
 // advertised-but-unrouted defect the mintable-href assertion exists to police,
 // and CSIP CTP asserts the Location on every event response test.
-func HandleResponse(responses *memory.ScopedStore[sep2.Response]) http.HandlerFunc {
+func HandleResponse(responses store.ScopedStore[sep2.Response]) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			encoding.MethodNotAllowed(w, "GET, HEAD")

@@ -13,7 +13,6 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
 	coreresponse "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/handlers/response"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
-	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
 // BuildFlowReservationRequestList constructs a FlowReservationRequestList.
@@ -55,7 +54,7 @@ type FRPCreator interface {
 
 // HandlePostFlowReservationRequest returns a handler for POST /edev/{id}/frq.
 func HandlePostFlowReservationRequest(
-	frqStore *memory.ScopedStore[sep2.FlowReservationRequest],
+	frqStore store.ScopedStore[sep2.FlowReservationRequest],
 	frpStore FRPCreator,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -140,7 +139,7 @@ func HandlePostFlowReservationRequest(
 // (IEEECORE-067). The pin stays: DecodeResponse dispatches on the root element
 // and decodes the declared subtype, so the accepted set is exactly the
 // subtypes the WADL names.
-func HandlePostResponse(rspStore *memory.ScopedStore[sep2.Response]) http.HandlerFunc {
+func HandlePostResponse(rspStore store.ScopedStore[sep2.Response]) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			encoding.MethodNotAllowed(w, "POST")

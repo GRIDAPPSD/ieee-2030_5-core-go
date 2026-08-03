@@ -10,7 +10,6 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
-	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
 // BuildLogEventList constructs a LogEventList from store results.
@@ -38,7 +37,7 @@ func BuildLogEventList(href string, result store.ListResult[sep2.LogEvent], poll
 // was handed a URI this server would answer 404 on (IEEECORE-084). The href goes
 // into the STORED document, not only into the header, so the instance route
 // serves back the same URI the client was told to follow.
-func HandlePostLogEvent(logStore *memory.ScopedStore[sep2.LogEvent]) http.HandlerFunc {
+func HandlePostLogEvent(logStore store.ScopedStore[sep2.LogEvent]) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			encoding.MethodNotAllowed(w, "POST")
