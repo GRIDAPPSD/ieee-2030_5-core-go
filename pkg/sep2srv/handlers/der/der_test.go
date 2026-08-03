@@ -266,6 +266,20 @@ func TestBuildDERProgramList(t *testing.T) {
 	}
 }
 
+// TestDERProgramHref asserts the canonical builder emits the FSA-nested
+// shape core actually mounts a DERProgram under (IEEECORE-082): dropping the
+// {fsaId} segment reproduced the exact defect found independently by Devi's
+// WADL sweep and Frank's boot-fixture testing.
+func TestDERProgramHref(t *testing.T) {
+	t.Parallel()
+
+	got := coredel.DERProgramHref("e1", "f1", "p1")
+	want := "/edev/e1/fsa/f1/derp/p1"
+	if got != want {
+		t.Errorf("DERProgramHref() = %q, want %q", got, want)
+	}
+}
+
 func TestBuildDERControlList(t *testing.T) {
 	t.Parallel()
 
