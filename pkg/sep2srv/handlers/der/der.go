@@ -11,10 +11,55 @@ import (
 	"net/http"
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
+	coreresponse "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/handlers/response"
 	coresingleton "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/handlers/singleton"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
+
+// DefaultResponseRequired is the responseRequired bitmap this server stamps on
+// a DERControl that does not carry one.
+//
+// Bits per IEEE 2030.5 Table 32: bit 0 message received, bit 1 specific
+// response, bit 2 response on transition. 0x07 sets all three, which is the
+// literal value CSIP CTP CORE-022 names in its setup and repeats in BASIC-004
+// through BASIC-015. It is a HexBinary8, so it reaches the wire as "07" and
+// not as a decimal 7.
+const DefaultResponseRequired sep2.HexBinary8 = 0x07
+
+// StampResponseRequest fills in the RespondableResource fields on a DERControl
+// about to be served, so a conforming client knows a response is wanted and
+// where to send it.
+//
+// # Why the server does this rather than whoever created the control
+//
+// replyTo has to name a URI THIS server routes, and the response function set
+// is core's, not a consumer's: a consumer that wrote its own replyTo would be
+// guessing at a path shape it does not own. Doing it on the way out also means
+// no consumer has to change to become certification-conformant, and that the
+// list route and the single-resource route cannot drift, since both call this.
+//
+// # Why it is a default and not an override
+//
+// A control that already carries either field keeps it. responseRequired is a
+// pointer precisely so a server can say "explicitly none" (a stored 0x00)
+// distinguishably from "unset", and collapsing the two would make that policy
+// unexpressible. The base standard is conditional here ("If a response is
+// desired to an event, then the event SHALL provide, in the replyTo field, a
+// URI"), so a consumer that wants no response is not misconfigured; it just
+// has to say so.
+func StampResponseRequest(ctrl *sep2.DERControl) {
+	if ctrl == nil {
+		return
+	}
+	if ctrl.ReplyTo == "" {
+		ctrl.ReplyTo = coreresponse.ListHref(coreresponse.DefaultSetID)
+	}
+	if ctrl.ResponseRequired == nil {
+		v := DefaultResponseRequired
+		ctrl.ResponseRequired = &v
+	}
+}
 
 // BuildDERList constructs a DERList from store results.
 func BuildDERList(href string, result store.ListResult[sep2.DER], pollRate uint32) sep2.DERList {
@@ -59,7 +104,14 @@ func DERProgramHref(edevID, fsaID, derpID string) string {
 }
 
 // BuildDERControlList constructs a DERControlList from store results.
+//
+// Every member is stamped with the response request (see StampResponseRequest)
+// on the way out. The store hands back copies, so this mutates the served
+// document and never the stored control.
 func BuildDERControlList(href string, result store.ListResult[sep2.DERControl], pollRate uint32) sep2.DERControlList {
+	for i := range result.Items {
+		StampResponseRequest(&result.Items[i])
+	}
 	return sep2.DERControlList{
 		ListResource: sep2.ListResource{
 			SubscribableResource: sep2.SubscribableResource{
