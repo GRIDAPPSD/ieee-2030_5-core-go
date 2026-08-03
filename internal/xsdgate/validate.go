@@ -116,7 +116,7 @@ func (s *Schema) Validate(typeName string, data []byte) (Problems, error) {
 		})
 	}
 
-	ps = append(ps, s.validateNode(root, typeName, root.name.Local)...)
+	ps = append(ps, s.validateNode(root, typeName, root.name.Local, true)...)
 	if len(ps) == 0 {
 		return nil, nil
 	}
@@ -133,7 +133,10 @@ func (s *Schema) ValidateElement(elementName string, data []byte) (Problems, err
 	return s.Validate(typeName, data)
 }
 
-func (s *Schema) validateNode(n *node, typeName, path string) Problems {
+// validateNode checks n against typeName. isRoot marks the document's root
+// element, which gets the narrow schemaVer tolerance (see checkAttributes);
+// every descendant is validated with isRoot false.
+func (s *Schema) validateNode(n *node, typeName, path string, isRoot bool) Problems {
 	var ps Problems
 
 	ct, ok := s.complexTypes[typeName]
@@ -173,7 +176,7 @@ func (s *Schema) validateNode(n *node, typeName, path string) Problems {
 		attrByName[a.Name] = a
 	}
 
-	ps = append(ps, s.checkAttributes(n, path, typeName, attrByName, elemByName)...)
+	ps = append(ps, s.checkAttributes(n, path, typeName, attrByName, elemByName, isRoot)...)
 
 	// simpleContent types carry a value rather than children.
 	if ct.SimpleContent {
@@ -186,7 +189,22 @@ func (s *Schema) validateNode(n *node, typeName, path string) Problems {
 	return ps
 }
 
-func (s *Schema) checkAttributes(n *node, path, typeName string, attrByName map[string]Attribute, elemByName map[string]Element) Problems {
+// rootTolerated is the set of attribute names accepted on the document's
+// root element even though the 2.1 schema this gate checks against does not
+// declare them. It exists for exactly one entry: IEEE 2030.5-2023 clause
+// 5.6.2 REQUIRES every payload's top-level element to carry schemaVer, a
+// requirement the 2.1 schema predates. Rejecting a 2023 peer for supplying
+// an attribute its edition of the standard obliges it to send would be
+// wrong, so the gate treats schemaVer on the root as tolerated rather than
+// unknown. Nothing else is in this set: an unrelated unknown attribute on
+// the root is still a defect, and schemaVer anywhere other than the root is
+// still unknown too (see checkAttributes' isRoot parameter). See
+// IEEECORE-078.
+var rootTolerated = map[string]bool{
+	"schemaVer": true,
+}
+
+func (s *Schema) checkAttributes(n *node, path, typeName string, attrByName map[string]Attribute, elemByName map[string]Element, isRoot bool) Problems {
 	var ps Problems
 	seen := map[string]bool{}
 
@@ -210,6 +228,9 @@ func (s *Schema) checkAttributes(n *node, path, typeName string, attrByName map[
 				Message: fmt.Sprintf("schema declares %q on %s as a CHILD ELEMENT (type %s, declared by %s), but it was emitted as an attribute",
 					local, typeName, el.Type, el.Owner),
 			})
+			continue
+		}
+		if isRoot && rootTolerated[local] {
 			continue
 		}
 		ps = append(ps, Problem{
@@ -284,7 +305,7 @@ func (s *Schema) checkChildren(
 			lastName = local
 		}
 
-		ps = append(ps, s.validateNode(c, decl.Type, childPath)...)
+		ps = append(ps, s.validateNode(c, decl.Type, childPath, false)...)
 	}
 
 	for name, count := range counts {
