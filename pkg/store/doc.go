@@ -42,6 +42,28 @@
 // It remains available on the in-memory type as an implementation
 // convenience; it is not part of the contract.
 //
+// # Paging, and the two things zero does not mean
+//
+// [ListOptions] carries the wire's paging parameters from section 4.6.2, so
+// Limit is the l parameter and inherits its meaning exactly: l=0 asks for no
+// items, which is a request a conformant client is entitled to make when it
+// wants the total without the contents.
+//
+// That leaves no numeric value free to mean "every item". Zero is taken, and
+// any other constant is a number a caller can reach by arithmetic on a count,
+// at which point a request for a page silently becomes a request for the whole
+// collection. [ListOptions.Unbounded] is a separate field for that reason: the
+// unbounded read has to be named, and the two intents cannot be confused by a
+// wrong number. A server-internal caller that wants everything under a parent
+// asks for it directly, rather than passing a limit chosen to be larger than
+// the data is expected to get.
+//
+// Setting both is refused rather than resolved. Honouring Limit would ignore
+// an explicit request for everything, and honouring Unbounded would serve the
+// whole collection to a caller that asked for a page: the same reasoning that
+// makes an unrecognized [SortKey] an error instead of a fallback to the
+// default order.
+//
 // # Copy semantics
 //
 // Implementations MUST be safe for concurrent use. Every value crossing the
@@ -57,7 +79,7 @@
 // implementation essentially cannot fail, so callers written against it have
 // never met a fallible backend.
 //
-// Exactly three errors carry defined meaning:
+// Exactly four errors carry defined meaning:
 //
 //   - [ErrNotFound] means the addressed resource, or its parent, is absent.
 //     On a request path this is a 404.
@@ -66,6 +88,9 @@
 //   - [ErrUnsupportedSort] means the requested [SortKey] is not one this
 //     implementation can provide. It is never returned in place of silently
 //     serving a different order.
+//   - [ErrInvalidListOptions] means the [ListOptions] contradict themselves,
+//     which is a caller bug rather than a backend condition. No client
+//     request can produce it, so on a request path it is a 500.
 //
 // Match them with [errors.Is]: an implementation may wrap them with context.
 //

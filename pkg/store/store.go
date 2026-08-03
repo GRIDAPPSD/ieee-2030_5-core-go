@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 )
 
 // Copier is a constraint for types that can produce independent copies.
@@ -171,20 +172,73 @@ type ListOptions struct {
 	// SortByIDAsc, is the required baseline; Start and After are interpreted
 	// relative to it. An unrecognized value yields ErrUnsupportedSort.
 	Sort SortKey
+
+	// Unbounded requests every item from the starting position onward,
+	// with no page size at all.
+	//
+	// It is a separate field because Limit cannot express it. Limit is the
+	// wire's l parameter, and l=0 is a conformant request that means "no
+	// items": a client may legitimately ask for the total without the
+	// contents. So zero cannot be overloaded to mean "everything", and no
+	// other numeric value can carry it either, because a caller can arrive at
+	// any particular number by arithmetic on a count and would then silently
+	// receive the whole collection instead of a page. Keeping the two intents
+	// in separate fields makes "everything" something a caller has to name
+	// and cannot compute into.
+	//
+	// It is for server-internal reads over a collection the server itself
+	// bounds, such as assembling a snapshot of a known-small fleet. It is
+	// never set from a request: a page size that arrived on the wire belongs
+	// to the client, which is why Validate rejects Unbounded together with a
+	// non-zero Limit rather than picking one of them.
+	//
+	// The zero value is false, so a caller that says nothing about paging
+	// still gets the previous meaning of ListOptions{}: no items.
+	Unbounded bool
+}
+
+// Validate reports whether the options are self-consistent, independent of any
+// implementation. Implementations MUST call it before serving a List and MUST
+// NOT serve a request it rejects.
+//
+// It deliberately does not check Sort. Which SortKey values an implementation
+// can provide is implementation-specific, and ErrUnsupportedSort is that
+// implementation's answer to give, not this package's.
+func (o ListOptions) Validate() error {
+	if o.Unbounded && o.Limit != 0 {
+		return fmt.Errorf("%w: Unbounded set with Limit %d; an unbounded read takes no page size", ErrInvalidListOptions, o.Limit)
+	}
+	return nil
 }
 
 // ListResult contains a page of results with total count metadata.
 type ListResult[T any] struct {
-	All     uint32 // total matching resources, independent of paging
+	// All is the total number of matching resources, independent of paging.
+	// Unbounded is a paging choice like any other, so it does not change All:
+	// an unbounded List reports the same All that a one-item page of the same
+	// collection reports.
+	//
+	// Results therefore equals All on an unbounded List only when the page
+	// also began at the first item. An unbounded List with a Start offset or
+	// an After key reports Results below All by exactly the number of items
+	// those skipped.
+	All uint32
+
 	Results uint32 // count returned in this page
 	Items   []T
 }
 
-// Sentinel errors for store operations. These three, and only these three,
+// Sentinel errors for store operations. These four, and only these four,
 // carry defined meaning; see the package documentation for the full error
 // contract. Match with errors.Is: implementations may wrap them.
 var (
 	ErrNotFound        = errors.New("resource not found")
 	ErrAlreadyExists   = errors.New("resource already exists")
 	ErrUnsupportedSort = errors.New("unsupported sort key")
+
+	// ErrInvalidListOptions means the ListOptions contradict themselves and
+	// no page can be served for them. It reports a bug in the calling code
+	// rather than any condition of the backend or of the request: nothing a
+	// client can send produces it, so on a request path it is a 500.
+	ErrInvalidListOptions = errors.New("invalid list options")
 )
