@@ -529,9 +529,11 @@ func registerDERRoutes(mux routeRegistrar, stores *Stores) {
 	// DERProgram store's own scoping): {fsaId} is part of the mounted path
 	// shape, not a filter on which programs are visible under it. Read-only:
 	// core exposes no write route for a single DERProgram, mirroring the
-	// DERControl single-resource route just below.
+	// DERControl single-resource route just below. The empty itemMethods is
+	// what says so, and it renders exactly the Allow this route answered with
+	// before the method set became declarative: GET, HEAD.
 	mux.HandleFunc("GET /edev/{id}/fsa/{fsaId}/derp/{derpId}",
-		scopedResourceHandler[sep2.DERProgram](stores.DERPrograms.ScopedStore, "derpId"))
+		scopedResourceHandler[sep2.DERProgram](stores.DERPrograms.ScopedStore, "derpId", itemMethods{}, nil))
 
 	// DERControl under DERProgram
 	mux.HandleFunc("GET /edev/{id}/fsa/{fsaId}/derp/{derpId}/derc",
@@ -575,36 +577,6 @@ func scopedListHandler[T store.Copier[T], L any](
 		st := scopedStore.ForParent(parentID)
 		h := corelisthandler.ListHandler[T, L](st, buildList, pollRate)
 		h.ServeHTTP(w, r)
-	}
-}
-
-// scopedResourceHandler creates a read-only single-resource handler scoped by
-// the {id} path value (device id) alone, keyed within that scope by the path
-// value named idParam. Mirrors scopedResourceHandlerDeep's non-crash-on-miss
-// contract one level up: a clean 404 on a scope miss, never a synthesized
-// zero-valued resource, so a client can't mistake an absent resource for a
-// real one it can act on.
-func scopedResourceHandler[T store.Copier[T]](
-	scopedStore *memory.ScopedStore[T],
-	idParam string,
-) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			encoding.MethodNotAllowed(w, "GET, HEAD")
-			return
-		}
-
-		resource, err := scopedStore.Get(r.Context(), r.PathValue("id"), r.PathValue(idParam))
-		if err != nil {
-			if errors.Is(err, store.ErrNotFound) {
-				http.Error(w, "not found", http.StatusNotFound)
-				return
-			}
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return
-		}
-
-		encoding.WriteXML(w, http.StatusOK, &resource)
 	}
 }
 

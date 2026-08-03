@@ -645,6 +645,89 @@ func TestAssembly_DERProgramMemberHrefResolves(t *testing.T) {
 	}
 }
 
+// TestAssembly_DERProgramMemberStaysReadOnly pins the method set of the
+// DERProgram member route (IEEECORE-082) against the handler it is mounted on.
+//
+// That handler now takes its method set as a value rather than hardcoding one
+// (IEEECORE-052), so "read-only" stopped being a property of the function and
+// became a property of the call site. An empty itemMethods at the call site must
+// therefore serve exactly what the hardcoded string served before: GET and HEAD,
+// and an Allow header naming only those. Widening a read-only resource's method
+// set is precisely the change that would otherwise ship dark, because a client
+// that never tries a write would never notice.
+//
+// This is the WIRE half of that claim: what a client actually gets. Because only
+// a GET pattern is registered for this path, the 405 and its Allow come from
+// http.ServeMux rather than from the handler, so this test alone cannot tell a
+// read-only handler from a writable one mounted on a read-only pattern. The
+// handler's own gate, which is what would stop a future "PUT ..." registration
+// from silently enabling a write, is pinned directly in
+// scopedresource_internal_test.go. Neither half is sufficient alone.
+func TestAssembly_DERProgramMemberStaysReadOnly(t *testing.T) {
+	t.Parallel()
+
+	stores := testStores()
+	edevID, fsaID, derpID := "e1", "f1", "p1"
+	href := coreder.DERProgramHref(edevID, fsaID, derpID)
+	program := sep2.DERProgram{SubscribableResource: sep2.SubscribableResource{Resource: sep2.Resource{Href: href}}}
+	if err := stores.DERPrograms.Create(context.Background(), edevID, derpID, program); err != nil {
+		t.Fatalf("seed DERProgram: %v", err)
+	}
+
+	handler, _ := assembly.BuildProtocolRouter(
+		assembly.RouterConfig{},
+		stores,
+		testAuthPolicy(),
+		"serverSFDI", "serverLFDI",
+		nil,
+	)
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	for _, method := range []string{http.MethodPut, http.MethodPost, http.MethodDelete} {
+		t.Run(method+" is refused", func(t *testing.T) {
+			req, err := http.NewRequest(method, srv.URL+href, strings.NewReader(
+				`<DERProgram xmlns="urn:ieee:std:2030.5:ns"/>`))
+			if err != nil {
+				t.Fatalf("new request: %v", err)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("%s %s: %v", method, href, err)
+			}
+			resp.Body.Close()
+
+			if resp.StatusCode != http.StatusMethodNotAllowed {
+				t.Errorf("status = %d, want 405: core exposes no write route for a single DERProgram", resp.StatusCode)
+			}
+			if got := resp.Header.Get("Allow"); got != "GET, HEAD" {
+				t.Errorf("Allow = %q, want %q", got, "GET, HEAD")
+			}
+		})
+	}
+
+	t.Run("GET still resolves", func(t *testing.T) {
+		resp, err := http.Get(srv.URL + href)
+		if err != nil {
+			t.Fatalf("GET %s: %v", href, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want 200", resp.StatusCode)
+		}
+		var got sep2.DERProgram
+		decodeXML(t, resp, &got)
+		if got.Href != href {
+			t.Errorf("Href = %q, want %q", got.Href, href)
+		}
+	})
+
+	// A write must not have leaked into the store even though it was refused.
+	if _, err := stores.DERPrograms.Get(context.Background(), edevID, derpID); err != nil {
+		t.Errorf("the seeded DERProgram is gone after the refused writes: %v", err)
+	}
+}
+
 // TestAssembly_AsNotifyRemoved: a notifier that also satisfies notifyRemover
 // wires the subscription-delete handler with the NotifyRemoved callback.
 // Asserts the DELETE /edev/{id}/sub/{subId} path is mounted and returns 204.
