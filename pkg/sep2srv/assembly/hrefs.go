@@ -185,7 +185,15 @@ func MintableHrefs() []MintableHref {
 
 		// EndDevice and its immediate children.
 		{"/edev/{}", http.MethodGet, "handlers/enddevice.HandleCreateEndDevice", "the Location header a client follows after POST /edev, and the self href of every EndDevice in the list"},
-		{"/edev/{}/rg", http.MethodGet, "handlers/enddevice.buildEndDevice RegistrationLink", "a client reads its own Registration to confirm the server accepted it"},
+		// The source moved in IEEECORE-083. This href used to be minted
+		// unconditionally by the POST handler while nothing ever wrote the
+		// Registration behind it, which this registry could not detect:
+		// the probe asks whether the href resolves to a mounted route, and
+		// "/edev/{}/rg" always did. It is now minted by the store binding
+		// that writes the record, so the link and the record appear
+		// together. That is the population half of the class, and it is
+		// outside what this registry can prove.
+		{"/edev/{}/rg", http.MethodGet, "memory.RegisteredEndDeviceStore RegistrationLink", "a client reads its own Registration to confirm the server accepted it"},
 		{"/edev/{}/fsa", http.MethodGet, "handlers/enddevice.buildEndDevice FunctionSetAssignmentsListLink", "the path from an EndDevice to its DERPrograms"},
 		{"/edev/{}/fsa/{}", http.MethodGet, "handlers/fsa.HandleFSA", "a single FunctionSetAssignments"},
 		{"/edev/{}/fsa/{}/derp", http.MethodGet, "handlers/fsa.HandleFSA DERProgramListLink", "the DERProgram list under an FSA"},
