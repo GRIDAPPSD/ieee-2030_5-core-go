@@ -52,7 +52,7 @@ const unprovisionedLFDI = "00000000000000000000000000000000DEADBEEF"
 //
 // It also returns the raw Registration store, so a test can construct the
 // no-Registration state directly rather than through any handler.
-func bindingTestStores(t *testing.T) (*assembly.Stores, *memory.RegistrationStore, store.EndDeviceStore) {
+func bindingTestStores(t *testing.T) (*assembly.Stores, store.ResourceStore[sep2.Registration], store.EndDeviceStore) {
 	t.Helper()
 
 	stores := testStores()
@@ -74,7 +74,7 @@ func bindingTestStores(t *testing.T) (*assembly.Stores, *memory.RegistrationStor
 // bindingTestServer wires a router over a pre-bound Stores and runs seed
 // against the bound EndDevice store BEFORE the router is built, which is the
 // boot-fixture provisioning path.
-func bindingTestServer(t *testing.T, seed func(ctx context.Context, edevs store.EndDeviceStore)) (*httptest.Server, *memory.RegistrationStore) {
+func bindingTestServer(t *testing.T, seed func(ctx context.Context, edevs store.EndDeviceStore)) (*httptest.Server, store.ResourceStore[sep2.Registration]) {
 	t.Helper()
 
 	stores, regs, bound := bindingTestStores(t)

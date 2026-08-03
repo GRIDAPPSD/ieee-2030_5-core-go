@@ -11,7 +11,6 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
-	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
 // BuildMessagingProgramList constructs a MessagingProgramList.
@@ -45,7 +44,7 @@ func BuildTextMessageList(href string, result store.ListResult[sep2.TextMessage]
 }
 
 // HandleMessagingProgram returns a handler for GET /msg/{msgId}.
-func HandleMessagingProgram(msgStore *memory.Store[sep2.MessagingProgram]) http.HandlerFunc {
+func HandleMessagingProgram(msgStore store.ResourceStore[sep2.MessagingProgram]) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			encoding.MethodNotAllowed(w, "GET, HEAD")
@@ -66,7 +65,7 @@ func HandleMessagingProgram(msgStore *memory.Store[sep2.MessagingProgram]) http.
 }
 
 // HandlePostTextMessage returns a handler for POST /msg/{msgId}/tm (admin creates message).
-func HandlePostTextMessage(tmStore *memory.ScopedStore[sep2.TextMessage]) http.HandlerFunc {
+func HandlePostTextMessage(tmStore store.ScopedStore[sep2.TextMessage]) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			encoding.MethodNotAllowed(w, "POST")

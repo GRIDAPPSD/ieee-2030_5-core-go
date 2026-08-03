@@ -9,7 +9,6 @@ import (
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
-	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
 // SingletonKey is the fixed key used for singleton sub-resources.
@@ -22,7 +21,7 @@ const SingletonKey = "default"
 // GET returns the stored resource or a default (empty) resource if none exists.
 // PUT upserts the resource (creates if not exists, updates if exists).
 func HandleSingletonGetPut[T store.Copier[T]](
-	scopedStore *memory.ScopedStore[T],
+	scopedStore store.ScopedStore[T],
 	parentKeyFunc func(r *http.Request) string,
 	defaultFactory func(r *http.Request) T,
 ) http.HandlerFunc {
@@ -61,8 +60,12 @@ func HandleSingletonGetPut[T store.Copier[T]](
 			// Try create first, update if already exists
 			if err := scopedStore.Create(r.Context(), parentKey, SingletonKey, resource); err != nil {
 				if errors.Is(err, store.ErrAlreadyExists) {
-					st := scopedStore.ForParent(parentKey)
-					if err := st.Update(r.Context(), SingletonKey, resource); err != nil {
+					// Update through the scoped contract rather than through a
+					// per-parent handle. The parent is known to exist here:
+					// Create just reported the resource already present under
+					// it, which is the one condition under which the scoped
+					// Update's own unknown-parent ErrNotFound cannot fire.
+					if err := scopedStore.Update(r.Context(), parentKey, SingletonKey, resource); err != nil {
 						log.Printf("singleton: update parent=%q: %v (path=%s)", parentKey, err, r.URL.Path)
 						http.Error(w, "internal error", http.StatusInternalServerError)
 						return

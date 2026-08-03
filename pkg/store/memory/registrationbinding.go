@@ -150,7 +150,7 @@ func keyFromEndDeviceHref(href string) (string, bool) {
 // therefore not served.
 type RegisteredEndDeviceStore struct {
 	devs   store.EndDeviceStore
-	regs   *RegistrationStore
+	regs   store.ResourceStore[sep2.Registration]
 	policy RegistrationPolicy
 	now    func() int64
 }
@@ -165,7 +165,7 @@ var _ store.EndDeviceStore = (*RegisteredEndDeviceStore)(nil)
 // exists to eliminate. Failing at construction, which happens once when the
 // server is assembled, is loud; failing at request time inside net/http's
 // per-request recover would turn a mis-wired server into a silent 500.
-func NewRegisteredEndDeviceStore(devs store.EndDeviceStore, regs *RegistrationStore, policy RegistrationPolicy) *RegisteredEndDeviceStore {
+func NewRegisteredEndDeviceStore(devs store.EndDeviceStore, regs store.ResourceStore[sep2.Registration], policy RegistrationPolicy) *RegisteredEndDeviceStore {
 	if devs == nil {
 		panic("memory: NewRegisteredEndDeviceStore: devs (EndDeviceStore) must not be nil")
 	}

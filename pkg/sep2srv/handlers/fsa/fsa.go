@@ -12,7 +12,6 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
-	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
 // BuildFSAList constructs a FunctionSetAssignmentsList from store results.
@@ -31,7 +30,7 @@ func BuildFSAList(href string, result store.ListResult[sep2.FunctionSetAssignmen
 }
 
 // HandleFSA returns a handler for GET /edev/{id}/fsa/{fsaId}.
-func HandleFSA(fsaStore *memory.ScopedStore[sep2.FunctionSetAssignments]) http.HandlerFunc {
+func HandleFSA(fsaStore store.ScopedStore[sep2.FunctionSetAssignments]) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			encoding.MethodNotAllowed(w, "GET, HEAD")
@@ -68,7 +67,7 @@ func HandleFSA(fsaStore *memory.ScopedStore[sep2.FunctionSetAssignments]) http.H
 // assembly.BuildProtocolRouter, consistent with the IEEECORE-001
 // read/protocol export scope. The export is deliberate: consumers mount it
 // on their own admin auth chain.
-func HandleCreateFSA(fsaStore *memory.ScopedStore[sep2.FunctionSetAssignments]) http.HandlerFunc {
+func HandleCreateFSA(fsaStore store.ScopedStore[sep2.FunctionSetAssignments]) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Admin API uses JSON, but FSA creation can be simple
 		edevID := r.URL.Query().Get("edevId")

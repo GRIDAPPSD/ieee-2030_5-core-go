@@ -9,9 +9,9 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
-	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
 // IdentityFunc extracts the authenticated device identity from the request
@@ -36,7 +36,7 @@ type IdentityFunc func(ctx context.Context) (lfdi, sfdi string, ok bool)
 // EndDevice's LFDI.
 // 404 if the EndDevice or its Registration does not exist.
 // 405 on any non-GET / non-HEAD method.
-func HandleGetRegistration(edevs store.EndDeviceStore, regs *memory.RegistrationStore, identity IdentityFunc) http.HandlerFunc {
+func HandleGetRegistration(edevs store.EndDeviceStore, regs store.ResourceStore[sep2.Registration], identity IdentityFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			encoding.MethodNotAllowed(w, "GET, HEAD")

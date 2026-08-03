@@ -15,7 +15,6 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
-	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
 // BuildUsagePointList constructs a UsagePointList.
@@ -64,7 +63,7 @@ func BuildReadingList(href string, result store.ListResult[sep2.Reading], pollRa
 }
 
 // HandleUsagePoint returns a handler for GET /upt/{uptId}.
-func HandleUsagePoint(uptStore *memory.Store[sep2.UsagePoint]) http.HandlerFunc {
+func HandleUsagePoint(uptStore store.ResourceStore[sep2.UsagePoint]) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			encoding.MethodNotAllowed(w, "GET, HEAD")
@@ -246,7 +245,7 @@ func HandleCreateUsagePoint(uptStore store.ResourceStore[sep2.UsagePoint]) http.
 }
 
 // HandleReadingType returns a handler for GET /rt/{id}.
-func HandleReadingType(rtStore *memory.Store[sep2.ReadingType]) http.HandlerFunc {
+func HandleReadingType(rtStore store.ResourceStore[sep2.ReadingType]) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			encoding.MethodNotAllowed(w, "GET, HEAD")

@@ -74,8 +74,34 @@ import (
 )
 
 // Stores holds all resource stores for the protocol router.
-// Verbatim lift of the reference server's internal/server.Stores (router.go
-// lines 31-84); every field already resolves to pkg/store or pkg/store/memory.
+//
+// # The handles are interfaces (IEEECORE-085)
+//
+// Every collection here is declared as a pkg/store interface rather than as a
+// pkg/store/memory type, so a consumer can attach state that is not the
+// in-memory store. Three fields are not, and cannot be until pkg/store models
+// what they do: EndDeviceIndexes is an index allocator rather than a
+// collection, Subscriptions is queried by resource href and by device with
+// records that carry a store key alongside the resource, and AdminFSAs is an
+// operator-facing management plane whose List takes no paging at all. Each is
+// documented at its own field.
+//
+// # A nil handle means the function set is not wired, and nil is subtler now
+//
+// A nil handle here is how a consumer says it does not serve a function set:
+// the routes are not mounted and no link to them is advertised, per
+// IEEE 2030.5-2018 section 4.4 p.19. That remains true, but "nil" cannot be
+// tested by comparison any more. An interface holding a nil pointer is not
+// equal to nil, so a consumer that assigns a nil *memory.ScopedStore into one
+// of these fields, which is what leaving a field out of a store constructor and
+// copying the struct produces, would previously have unmounted the function set
+// and would now mount it over a handle that panics on first request.
+//
+// Every gate below therefore asks [store.IsAbsent] rather than comparing
+// against nil. Read that function's documentation before adding a field here:
+// a new gate written as a nil comparison reintroduces exactly that fault, and
+// it fails at request time on a consumer's deployment rather than in this
+// repository's tests.
 type Stores struct {
 	EndDevices store.EndDeviceStore
 
@@ -94,11 +120,13 @@ type Stores struct {
 	// re-addresses the fleet. See memory.EndDeviceIndex for why that
 	// matters and what a client's poll cycle does and does not recover.
 	EndDeviceIndexes *memory.EndDeviceIndex
-	// Registrations is the persistent-aware wrapper around the in-memory
-	// Store[sep2.Registration]. The embedded *Store gives back-compat
-	// method promotion (Get/List/Count) for call sites that don't need
-	// the persistence flush.
-	Registrations *memory.RegistrationStore
+	// Registrations holds the Registration served at /edev/{id}/rg.
+	//
+	// memory.NewRegistrationStore is the in-memory implementation and
+	// memory.NewRegistrationStoreWithPersistence the durable-snapshot one;
+	// this field names neither, because which one a consumer wires is its
+	// decision and no route here depends on the answer.
+	Registrations store.ResourceStore[sep2.Registration]
 
 	// RegistrationPolicy supplies the pIN and pollRate for the Registration
 	// that is created with every EndDevice (IEEECORE-083).
@@ -120,26 +148,30 @@ type Stores struct {
 	// router is built.
 	RegistrationPolicy memory.RegistrationPolicy
 
-	MirrorUsagePoints   *memory.Store[sep2.MirrorUsagePoint]
-	MirrorMeterReadings *memory.ScopedStore[sep2.MirrorMeterReading]
+	MirrorUsagePoints   store.ResourceStore[sep2.MirrorUsagePoint]
+	MirrorMeterReadings store.ScopedStore[sep2.MirrorMeterReading]
 
 	// DER stores
-	DERs              *memory.ScopedStore[sep2.DER]
-	DERCapabilities   *memory.ScopedStore[sep2.DERCapability]
-	DERSettings       *memory.ScopedStore[sep2.DERSettings]
-	DERStatuses       *memory.ScopedStore[sep2.DERStatus]
-	DERAvailabilities *memory.ScopedStore[sep2.DERAvailability]
-	// DERPrograms is the persistent-aware wrapper. It embeds
-	// *ScopedStore[sep2.DERProgram] so existing handlers that call
-	// .ForParent(...) keep working unchanged; the shadowed
-	// Create/Delete add the disk flush.
-	DERPrograms        *memory.DERProgramStore
-	DERControls        *memory.ScopedStore[sep2.DERControl]
-	DefaultDERControls *memory.ScopedStore[sep2.DefaultDERControl]
-	DERCurves          *memory.Store[sep2.DERCurve]
+	DERs              store.ScopedStore[sep2.DER]
+	DERCapabilities   store.ScopedStore[sep2.DERCapability]
+	DERSettings       store.ScopedStore[sep2.DERSettings]
+	DERStatuses       store.ScopedStore[sep2.DERStatus]
+	DERAvailabilities store.ScopedStore[sep2.DERAvailability]
+	// DERPrograms holds the DERPrograms served under an FSA.
+	//
+	// memory.NewDERProgramStore is the in-memory implementation and
+	// memory.NewDERProgramStoreWithPersistence the durable-snapshot one.
+	// Reads and writes both go through this one handle: before it was
+	// interface-typed the list route reached past the persistence wrapper to
+	// the store it embedded, which was harmless only because the wrapper
+	// shadows no read method.
+	DERPrograms        store.ScopedStore[sep2.DERProgram]
+	DERControls        store.ScopedStore[sep2.DERControl]
+	DefaultDERControls store.ScopedStore[sep2.DefaultDERControl]
+	DERCurves          store.ResourceStore[sep2.DERCurve]
 
 	// FSA store
-	FSAs *memory.ScopedStore[sep2.FunctionSetAssignments]
+	FSAs store.ScopedStore[sep2.FunctionSetAssignments]
 
 	// IEEE-096: admin FSA management plane (operator-authored templates,
 	// program links, device assignments). Distinct from FSAs above which is
@@ -150,22 +182,22 @@ type Stores struct {
 	Subscriptions *memory.SubscriptionStore
 
 	// Server-side metering
-	UsagePoints   *memory.Store[sep2.UsagePoint]
-	MeterReadings *memory.ScopedStore[sep2.MeterReading]
-	Readings      *memory.ScopedStore[sep2.Reading]
-	ReadingTypes  *memory.Store[sep2.ReadingType]
+	UsagePoints   store.ResourceStore[sep2.UsagePoint]
+	MeterReadings store.ScopedStore[sep2.MeterReading]
+	Readings      store.ScopedStore[sep2.Reading]
+	ReadingTypes  store.ResourceStore[sep2.ReadingType]
 
 	// New function sets
-	Configurations           *memory.ScopedStore[sep2.Configuration]
-	DeviceStatuses           *memory.ScopedStore[sep2.DeviceStatus]
-	LogEvents                *memory.ScopedStore[sep2.LogEvent]
-	PowerStatuses            *memory.ScopedStore[sep2.PowerStatus]
-	MessagingPrograms        *memory.Store[sep2.MessagingProgram]
-	TextMessages             *memory.ScopedStore[sep2.TextMessage]
-	FlowReservationRequests  *memory.ScopedStore[sep2.FlowReservationRequest]
-	FlowReservationResponses *memory.ScopedStore[sep2.FlowReservationResponse]
-	ResponseSets             *memory.Store[sep2.ResponseSet]
-	Responses                *memory.ScopedStore[sep2.Response]
+	Configurations           store.ScopedStore[sep2.Configuration]
+	DeviceStatuses           store.ScopedStore[sep2.DeviceStatus]
+	LogEvents                store.ScopedStore[sep2.LogEvent]
+	PowerStatuses            store.ScopedStore[sep2.PowerStatus]
+	MessagingPrograms        store.ResourceStore[sep2.MessagingProgram]
+	TextMessages             store.ScopedStore[sep2.TextMessage]
+	FlowReservationRequests  store.ScopedStore[sep2.FlowReservationRequest]
+	FlowReservationResponses store.ScopedStore[sep2.FlowReservationResponse]
+	ResponseSets             store.ResourceStore[sep2.ResponseSet]
+	Responses                store.ScopedStore[sep2.Response]
 }
 
 // RouterConfig carries the scalar configuration values the protocol router
@@ -417,7 +449,7 @@ func asNotifyRemoved(n ResourceNotifier) func(context.Context, sep2.Subscription
 // store is returned and no EndDevice carries a RegistrationLink, which is
 // what 2018 section 4.4 p.19 requires of an unimplemented function set.
 func registrationBoundEndDevices(stores *Stores) store.EndDeviceStore {
-	if stores.EndDevices == nil || stores.Registrations == nil {
+	if store.IsAbsent(stores.EndDevices) || store.IsAbsent(stores.Registrations) {
 		return stores.EndDevices
 	}
 	if bound, ok := stores.EndDevices.(*memory.RegisteredEndDeviceStore); ok {
@@ -442,7 +474,7 @@ func registrationBoundEndDevices(stores *Stores) store.EndDeviceStore {
 // does: an embedder that seeds devices at boot builds the binding itself, and a
 // second wrapper in front of the configured one buys nothing.
 func logEventLinkedEndDevices(devs store.EndDeviceStore, stores *Stores) store.EndDeviceStore {
-	if devs == nil || stores.LogEvents == nil {
+	if store.IsAbsent(devs) || store.IsAbsent(stores.LogEvents) {
 		return devs
 	}
 	if linked, ok := devs.(*memory.LogEventLinkedEndDeviceStore); ok {
@@ -485,12 +517,12 @@ func registerEndDeviceRoutes(mux routeRegistrar, stores *Stores, authPolicy Auth
 	mux.HandleFunc("DELETE /edev/{id}", coreedev.HandleDeleteEndDevice(edevs, notifier))
 
 	// IEEE-101: Registration GET handler at /edev/{id}/rg.
-	if stores.Registrations != nil {
+	if !store.IsAbsent(stores.Registrations) {
 		mux.HandleFunc("GET /edev/{id}/rg", corereg.HandleGetRegistration(edevs, stores.Registrations, authPolicy.Identity))
 	}
 
 	// FSA endpoints
-	if stores.FSAs != nil {
+	if !store.IsAbsent(stores.FSAs) {
 		mux.HandleFunc("GET /edev/{id}/fsa", scopedListHandler[sep2.FunctionSetAssignments, sep2.FunctionSetAssignmentsList](
 			stores.FSAs, "id", corefsa.BuildFSAList, 900,
 		))
@@ -498,7 +530,7 @@ func registerEndDeviceRoutes(mux routeRegistrar, stores *Stores, authPolicy Auth
 	}
 
 	// Subscription endpoints
-	if stores.Subscriptions != nil {
+	if !store.IsAbsent(stores.Subscriptions) {
 		mux.HandleFunc("GET /edev/{id}/sub", coresub.HandleListSubscriptionsByDevice(stores.Subscriptions, 900))
 		mux.HandleFunc("POST /edev/{id}/sub", coresub.HandleCreateSubscription(stores.Subscriptions))
 		mux.HandleFunc("DELETE /edev/{id}/sub/{subId}", coresub.HandleDeleteSubscription(stores.Subscriptions, asNotifyRemoved(notifier)))
@@ -506,7 +538,7 @@ func registerEndDeviceRoutes(mux routeRegistrar, stores *Stores, authPolicy Auth
 }
 
 func registerMirrorRoutes(mux routeRegistrar, stores *Stores, authPolicy AuthPolicy, postRateProvider coremetering.PostRateProvider) {
-	if stores.MirrorUsagePoints == nil {
+	if store.IsAbsent(stores.MirrorUsagePoints) {
 		return
 	}
 	// LFDIProvider extracts the device LFDI from the request context via the
@@ -572,7 +604,7 @@ func registerMirrorRoutes(mux routeRegistrar, stores *Stores, authPolicy AuthPol
 }
 
 func registerDERRoutes(mux routeRegistrar, stores *Stores) {
-	if stores.DERs == nil {
+	if store.IsAbsent(stores.DERs) {
 		return
 	}
 
@@ -631,11 +663,13 @@ func registerDERRoutes(mux routeRegistrar, stores *Stores) {
 	mux.HandleFunc("GET /edev/{id}/der/{derId}/dera", dera)
 	mux.HandleFunc("PUT /edev/{id}/der/{derId}/dera", dera)
 
-	// DERProgram under FSA: use the embedded *ScopedStore so the helper
-	// signature stays unchanged. Writes through stores.DERPrograms.Create
-	// still go through the persistent wrapper (the list handler is read-only).
+	// DERProgram under FSA. The handle is the configured store itself, not
+	// something reached out of it: the route used to take the *ScopedStore that
+	// the persistence wrapper embedded, which was correct only because the
+	// wrapper shadows no read method and would have quietly bypassed one that
+	// it did.
 	mux.HandleFunc("GET /edev/{id}/fsa/{fsaId}/derp", scopedListHandler[sep2.DERProgram, sep2.DERProgramList](
-		stores.DERPrograms.ScopedStore, "id", coreder.BuildDERProgramList, 900,
+		stores.DERPrograms, "id", coreder.BuildDERProgramList, 900,
 	))
 
 	// A DERProgram's own href, so the FSA-to-DERProgramList-to-member link
@@ -648,7 +682,7 @@ func registerDERRoutes(mux routeRegistrar, stores *Stores) {
 	// what says so, and it renders exactly the Allow this route answered with
 	// before the method set became declarative: GET, HEAD.
 	mux.HandleFunc("GET /edev/{id}/fsa/{fsaId}/derp/{derpId}",
-		scopedResourceHandler[sep2.DERProgram](stores.DERPrograms.ScopedStore, "id", "derpId", itemMethods{}, nil))
+		scopedResourceHandler[sep2.DERProgram](stores.DERPrograms, "id", "derpId", itemMethods{}, nil))
 
 	// DERControl under DERProgram
 	mux.HandleFunc("GET /edev/{id}/fsa/{fsaId}/derp/{derpId}/derc",
@@ -702,14 +736,14 @@ func registerDERRoutes(mux routeRegistrar, stores *Stores) {
 // visible mismatch between the mount and the pattern, which the guard in
 // pathvalue_test.go reads directly.
 func scopedListHandler[T store.Copier[T], L any](
-	scopedStore *memory.ScopedStore[T],
+	scopedStore store.ScopedStore[T],
 	parentParam string,
 	buildList func(href string, result store.ListResult[T], pollRate uint32) L,
 	pollRate uint32,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		parentID := r.PathValue(parentParam)
-		st := scopedStore.ForParent(parentID)
+		st := store.Under(scopedStore, parentID)
 		h := corelisthandler.ListHandler[T, L](st, buildList, pollRate)
 		h.ServeHTTP(w, r)
 	}
@@ -717,13 +751,13 @@ func scopedListHandler[T store.Copier[T], L any](
 
 // scopedListHandlerDeep creates a list handler scoped by composite key id/fsaId/derpId.
 func scopedListHandlerDeep[T store.Copier[T], L any](
-	scopedStore *memory.ScopedStore[T],
+	scopedStore store.ScopedStore[T],
 	buildList func(href string, result store.ListResult[T], pollRate uint32) L,
 	pollRate uint32,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		key := deepScopeKey(r)
-		st := scopedStore.ForParent(key)
+		st := store.Under(scopedStore, key)
 		h := corelisthandler.ListHandler[T, L](st, buildList, pollRate)
 		h.ServeHTTP(w, r)
 	}
@@ -776,7 +810,7 @@ func deepScopeKey(r *http.Request) string {
 // and a field present on one and absent on the other is a conformance trap,
 // which TestSingleDERControlBytesMatchListMember exists to catch.
 func scopedResourceHandlerDeep[T store.Copier[T]](
-	scopedStore *memory.ScopedStore[T],
+	scopedStore store.ScopedStore[T],
 	idParam string,
 	stamp func(r *http.Request, resource *T),
 ) http.HandlerFunc {
@@ -898,7 +932,7 @@ func (m itemMethods) allow() string {
 // is not present in this package. Do not read a passing scope test as evidence
 // that unauthorized cross-device writes are blocked.
 func scopedResourceHandler[T store.Copier[T]](
-	scopedStore *memory.ScopedStore[T],
+	scopedStore store.ScopedStore[T],
 	parentParam string,
 	idParam string,
 	methods itemMethods,
@@ -978,7 +1012,7 @@ func scopedResourceHandler[T store.Copier[T]](
 }
 
 func registerMeteringRoutes(mux routeRegistrar, stores *Stores) {
-	if stores.UsagePoints == nil {
+	if store.IsAbsent(stores.UsagePoints) {
 		return
 	}
 	mux.HandleFunc("GET /upt", corelisthandler.ListHandler[sep2.UsagePoint, sep2.UsagePointList](
@@ -993,7 +1027,7 @@ func registerMeteringRoutes(mux routeRegistrar, stores *Stores) {
 
 	mux.HandleFunc("GET /upt/{uptId}/mr/{mrId}/r", func(w http.ResponseWriter, r *http.Request) {
 		key := r.PathValue("uptId") + "/" + r.PathValue("mrId")
-		st := stores.Readings.ForParent(key)
+		st := store.Under(stores.Readings, key)
 		h := corelisthandler.ListHandler[sep2.Reading, sep2.ReadingList](st, coremetering.BuildReadingList, 900)
 		h.ServeHTTP(w, r)
 	})
@@ -1005,11 +1039,11 @@ func registerMeteringRoutes(mux routeRegistrar, stores *Stores) {
 }
 
 func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
-	if stores.Configurations != nil {
+	if !store.IsAbsent(stores.Configurations) {
 		mux.HandleFunc("GET /edev/{id}/cfg", coreconfiguration.HandleConfiguration(stores.Configurations))
 		mux.HandleFunc("PUT /edev/{id}/cfg", coreconfiguration.HandleConfiguration(stores.Configurations))
 	}
-	if stores.DeviceStatuses != nil {
+	if !store.IsAbsent(stores.DeviceStatuses) {
 		mux.HandleFunc("GET /edev/{id}/dstat", coresingleton.HandleSingletonGetPut[sep2.DeviceStatus](
 			stores.DeviceStatuses,
 			func(r *http.Request) string { return r.PathValue("id") },
@@ -1029,7 +1063,7 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 			},
 		))
 	}
-	if stores.LogEvents != nil {
+	if !store.IsAbsent(stores.LogEvents) {
 		// The LogEvent function set at its WADL address (IEEECORE-084).
 		//
 		// These four routes used to be two, mounted at /edev/{id}/log with no
@@ -1067,12 +1101,12 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 		mux.HandleFunc("GET /edev/{id}/lel/{lelId}", logEventInstance)
 		mux.HandleFunc("DELETE /edev/{id}/lel/{lelId}", logEventInstance)
 	}
-	if stores.PowerStatuses != nil {
+	if !store.IsAbsent(stores.PowerStatuses) {
 		mux.HandleFunc("GET /edev/{id}/ps", corepowerstatus.HandlePowerStatus(stores.PowerStatuses))
 		mux.HandleFunc("PUT /edev/{id}/ps", corepowerstatus.HandlePowerStatus(stores.PowerStatuses))
 	}
 
-	if stores.MessagingPrograms != nil {
+	if !store.IsAbsent(stores.MessagingPrograms) {
 		mux.HandleFunc("GET /msg", corelisthandler.ListHandler[sep2.MessagingProgram, sep2.MessagingProgramList](
 			stores.MessagingPrograms, coremessaging.BuildMessagingProgramList, 900,
 		))
@@ -1099,7 +1133,7 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 			scopedResourceHandler[sep2.TextMessage](stores.TextMessages, "msgId", "tmId", itemMethods{}, nil))
 	}
 
-	if stores.FlowReservationRequests != nil {
+	if !store.IsAbsent(stores.FlowReservationRequests) {
 		mux.HandleFunc("GET /edev/{id}/frq", scopedListHandler[sep2.FlowReservationRequest, sep2.FlowReservationRequestList](
 			stores.FlowReservationRequests, "id", coreflowrsv.BuildFlowReservationRequestList, 900,
 		))
@@ -1136,7 +1170,7 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 		mux.HandleFunc("GET /edev/{id}/frp/{frpId}", frpInstance)
 	}
 
-	if stores.ResponseSets != nil {
+	if !store.IsAbsent(stores.ResponseSets) {
 		// Seed the default ResponseSet before the routes that serve it.
 		//
 		// Every DERControl this server emits carries a replyTo pointing into
@@ -1155,7 +1189,7 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 		mux.HandleFunc("GET /rsps/{rspsId}", coreresponse.HandleResponseSet(stores.ResponseSets))
 		mux.HandleFunc("GET /rsps/{rspsId}/rsp", func(w http.ResponseWriter, r *http.Request) {
 			rspsID := r.PathValue("rspsId")
-			inner := stores.Responses.ForParent(rspsID)
+			inner := store.Under(stores.Responses, rspsID)
 			corelisthandler.ListHandler[sep2.Response, sep2.ResponseList](
 				inner, coreflowrsv.BuildResponseList, 900,
 			)(w, r)

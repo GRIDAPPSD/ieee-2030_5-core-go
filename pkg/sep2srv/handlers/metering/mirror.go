@@ -18,7 +18,6 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
-	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
 // LFDIProvider extracts a device LFDI from the request context.
@@ -769,9 +768,33 @@ func HandlePutMirrorUsagePoint(
 // skipped. It is not treated as an error, because a consumer that serves the
 // MirrorUsagePoint function set without the out-of-band readings route is a
 // deployment choice, not an indeterminate check.
+//
+// A readings store that IS wired but cannot cascade is the opposite case and is
+// treated as an error: see [parentCascader].
+
+// parentCascader removes a whole parent collection in one operation and reports
+// how many resources went with it.
+//
+// It is declared HERE, at the consumer, rather than in pkg/store, because it is
+// not part of the store contract and should not become part of it by accident.
+// The contract addresses resources as (parent, id) pairs and offers no key
+// enumeration, so a cascade cannot be expressed as a loop over it: there is no
+// way to ask which ids live under a parent, and a loop would not be atomic even
+// if there were. That makes bulk parent removal a capability an implementation
+// either has or does not, which is exactly what an optional interface asserted
+// at the point of use is for.
+//
+// An implementation that does not provide it is not silently tolerated. See the
+// fail-closed branch in [HandleDeleteMirrorUsagePoint]: a store that cannot
+// cascade blocks the parent delete rather than completing it and orphaning the
+// children.
+type parentCascader interface {
+	DeleteParent(ctx context.Context, parentID string) (uint32, error)
+}
+
 func HandleDeleteMirrorUsagePoint(
 	s store.ResourceStore[sep2.MirrorUsagePoint],
-	mmrStore *memory.ScopedStore[sep2.MirrorMeterReading],
+	mmrStore store.ScopedStore[sep2.MirrorMeterReading],
 	lfdiProvider LFDIProvider,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -791,8 +814,21 @@ func HandleDeleteMirrorUsagePoint(
 			return
 		}
 
-		if mmrStore != nil {
-			removed, err := mmrStore.DeleteParent(r.Context(), id)
+		if !store.IsAbsent(mmrStore) {
+			cascader, ok := mmrStore.(parentCascader)
+			if !ok {
+				// Fail closed, and leave the parent in place. The readings
+				// store is wired, so a collection under this id may exist and
+				// would be orphaned by a delete this handler cannot follow
+				// with a cascade. Answering 204 here would report a clean
+				// deletion while leaving exactly the state the cascade exists
+				// to prevent, and the client could not tell.
+				log.Printf("mup: the readings store (%T) cannot cascade a parent delete, "+
+					"MirrorUsagePoint id=%q left in place", mmrStore, id)
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			removed, err := cascader.DeleteParent(r.Context(), id)
 			if err != nil {
 				// The parent is deliberately still here. Surfacing the failure
 				// with the resource intact is recoverable; deleting it anyway
@@ -962,7 +998,7 @@ func decodeMirrorMeterReadings(body []byte) ([]sep2.MirrorMeterReading, error) {
 // reintroduce exactly the drift that sharing the handler exists to prevent.
 func HandlePostMirrorMeterReading(
 	mupStore store.ResourceStore[sep2.MirrorUsagePoint],
-	mmrStore *memory.ScopedStore[sep2.MirrorMeterReading],
+	mmrStore store.ScopedStore[sep2.MirrorMeterReading],
 	lfdiProvider LFDIProvider,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
