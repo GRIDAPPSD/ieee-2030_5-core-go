@@ -122,6 +122,17 @@ var valueRootedHrefs = map[string]string{
 	// metering.go: upt.MeterReadingListLink = &sep2.ListLink{Href: upt.Href + "/mr"}
 	// upt.Href is UsagePointHref(id), which is "/upt/" + id.
 	"{}/mr": "/upt/{}/mr",
+
+	// der/links.go: FillAbsentDERLinks derives each DER sub-resource link from
+	// base, the DER's own canonical href, which is "/edev/{id}/der/{derId}".
+	// These four are what make the acknowledgement rule bite on that function: a
+	// fifth suffix added there without a route mounted for it fails this test,
+	// which is the coupling section 4.4 requires between mounting a function set
+	// and advertising it.
+	"{}/dera":   "/edev/{}/der/{}/dera",
+	"{}/dercap": "/edev/{}/der/{}/dercap",
+	"{}/derg":   "/edev/{}/der/{}/derg",
+	"{}/ders":   "/edev/{}/der/{}/ders",
 }
 
 // hrefFamilies returns the set of first path segments that count as an href

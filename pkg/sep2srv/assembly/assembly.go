@@ -39,8 +39,10 @@ package assembly
 
 import (
 	"context"
+	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"sort"
@@ -463,9 +465,48 @@ func registerDERRoutes(mux routeRegistrar, stores *Stores) {
 		stores.DERCapabilities, stores.DERSettings, stores.DERStatuses, stores.DERAvailabilities,
 	)
 
+	// Which DER sub-resource links this router is permitted to advertise, per
+	// IEEE 2030.5-2018 section 4.4 ("If a function set is not implemented, Link
+	// elements to resources in that function set SHALL NOT be included").
+	//
+	// It is declared HERE, next to the mounts it describes, because the answer
+	// to "is this function set implemented" is a property of this function and
+	// nothing else. A parallel constant elsewhere could rot; this cannot drift
+	// further than the next four lines. The four sub-resources below are mounted
+	// unconditionally whenever the DER function set is wired at all, which is
+	// what makes all four bits true. A card that mounts a fifth flips its bit in
+	// the same commit: mounting and advertising are one act.
+	derLinks := coreder.DERLinkPolicy{
+		Capability:   true,
+		Settings:     true,
+		Status:       true,
+		Availability: true,
+	}
+
 	mux.HandleFunc("GET /edev/{id}/der", scopedListHandler[sep2.DER, sep2.DERList](
-		stores.DERs, coreder.BuildDERList, 900,
+		stores.DERs, coreder.DERListBuilder(derLinks), 900,
 	))
+
+	// The DER instance itself (IEEECORE-052). Every DERList member carries this
+	// href as its own, and before this route existed following it produced a 404
+	// from the server that had just advertised it. HEAD comes free: a ServeMux
+	// pattern registered for GET matches HEAD as well.
+	//
+	// PUT is mode O in the WADL (sep_wadl.xml:4116) but on the certified path:
+	// SunSpec CTP CORE-014 and CORE-016 walk DERList through to the DER and PUT
+	// to these resources. GET and PUT share ONE handler value so the two verbs
+	// cannot drift into different scope derivations, the same reason the four
+	// sub-resources above are registered as pairs against one handler.
+	//
+	// DELETE (mode O, deferred to IEEECORE-058) and POST (mode E) fall through
+	// to a 405 carrying an Allow header derived from itemMethods, which section
+	// 4.3 c) 4) requires and an unmounted path could not produce: it would 404.
+	derInstance := scopedResourceHandler[sep2.DER](
+		stores.DERs, "derId", itemMethods{Put: true}, coreder.StampDERInstance(derLinks),
+	)
+	mux.HandleFunc("GET /edev/{id}/der/{derId}", derInstance)
+	mux.HandleFunc("PUT /edev/{id}/der/{derId}", derInstance)
+
 	mux.HandleFunc("GET /edev/{id}/der/{derId}/dercap", dercap)
 	mux.HandleFunc("PUT /edev/{id}/der/{derId}/dercap", dercap)
 	mux.HandleFunc("GET /edev/{id}/der/{derId}/derg", derg)
@@ -640,6 +681,125 @@ func scopedResourceHandlerDeep[T store.Copier[T]](
 		}
 
 		encoding.WriteXML(w, http.StatusOK, &resource)
+	}
+}
+
+// maxRequestBody caps how much of a request body this package reads into
+// memory. It matches the limit the singleton handler applies to the DER
+// sub-resources (handlers/singleton), so a client cannot find a larger document
+// accepted on one DER path than on its neighbour.
+const maxRequestBody = 1 << 20
+
+// itemMethods declares which WADL-declared methods a [scopedResourceHandler]
+// mount implements beyond GET and HEAD, which every mount serves.
+//
+// It is a parameter rather than a hardcoded switch because the WADL is the
+// source of truth for the method set and it differs per resource. Passing it in
+// means the Allow header on a 405 is generated from the same declaration that
+// decides which branches exist, so the two cannot disagree. That matters
+// directly: section 4.3 c) 4) requires an explicit 400 or 405 for a method in
+// mode E, and a 405 whose Allow lies about what is served is barely better than
+// the 404 an unmounted path would have produced.
+type itemMethods struct {
+	// Put mounts PUT on the resource, upserting the request body at the id the
+	// path names.
+	Put bool
+}
+
+// allow renders the Allow header value for a 405 on this mount.
+func (m itemMethods) allow() string {
+	if m.Put {
+		return "GET, HEAD, PUT"
+	}
+	return "GET, HEAD"
+}
+
+// scopedResourceHandler creates a single-resource handler scoped by the {id}
+// path value (the device id) alone, keyed within that scope by the path value
+// named idParam.
+//
+// It mirrors [scopedResourceHandlerDeep] one scope level up and keeps that
+// function's contract on the non-happy paths, whose reasoning is argued there
+// and not restated: a clean 404 on a miss, never a synthesized zero-valued
+// resource, and a 500 rather than a 404 when the store fails for any other
+// reason.
+//
+// The clean-404 rule is sharper here than it is one level up, because this
+// handler can also accept PUT. A synthesized 200 would hand a client the
+// sub-resource links of a resource that does not exist; the EPRI reference
+// client follows exactly those links and PUTs into them; the singleton handler
+// upserts on PUT; and store entries would then appear under an id nobody
+// provisioned. A GET that fabricates a writable resource is resource creation
+// through a read path. The 404 and the upserting PUT are a coherent pair only
+// because the id comes from the path, which the scope and ownership layers above
+// constrain, and never from this handler inventing one.
+//
+// stamp, when non-nil, completes a resource for the wire before it is served and
+// before it is stored: it is where a resource's own href and its derived links
+// are settled, so a document served from the store and a document just written
+// by a client cannot disagree about either. It may be nil for a resource that
+// needs no completion.
+func scopedResourceHandler[T store.Copier[T]](
+	scopedStore *memory.ScopedStore[T],
+	idParam string,
+	methods itemMethods,
+	stamp func(r *http.Request, resource *T),
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		parentKey := r.PathValue("id")
+		id := r.PathValue(idParam)
+
+		switch {
+		case r.Method == http.MethodGet, r.Method == http.MethodHead:
+			resource, err := scopedStore.Get(r.Context(), parentKey, id)
+			if err != nil {
+				if errors.Is(err, store.ErrNotFound) {
+					http.Error(w, "not found", http.StatusNotFound)
+					return
+				}
+				log.Printf("assembly: get parent=%q id=%q: %v (path=%s)", parentKey, id, err, r.URL.Path)
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			if stamp != nil {
+				stamp(r, &resource)
+			}
+			encoding.WriteXML(w, http.StatusOK, &resource)
+
+		case r.Method == http.MethodPut && methods.Put:
+			body, err := io.ReadAll(io.LimitReader(r.Body, maxRequestBody))
+			if err != nil {
+				http.Error(w, "read body failed", http.StatusBadRequest)
+				return
+			}
+			var resource T
+			if err := xml.Unmarshal(body, &resource); err != nil {
+				http.Error(w, "invalid XML: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			// Stamped BEFORE the store write, not on the way back out, so the
+			// stored document is the one the server vouches for. A client's own
+			// href and any link it invented never reach the store.
+			if stamp != nil {
+				stamp(r, &resource)
+			}
+			if err := scopedStore.Create(r.Context(), parentKey, id, resource); err != nil {
+				if !errors.Is(err, store.ErrAlreadyExists) {
+					log.Printf("assembly: create parent=%q id=%q: %v (path=%s)", parentKey, id, err, r.URL.Path)
+					http.Error(w, "internal error", http.StatusInternalServerError)
+					return
+				}
+				if err := scopedStore.Update(r.Context(), parentKey, id, resource); err != nil {
+					log.Printf("assembly: update parent=%q id=%q: %v (path=%s)", parentKey, id, err, r.URL.Path)
+					http.Error(w, "internal error", http.StatusInternalServerError)
+					return
+				}
+			}
+			w.WriteHeader(http.StatusNoContent)
+
+		default:
+			encoding.MethodNotAllowed(w, methods.allow())
+		}
 	}
 }
 

@@ -195,6 +195,8 @@ func MintableHrefs() []MintableHref {
 		{"/edev/{}/ps", http.MethodGet, "handlers/power_status.HandlePowerStatus", "PowerStatus self href"},
 
 		// DER, addressed under the EndDevice.
+		{"/edev/{}/der/{}", http.MethodGet, "handlers/der.StampDERInstance", "the self href every DERList member carries; a client walks the list and follows it to reach the DER's sub-resources"},
+		{"/edev/{}/der/{}", http.MethodPut, "handlers/der.StampDERInstance", "IEEE 2030.5 declares PUT on the DER instance mode O (sep_wadl.xml:4116) and SunSpec CTP CORE-014 and CORE-016 exercise it on the certified path"},
 		{"/edev/{}/der/{}/dercap", http.MethodGet, "handlers/der.DERSingletonHandlers", "DERCapability self href"},
 		{"/edev/{}/der/{}/derg", http.MethodGet, "handlers/der.DERSingletonHandlers", "DERSettings self href"},
 		{"/edev/{}/der/{}/ders", http.MethodGet, "handlers/der.DERSingletonHandlers", "DERStatus self href"},
