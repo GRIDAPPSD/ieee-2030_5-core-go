@@ -90,7 +90,7 @@ func TestScopedResourceHandler_MethodSetGatesTheWrite(t *testing.T) {
 			t.Parallel()
 
 			scoped := memory.NewScopedStore[sep2.DERProgram]()
-			h := scopedResourceHandler[sep2.DERProgram](scoped, "derpId", tc.methods, nil)
+			h := scopedResourceHandler[sep2.DERProgram](scoped, "id", "derpId", tc.methods, nil)
 
 			r := httptest.NewRequest(http.MethodPut, path,
 				strings.NewReader(`<DERProgram xmlns="urn:ieee:std:2030.5:ns"/>`))
@@ -133,7 +133,7 @@ func TestScopedResourceHandler_ReadPathIsUnchangedByTheMethodSet(t *testing.T) {
 			t.Fatalf("seed: %v", err)
 		}
 
-		h := scopedResourceHandler[sep2.DERProgram](scoped, "derpId", itemMethods{Put: put}, nil)
+		h := scopedResourceHandler[sep2.DERProgram](scoped, "id", "derpId", itemMethods{Put: put}, nil)
 		r := httptest.NewRequest(http.MethodGet, href, nil)
 		r.SetPathValue("id", parentID)
 		r.SetPathValue("derpId", id)

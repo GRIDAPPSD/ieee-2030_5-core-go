@@ -263,6 +263,88 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 				"for that, and UsagePoint does not use it, so emitting subscribable puts an " +
 				"undeclared attribute on the wire.",
 		},
+		// The three resources IEEECORE-081 put on the wire as addressable
+		// instances. Their lists were already served, so the wire format is not
+		// new, but the instance routes make each one fetchable on its own and
+		// that is the point at which an unmodelled element becomes a client's
+		// problem rather than a list-shaped curiosity. Pinned rather than fixed:
+		// dropping omitempty changes the wire format of shipped resources and
+		// belongs in its own reviewed change, one resource at a time.
+		{
+			typeName: "FlowReservationRequest",
+			zero:     sep2.FlowReservationRequest{},
+			wantStruct: []string{
+				"omitempty-required FlowReservationRequest.EnergyRequested",
+				"omitempty-required FlowReservationRequest.IntervalRequested",
+				"omitempty-required FlowReservationRequest.MRID",
+				"omitempty-required FlowReservationRequest.PowerRequested",
+				"omitempty-required FlowReservationRequest.RequestStatus",
+			},
+			wantMarshal: []string{
+				"missing-element FlowReservationRequest/RequestStatus",
+				"missing-element FlowReservationRequest/energyRequested",
+				"missing-element FlowReservationRequest/intervalRequested",
+				"missing-element FlowReservationRequest/mRID",
+				"missing-element FlowReservationRequest/powerRequested",
+			},
+			reason: "every element the schema requires beyond creationTime is tagged omitempty, " +
+				"so a request a client POSTs without them round-trips as a document carrying " +
+				"only creationTime. The handler fills none of them either: POST /edev/{id}/frq " +
+				"stamps href and creationTime and stores whatever else the client sent.",
+		},
+		{
+			typeName: "FlowReservationResponse",
+			zero:     sep2.FlowReservationResponse{},
+			wantStruct: []string{
+				"omitempty-required FlowReservationResponse.EnergyAvailable",
+				"omitempty-required FlowReservationResponse.EventStatus",
+				"omitempty-required FlowReservationResponse.Interval",
+				"omitempty-required FlowReservationResponse.MRID",
+				"omitempty-required FlowReservationResponse.PowerAvailable",
+				"omitempty-required FlowReservationResponse.Subject",
+				"placement FlowReservationResponse.ReplyTo",
+				"placement FlowReservationResponse.ResponseRequired",
+				"unknown-element FlowReservationResponse.RandomizeDuration",
+				"unknown-element FlowReservationResponse.RandomizeStart",
+			},
+			wantMarshal: []string{
+				"missing-element FlowReservationResponse/EventStatus",
+				"missing-element FlowReservationResponse/energyAvailable",
+				"missing-element FlowReservationResponse/interval",
+				"missing-element FlowReservationResponse/mRID",
+				"missing-element FlowReservationResponse/powerAvailable",
+				"missing-element FlowReservationResponse/subject",
+			},
+			reason: "two defects beyond the usual omitempty set, both from the embedded " +
+				"RandomizableEvent. The schema derives FlowReservationResponse from Event, not " +
+				"RandomizableEvent, so randomizeStart and randomizeDuration are elements the " +
+				"schema does not declare here; and replyTo and responseRequired are ATTRIBUTES " +
+				"on RespondableResource that the Go type models as child elements. The second " +
+				"is shared by every RespondableResource in this package and is not specific to " +
+				"this resource.",
+		},
+		{
+			typeName: "TextMessage",
+			zero:     sep2.TextMessage{},
+			wantStruct: []string{
+				"omitempty-required TextMessage.EventStatus",
+				"omitempty-required TextMessage.Interval",
+				"omitempty-required TextMessage.MRID",
+				"placement TextMessage.ReplyTo",
+				"placement TextMessage.ResponseRequired",
+				"unknown-element TextMessage.RandomizeDuration",
+				"unknown-element TextMessage.RandomizeStart",
+			},
+			wantMarshal: []string{
+				"missing-element TextMessage/EventStatus",
+				"missing-element TextMessage/interval",
+				"missing-element TextMessage/mRID",
+			},
+			reason: "the same RandomizableEvent-versus-Event divergence as " +
+				"FlowReservationResponse: the schema derives TextMessage from Event. The " +
+				"missing EventStatus is the absent-element half of IEEECORE-044, which already " +
+				"records that nothing on the TextMessage path ever constructs one.",
+		},
 		{
 			typeName: "EndDevice",
 			zero:     sep2.EndDevice{},

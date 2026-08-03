@@ -250,12 +250,13 @@ func MintableHrefs() []MintableHref {
 // Removing an entry is the fix landing. TestKnownUnroutedHrefs_RatchetIsExact
 // fails if an entry here starts routing, so the set cannot quietly stop
 // shrinking, and it fails if a shape stops routing without being added here.
+// IEEECORE-081 removed three entries by mounting their routes: GET
+// /edev/{}/frq/{}, GET /edev/{}/frp/{} and GET /msg/{}/tm/{}. The three that
+// remain are held by other cards, and each says which, because an entry with no
+// owner is a suppression rather than a ratchet.
 var knownUnroutedHrefs = map[string]string{
-	"GET /edev/{}/sub/{}": "IEEECORE-065: POST /edev/{id}/sub returns this Location but only DELETE is routed, so a client re-reading its own subscription gets 405",
-	"GET /edev/{}/log/{}": "IEEECORE-065: POST /edev/{id}/log returns this Location and nothing serves it",
-	"GET /edev/{}/frq/{}": "IEEECORE-065: POST /edev/{id}/frq returns this Location and nothing serves it",
-	"GET /edev/{}/frp/{}": "IEEECORE-065: the FlowReservationResponse href a client polls for the server's decision is not served",
-	"GET /msg/{}/tm/{}":   "IEEECORE-065: POST /msg/{msgId}/tm returns this Location and nothing serves it",
+	"GET /edev/{}/sub/{}": "IEEECORE-070: POST /edev/{id}/sub returns this Location but only DELETE is routed, so a client re-reading its own subscription gets 405. The path IS mounted, so this is a method gap rather than a dead link, and it belongs with the card that mounts every WADL-declared method",
+	"GET /edev/{}/log/{}": "IEEECORE-084: POST /edev/{id}/log returns this Location and nothing serves it. Not fixed by mounting /log: the WADL address is /edev/{id1}/lel/{id2} (sep_wadl.xml:1404), so that card moves the list, the POST and the instance together rather than entrenching a path the WADL does not name",
 	"GET /mup/{}/mr/{}":   "IEEECORE-065: POST /mup/{id}/mr and POST /mup/{id} both return this Location and nothing serves it",
 }
 
