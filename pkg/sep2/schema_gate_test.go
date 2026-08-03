@@ -45,6 +45,14 @@ func TestSchemaGateCleanResources(t *testing.T) {
 		typeName string
 		zero     any
 	}{
+		// DER is gated here before anything edits the struct. Two of the seven
+		// link elements sep.xsd declares (AssociatedUsagePointLink and
+		// CurrentDERProgramLink) have no Go field yet, and when they arrive they
+		// insert at sequence positions 2 and 3 rather than appending, because
+		// encoding/xml emits in struct field order. That is the defect class
+		// IEEECORE-014 already fixed once for EndDevice and DERCapability, and
+		// without this entry nothing would catch a wrong insertion point.
+		{"DER", sep2.DER{}},
 		{"Registration", sep2.Registration{}},
 		{"Reading", sep2.Reading{}},
 		{"ReadingType", sep2.ReadingType{}},
