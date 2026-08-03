@@ -11,6 +11,7 @@ import (
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
+	coreresponse "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/handlers/response"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
@@ -130,6 +131,15 @@ func HandlePostFlowReservationRequest(
 }
 
 // HandlePostResponse returns a handler for POST /rsps/{rspsId}/rsp.
+//
+// The WADL marks this POST Mandatory and declares six root elements at the
+// member path it creates, so the body is decoded with sep2.DecodeResponse
+// rather than unmarshalled straight into a sep2.Response. Unmarshalling into
+// the base type answered the EPRI reference client's conforming
+// <DERControlResponse> with 400, because Response.XMLName is pinned
+// (IEEECORE-067). The pin stays: DecodeResponse dispatches on the root element
+// and decodes the declared subtype, so the accepted set is exactly the
+// subtypes the WADL names.
 func HandlePostResponse(rspStore *memory.ScopedStore[sep2.Response]) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -144,14 +154,14 @@ func HandlePostResponse(rspStore *memory.ScopedStore[sep2.Response]) http.Handle
 			return
 		}
 
-		var rsp sep2.Response
-		if err := xml.Unmarshal(body, &rsp); err != nil {
+		rsp, err := sep2.DecodeResponse(body)
+		if err != nil {
 			http.Error(w, "invalid XML: "+err.Error(), http.StatusBadRequest)
 			return
 		}
 
 		id := fmt.Sprintf("rsp-%d", time.Now().UnixNano())
-		rsp.Href = fmt.Sprintf("/rsps/%s/rsp/%s", rspsID, id)
+		rsp.Href = coreresponse.MemberHref(rspsID, id)
 		rsp.CreatedDateTime = time.Now().Unix()
 
 		if err := rspStore.Create(r.Context(), rspsID, id, rsp); err != nil {
