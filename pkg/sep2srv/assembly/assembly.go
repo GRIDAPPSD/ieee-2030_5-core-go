@@ -552,8 +552,15 @@ func registerDERRoutes(mux routeRegistrar, stores *Stores) {
 	// (id/fsaId/derpId, see scopedResourceHandlerDeep), so a control is
 	// reachable only under the device path it was stored beneath. Read-only:
 	// the DOWN path writes controls through the store, never over HTTP.
+	//
+	// Stamped with the response request on the way out, exactly as the list
+	// route stamps its members (IEEECORE-067). The adapter drops the request
+	// because the stamp does not depend on it: replyTo names one server-owned
+	// URI and responseRequired is a constant, unlike the DER instance stamp
+	// above, which derives links from path values.
 	mux.HandleFunc("GET /edev/{id}/fsa/{fsaId}/derp/{derpId}/derc/{dercId}",
-		scopedResourceHandlerDeep[sep2.DERControl](stores.DERControls, "dercId", coreder.StampResponseRequest))
+		scopedResourceHandlerDeep[sep2.DERControl](stores.DERControls, "dercId",
+			func(_ *http.Request, ctrl *sep2.DERControl) { coreder.StampResponseRequest(ctrl) }))
 
 	// DefaultDERControl
 	mux.HandleFunc("GET /edev/{id}/fsa/{fsaId}/derp/{derpId}/dderc",
@@ -634,16 +641,17 @@ func deepScopeKey(r *http.Request) string {
 //     failed rather than that the resource is absent, and collapsing the two
 //     would report a broken server as a missing resource.
 //
-// stamp, when non-nil, is applied to the copy about to be served. It exists so
-// a resource kind whose LIST is stamped on the way out (DERControl's replyTo
-// and responseRequired, IEEECORE-067) is stamped identically here: the two
-// routes serve the same resource, and a field present on one and absent on the
-// other is a conformance trap, which TestSingleDERControlBytesMatchListMember
-// exists to catch.
+// stamp, when non-nil, completes a resource for the wire before it is served,
+// and takes the same shape as [scopedResourceHandler]'s so the two mounts are
+// read the same way. It exists here so a resource kind whose LIST is stamped on
+// the way out (DERControl's replyTo and responseRequired, IEEECORE-067) is
+// stamped identically on its own href: the two routes serve the same resource,
+// and a field present on one and absent on the other is a conformance trap,
+// which TestSingleDERControlBytesMatchListMember exists to catch.
 func scopedResourceHandlerDeep[T store.Copier[T]](
 	scopedStore *memory.ScopedStore[T],
 	idParam string,
-	stamp func(*T),
+	stamp func(r *http.Request, resource *T),
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -662,7 +670,7 @@ func scopedResourceHandlerDeep[T store.Copier[T]](
 		}
 
 		if stamp != nil {
-			stamp(&resource)
+			stamp(r, &resource)
 		}
 
 		encoding.WriteXML(w, http.StatusOK, &resource)
