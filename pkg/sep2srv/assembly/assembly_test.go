@@ -1022,6 +1022,52 @@ func TestAssembly_MirrorOwnershipIsWiredOnEveryMupRoute(t *testing.T) {
 		t.Errorf("GET denial body leaks content: %s", getBody)
 	}
 
+	// The two Mandatory instance methods IEEECORE-066 mounted are covered here
+	// for the same reason the GET and the two POSTs are: this test is about
+	// WIRING, and a route added without its lfdiProvider argument is exactly the
+	// regression that would leave rule (e) present in the handler package and
+	// absent from the server. The PUT carries a body that would take a different
+	// branch if it were read, so a gate that ran after the body would answer
+	// something other than 403 here.
+	for _, m := range []struct {
+		method string
+		body   string
+	}{
+		{http.MethodPut, `<MirrorUsagePoint xmlns="urn:ieee:std:2030.5:ns"><mRID>OWNED</mRID></MirrorUsagePoint>`},
+		{http.MethodDelete, ""},
+	} {
+		req, err := http.NewRequest(m.method, otherSrv.URL+ownedPath, strings.NewReader(m.body))
+		if err != nil {
+			t.Fatalf("build %s %s: %v", m.method, ownedPath, err)
+		}
+		req.Header.Set("Content-Type", "application/sep+xml")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("%s %s: %v", m.method, ownedPath, err)
+		}
+		mBody, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s %s as a non-creator: status = %d, want 403; body = %s",
+				m.method, ownedPath, resp.StatusCode, mBody)
+		}
+		if strings.Contains(string(mBody), "<") || strings.Contains(string(mBody), testLFDI) {
+			t.Errorf("%s denial body leaks content: %s", m.method, mBody)
+		}
+	}
+
+	// The denied PUT and DELETE left the owner's record exactly as it was, which
+	// a status code cannot show: a 403 is returned whether or not the write ran
+	// first.
+	survivor, err := stores.MirrorUsagePoints.Get(context.Background(), ownedID)
+	if err != nil {
+		t.Fatalf("owner record missing after denied PUT and DELETE: %v", err)
+	}
+	if survivor.MRID != "OWNED" || survivor.DeviceLFDI != testLFDI {
+		t.Errorf("owner record altered by a denied request: MRID = %q, DeviceLFDI = %q, want %q and %q",
+			survivor.MRID, survivor.DeviceLFDI, "OWNED", testLFDI)
+	}
+
 	// Nothing was persisted by any of the denied writes.
 	count, err := stores.MirrorMeterReadings.Count(context.Background(), ownedID)
 	if err != nil {

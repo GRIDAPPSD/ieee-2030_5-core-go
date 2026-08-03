@@ -84,6 +84,92 @@ func stampMirrorMeterReading(mmr *sep2.MirrorMeterReading, parentID string, nano
 	return id
 }
 
+// stampServerOwnedMirrorFields overwrites every field of a submitted
+// MirrorUsagePoint that belongs to the server rather than to the client, and it
+// is the ONE place that decides what "server-owned" means for this resource.
+//
+// POST /mup and PUT /mup/{id} both call it, on purpose. They are the two ways a
+// client writes a whole MirrorUsagePoint, and a field one of them stamps while
+// the other takes from the body is a field a client can set simply by choosing
+// the other verb. Sharing the function makes that class of gap unreachable
+// rather than merely absent today: adding a server-owned field here covers both
+// routes, and there is no second stamping site to forget.
+//
+// id is the store key the record is written under, and the caller has already
+// established that it is the key this (lfdi, mRID) pair resolves to. This
+// function does not re-derive it, because on the PUT path the comparison
+// between the derived key and the requested one is a REJECTION decision, not a
+// stamping one, and folding it in here would let a mismatch be silently
+// corrected into a rename.
+//
+// The fields, and why each is the server's:
+//
+//   - DeviceLFDI is an identity claim, so a client must never be able to assert
+//     one. It is taken from the caller's certificate identity, which for a PUT
+//     is the same value the rule (e) gate already compared against the stored
+//     record, so the record cannot be handed to a device the gate did not
+//     authorise.
+//
+//   - PostRate is a rate the SERVER is being asked to absorb. sep.xsd:6485-6487
+//     grants the server both verbs, "add or modify", so a configured server
+//     value wins over a client preference; see PostRateProvider. This is not
+//     the same kind of override as DeviceLFDI: the client posting into the
+//     mirror does not know the server's ingest budget, and a mirror whose rate
+//     the server did not agree to is a rate the server cannot plan for. Applying
+//     it on the overwrite paths as well as on create is deliberate. If the stamp
+//     applied only to create, a client that lost the rate war on its first POST
+//     could win it back by re-POSTing or PUTting the same mRID, since both write
+//     the new data over the existing record; the overwrite would persist an
+//     un-stamped client value and silently revert the server's configured rate.
+//     An ingest-budget policy the server cannot make survive a rewrite is not a
+//     policy it can rely on.
+//
+//     A nil provider, or one that reports no configured rate, is a no-op:
+//     PostRate keeps whatever the client submitted in THIS request, not whatever
+//     was previously stored, consistent with rule (a)(4)'s full write-over
+//     semantics. That keeps an unconfigured server byte-for-byte identical to
+//     its pre-change behaviour instead of silently zeroing a stated preference.
+//
+//   - Href is minted by MirrorHref from the store key, so the stored self href,
+//     the Location header on 201 and the Location header on 204 cannot drift
+//     into three different strings for one resource.
+//
+//   - Each inline MirrorMeterReading's href and lastUpdateTime, matching what
+//     HandlePostMirrorMeterReading does for the out-of-band route. Without this
+//     a client's href and lastUpdateTime are stored and re-served verbatim on
+//     GET /mup, which is unscoped.
+//
+// The per-element nanos offset comes from one clock read plus the index rather
+// than a fresh time.Now() per element: on a coarse monotonic clock repeated
+// reads inside a loop can return the same nanosecond, which would mint
+// colliding hrefs for distinct readings. Distinct ids are required because they
+// are the store's ordering keys.
+//
+// No response body observes the stamp directly: 201 carries none (rule (a)(3))
+// and 204 carries none (rule (a)(4)), so a client learns its actual postRate
+// only from a follow-up GET /mup/{id}. The stamp still has to happen before
+// storage, because GET only ever echoes what was persisted.
+func stampServerOwnedMirrorFields(mup *sep2.MirrorUsagePoint, id, lfdi string, postRateProvider PostRateProvider) {
+	mup.DeviceLFDI = lfdi
+
+	if postRateProvider != nil {
+		if rate, ok := postRateProvider(lfdi); ok {
+			// Bind to a fresh local: taking the address of the per-request
+			// `rate` is fine, while pointing at any shared policy storage would
+			// alias one value across every mirror.
+			r := rate
+			mup.PostRate = &r
+		}
+	}
+
+	mup.Href = MirrorHref(id)
+
+	baseNanos := time.Now().UnixNano()
+	for i := range mup.MirrorMeterReading {
+		stampMirrorMeterReading(&mup.MirrorMeterReading[i], id, baseNanos+int64(i))
+	}
+}
+
 // stripMirrorMeterReadings returns a copy of mup with MirrorMeterReading
 // omitted, for serving on GET.
 //
@@ -153,15 +239,22 @@ func stripMirrorMeterReadings(mup sep2.MirrorUsagePoint) sep2.MirrorUsagePoint {
 // the request body, the stored record, or either LFDI, so a probe learns
 // nothing beyond "denied".
 //
-// On success the already-fetched record is returned so callers need not
-// re-read the store.
+// On success the already-fetched record is returned, so callers need not
+// re-read the store, together with the CALLER's certificate-derived LFDI.
+//
+// Returning the caller LFDI is what lets PUT derive server-owned fields from
+// the certificate without asking the provider a second time. Two reads of the
+// same provider inside one request are two chances to disagree, and the value
+// this gate compared against the stored record is by definition the one the
+// rest of the request must use: any other value would be authorised by a check
+// that never saw it.
 func authorizeMirrorOwner(
 	w http.ResponseWriter,
 	r *http.Request,
 	s store.ResourceStore[sep2.MirrorUsagePoint],
 	lfdiProvider LFDIProvider,
 	id string,
-) (sep2.MirrorUsagePoint, bool) {
+) (sep2.MirrorUsagePoint, string, bool) {
 	var zero sep2.MirrorUsagePoint
 
 	if lfdiProvider == nil {
@@ -169,32 +262,32 @@ func authorizeMirrorOwner(
 		// nil-func panic and not an open one.
 		log.Printf("mup: nil LFDIProvider, denying (path=%s)", r.URL.Path)
 		http.Error(w, "identity required", http.StatusForbidden)
-		return zero, false
+		return zero, "", false
 	}
 
 	lfdi, ok := lfdiProvider(r.Context())
 	if !ok || lfdi == "" {
 		http.Error(w, "identity required", http.StatusForbidden)
-		return zero, false
+		return zero, "", false
 	}
 
 	mup, err := s.Get(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			http.Error(w, "mirror usage point not found", http.StatusNotFound)
-			return zero, false
+			return zero, "", false
 		}
 		log.Printf("mup: ownership lookup id=%q: %v (path=%s)", id, err, r.URL.Path)
 		http.Error(w, "internal error", http.StatusInternalServerError)
-		return zero, false
+		return zero, "", false
 	}
 
 	if mup.DeviceLFDI == "" || mup.DeviceLFDI != lfdi {
 		http.Error(w, "forbidden", http.StatusForbidden)
-		return zero, false
+		return zero, "", false
 	}
 
-	return mup, true
+	return mup, lfdi, true
 }
 
 // BuildMirrorUsagePointList constructs a MirrorUsagePointList from store results.
@@ -356,78 +449,17 @@ func HandleCreateMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint], 
 			return
 		}
 
-		// Set DeviceLFDI from cert (override client-supplied value)
-		mup.DeviceLFDI = lfdi
-
-		// Stamp the server's preferred postRate, overriding whatever the
-		// client asked for. sep.xsd:6487 grants the server both verbs, "add
-		// or modify", so a configured server value wins over a client
-		// preference; see PostRateProvider for the full reasoning.
-		//
-		// This runs once, on the same mup value the ErrAlreadyExists branch
-		// below reuses verbatim for its s.Update call, so the stamp lands on
-		// BOTH the create path and the rule (a)(4) overwrite path a re-POST
-		// of the same mRID takes. That reuse is deliberate, not incidental:
-		// if the stamp applied only to the create path, a client that lost
-		// the rate war on its first POST could win it back by simply
-		// re-POSTing the same mRID, since rule (a)(4) writes the new data
-		// over the existing record. The overwrite would then persist an
-		// un-stamped client value and silently revert or drop the server's
-		// configured rate on the very record the server already claimed.
-		// An ingest-budget policy the server cannot make survive a re-POST
-		// is not a policy it can rely on, so the overwrite path is not
-		// exempted.
-		//
-		// This is deliberately NOT the same kind of override as DeviceLFDI
-		// above. DeviceLFDI is overridden because it is an identity claim and
-		// a client must never be able to assert one. postRate is overridden
-		// because it is a rate the SERVER is being asked to absorb: the client
-		// posting into it does not know the server's ingest budget, and a
-		// mirror whose rate the server did not agree to is a rate the server
-		// cannot plan for.
-		//
-		// A nil provider, or one that reports no configured rate, is a no-op:
-		// mup.PostRate keeps whatever the client submitted in THIS POST (not
-		// whatever was previously stored), consistent with rule (a)(4)'s full
-		// write-over semantics on the overwrite path. That keeps an
-		// unconfigured server byte-for-byte identical to its pre-change
-		// behavior instead of silently zeroing a client's stated preference.
-		//
-		// Neither response body observes the stamp directly: 201 carries none
-		// (rule (a)(3)) and 204 carries none (rule (a)(4)), so a client learns
-		// its actual postRate only from a follow-up GET /mup/{id}, which
-		// serves the stored record rule (c) permits. The stamp still has to
-		// happen here, before storage, because GET only ever echoes what was
-		// persisted.
-		if postRateProvider != nil {
-			if rate, ok := postRateProvider(lfdi); ok {
-				// Bind to a fresh local: taking the address of the loop-free
-				// but per-request `rate` is fine, while pointing at any shared
-				// policy storage would alias one value across every mirror.
-				r := rate
-				mup.PostRate = &r
-			}
-		}
-
 		// The resource identity is (creating device, client mRID).
 		id := MirrorStoreID(lfdi, mup.MRID)
-		mup.Href = MirrorHref(id)
 
-		// Stamp the server-owned fields on every inline reading, matching
-		// what HandlePostMirrorMeterReading below does for the out-of-band
-		// route. Without this, a client's href and lastUpdateTime are stored
-		// and re-served verbatim on GET /mup, which is unscoped.
-		//
-		// The per-element nanos offset comes from one clock read plus the
-		// index rather than a fresh time.Now() per element: on a coarse
-		// monotonic clock repeated reads inside a loop can return the same
-		// nanosecond, which would mint colliding hrefs for distinct
-		// readings. Distinct ids are required because they are the store's
-		// ordering keys.
-		baseNanos := time.Now().UnixNano()
-		for i := range mup.MirrorMeterReading {
-			stampMirrorMeterReading(&mup.MirrorMeterReading[i], id, baseNanos+int64(i))
-		}
+		// Every server-owned field is stamped in one place, shared with PUT.
+		// The stamp runs once here, on the same mup value the ErrAlreadyExists
+		// branch below reuses verbatim for its s.Update call, so it lands on
+		// BOTH the create path and the rule (a)(4) overwrite path a re-POST of
+		// the same mRID takes. See stampServerOwnedMirrorFields for why each
+		// field is server-owned and why the overwrite path is not exempted.
+		stampServerOwnedMirrorFields(&mup, id, lfdi, postRateProvider)
+
 		// sep.xsd carries MirrorMeterReading inline on MirrorUsagePoint
 		// (sep2.MirrorUsagePoint.MirrorMeterReading), not via a link
 		// element; the schema has no MirrorMeterReadingListLink type at
@@ -551,8 +583,242 @@ func HandleMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint], lfdiPr
 			return
 		}
 
-		mup, ok := authorizeMirrorOwner(w, r, s, lfdiProvider, r.PathValue("id"))
+		mup, _, ok := authorizeMirrorOwner(w, r, s, lfdiProvider, r.PathValue("id"))
 		if !ok {
+			return
+		}
+
+		stripped := stripMirrorMeterReadings(mup)
+		encoding.WriteXML(w, http.StatusOK, &stripped)
+	}
+}
+
+// HandlePutMirrorUsagePoint returns a handler for PUT /mup/{id}.
+//
+// PUT on the MirrorUsagePoint is mode M in the WADL (sep_wadl.xml:2303), and
+// until this handler existed a client following the Location header POST /mup
+// handed it, using a method the standard marks Mandatory, was refused. That is
+// the advertised-but-unserved class in its strongest form: the server named the
+// URI itself.
+//
+// # The ordering is the security property
+//
+// The section 10.11.3 rule (e) ownership gate runs FIRST, before a single byte
+// of the request body is read. That ordering is not an optimisation. If the
+// body were parsed first, an unauthorised caller would learn which bodies parse,
+// which mRIDs resolve to this resource, and which do not, from the differing
+// status codes and messages a parse produces: 400 for malformed XML, 400 for a
+// missing mRID, 409 for an mRID belonging elsewhere. Every one of those is a
+// distinguishable answer to a question the caller has no standing to ask. With
+// the gate first, a denied caller's response is a function of its identity
+// alone, so every body it can construct yields the identical response, which is
+// what the tests assert rather than merely that both are refused.
+//
+// # Why a differing mRID is a rejection and not a rename
+//
+// MirrorStoreID derives the store key from the owner and the mRID TOGETHER (see
+// MirrorStoreID for why), so the mRID is part of this resource's identity, not a
+// mutable attribute of it. A PUT whose body carries a different mRID therefore
+// does not describe an edit to the resource at {id}: it describes a DIFFERENT
+// resource, living at a different key.
+//
+// Honouring it as a rename would be data corruption rather than a 4xx. The
+// record at {id} would be left behind with nothing addressing it, since its key
+// no longer matches the mRID it now claims to hold and no future request from
+// the owner can derive that key again; and a second record would appear at the
+// new key, so one mirror would have become two, one of them unreachable. The
+// readings scoped under the old id would be stranded under a parent nothing can
+// name. Refusing with 409 leaves the store exactly as it was, which the tests
+// assert directly rather than inferring from the status code.
+//
+// The client that genuinely wants a mirror under a new mRID already has the
+// route for it: POST /mup mints one and returns its Location, rule (a)(3).
+//
+// The response is 204 with a Location header, matching rule (a)(4)'s treatment
+// of a write-over of an existing MirrorUsagePoint. No representation is served:
+// the EPRI reference client's se_receive schema-parses ANY response body ahead
+// of process_response regardless of status, so a body on a 204 is both
+// non-conformant and a parse surface no client reads.
+func HandlePutMirrorUsagePoint(
+	s store.ResourceStore[sep2.MirrorUsagePoint],
+	lfdiProvider LFDIProvider,
+	postRateProvider PostRateProvider,
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			encoding.MethodNotAllowed(w, "PUT")
+			return
+		}
+
+		id := r.PathValue("id")
+
+		// Rule (e), BEFORE the body. See the ordering note above: everything
+		// below this line is reachable only by the client that created the
+		// mirror, so no branch below can be used as an oracle by anyone else.
+		_, lfdi, ok := authorizeMirrorOwner(w, r, s, lfdiProvider, id)
+		if !ok {
+			return
+		}
+
+		body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		if err != nil {
+			http.Error(w, "read body failed", http.StatusBadRequest)
+			return
+		}
+
+		var mup sep2.MirrorUsagePoint
+		if err := xml.Unmarshal(body, &mup); err != nil {
+			http.Error(w, "invalid XML: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		// mRID is minOccurs="1" on IdentifiedObject (sep.xsd:5331), inherited
+		// by MirrorUsagePoint, and here it is load-bearing beyond that: without
+		// it there is nothing to compare against the resource's own identity,
+		// so the rename check below could not run at all. Refused rather than
+		// treated as "unchanged", because inferring the mRID from the stored
+		// record would make an absent mRID silently mean whatever the server
+		// already had, and a client could then never tell a full replacement
+		// from a partial one.
+		if mup.MRID == "" {
+			http.Error(w, "MirrorUsagePoint mRID is required", http.StatusBadRequest)
+			return
+		}
+
+		// The identity check. Nothing has been written at this point and
+		// nothing is written on this branch: the store is left byte-for-byte as
+		// it was, which is the property that distinguishes a refusal from a
+		// half-applied rename.
+		//
+		// The message names neither the submitted mRID nor the stored one. The
+		// caller owns this resource, so it could learn both by other means, but
+		// echoing request content into an error body is how a reflected value
+		// ends up somewhere it was not expected.
+		if derived := MirrorStoreID(lfdi, mup.MRID); derived != id {
+			http.Error(w, "MirrorUsagePoint mRID does not identify this resource", http.StatusConflict)
+			return
+		}
+
+		// Identical stamping to the create path, by construction: one function,
+		// both routes. DeviceLFDI comes from the certificate identity the gate
+		// above already matched against the stored record, never from the body.
+		stampServerOwnedMirrorFields(&mup, id, lfdi, postRateProvider)
+
+		// A full write-over, not a merge, matching rule (a)(4). An inline
+		// MirrorMeterReading this PUT omits is cleared from the stored record.
+		// The out-of-band readings in mmrStore are a separate collection and are
+		// deliberately untouched, exactly as the POST overwrite path leaves
+		// them: rule (a)(4)'s "written over" language is scoped to the
+		// MirrorUsagePoint resource, and discarding data outside that scope on a
+		// PUT would be a silent deletion the client did not ask for.
+		if err := s.Update(r.Context(), id, mup); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				// The record was deleted between the gate's Get and this
+				// Update. Reported as 404 rather than recreated: Update never
+				// creates, and re-creating here would resurrect a mirror whose
+				// owner had just retired it.
+				log.Printf("mup: PUT lost a race with a delete for id=%q", id)
+				http.Error(w, "mirror usage point not found", http.StatusNotFound)
+				return
+			}
+			log.Printf("mup: PUT update id=%q: %v (path=%s)", id, err, r.URL.Path)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Location", mup.Href)
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// HandleDeleteMirrorUsagePoint returns a handler for DELETE /mup/{id}.
+//
+// DELETE on the MirrorUsagePoint is mode M in the WADL (sep_wadl.xml:2323) and
+// declares a sep:MirrorUsagePoint response representation (sep_wadl.xml:2325),
+// so the deleted record is served back rather than answered with a bare 204.
+// The served record is STRIPPED of its MirrorMeterReading children, per section
+// 10.11.3 rule (c): a MirrorUsagePoint representation carries only first-level
+// elements. The same stripping the GET path applies is applied here, through the
+// same function, so the document a client receives at deletion is the same shape
+// as the one it received while the mirror was alive.
+//
+// The record served is the one captured by the ownership gate BEFORE the delete,
+// which is the only correct source: reading it back afterwards would find
+// nothing, and reconstructing it from the request would serve the client its own
+// input rather than what the server actually held.
+//
+// # The cascade
+//
+// MirrorMeterReadings are scoped under the MirrorUsagePoint id. Deleting the
+// parent without them leaves a collection that nothing can address through the
+// protocol, because /mup/{id}/mr/{}'s only route to it is through an id that no
+// longer resolves, while the readings themselves stay resident. Worse, the ids
+// are derived from (owner, mRID), so an owner that re-creates a mirror under the
+// SAME mRID lands on the SAME key and would inherit the previous mirror's
+// readings as if they were its own: a device would be served metering data it
+// never posted, under a resource it believes it just created.
+//
+// The children go first, then the parent. On a failure to remove the children
+// the parent is left in place and the request fails, so the client sees a
+// resource that still exists and can retry; the reverse order would answer a
+// partial failure with a deleted parent and surviving orphans, which is the
+// exact state this cascade exists to prevent and which no client could detect.
+//
+// A nil readings store means the readings collection was never wired at all, so
+// there is nothing that could be orphaned and the cascade is vacuous rather than
+// skipped. It is not treated as an error, because a consumer that serves the
+// MirrorUsagePoint function set without the out-of-band readings route is a
+// deployment choice, not an indeterminate check.
+func HandleDeleteMirrorUsagePoint(
+	s store.ResourceStore[sep2.MirrorUsagePoint],
+	mmrStore *memory.ScopedStore[sep2.MirrorMeterReading],
+	lfdiProvider LFDIProvider,
+) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			encoding.MethodNotAllowed(w, "DELETE")
+			return
+		}
+
+		id := r.PathValue("id")
+
+		// Rule (e), before anything is removed. A DELETE has no body to leak
+		// through, but the gate is still first for the same reason the read and
+		// write paths put it first: no branch of this handler is reachable by a
+		// caller that does not own the record.
+		mup, _, ok := authorizeMirrorOwner(w, r, s, lfdiProvider, id)
+		if !ok {
+			return
+		}
+
+		if mmrStore != nil {
+			removed, err := mmrStore.DeleteParent(r.Context(), id)
+			if err != nil {
+				// The parent is deliberately still here. Surfacing the failure
+				// with the resource intact is recoverable; deleting it anyway
+				// would leave orphans no client could see or clean up.
+				log.Printf("mup: cascade delete of readings under parent=%q failed, "+
+					"MirrorUsagePoint left in place: %v", id, err)
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			if removed > 0 {
+				log.Printf("mup: DELETE id=%q cascaded to %d MirrorMeterReading(s)", id, removed)
+			}
+		}
+
+		if err := s.Delete(r.Context(), id); err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				// Another request deleted it between the gate's Get and here.
+				// The cascade above has already run, which is what that other
+				// request would have done too, so the end state is the intended
+				// one and only the reporting differs.
+				log.Printf("mup: DELETE lost a race with another delete for id=%q", id)
+				http.Error(w, "mirror usage point not found", http.StatusNotFound)
+				return
+			}
+			log.Printf("mup: DELETE id=%q: %v (path=%s)", id, err, r.URL.Path)
+			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 
@@ -710,7 +976,7 @@ func HandlePostMirrorMeterReading(
 		// Ownership gate: resolves identity, confirms the parent exists, and
 		// confirms the caller created it. Runs before the body is read so an
 		// unauthorized caller's payload is never parsed, let alone stored.
-		if _, ok := authorizeMirrorOwner(w, r, mupStore, lfdiProvider, parentID); !ok {
+		if _, _, ok := authorizeMirrorOwner(w, r, mupStore, lfdiProvider, parentID); !ok {
 			return
 		}
 

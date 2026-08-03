@@ -542,6 +542,33 @@ func registerMirrorRoutes(mux routeRegistrar, stores *Stores, authPolicy AuthPol
 	mux.HandleFunc("POST /mup/{id}", coremetering.HandlePostMirrorMeterReading(
 		stores.MirrorUsagePoints, stores.MirrorMeterReadings, lfdiProvider,
 	))
+
+	// The two Mandatory methods on the MirrorUsagePoint instance
+	// (IEEECORE-066). PUT is sep_wadl.xml:2303 and DELETE is
+	// sep_wadl.xml:2323, both wx:mode="M", and neither was mounted: a client
+	// following the Location header POST /mup returns, with a method the
+	// standard requires a server to implement, got a 405 from the server that
+	// had just named the URI.
+	//
+	// Mounting them also completes the Allow header on this path. Go's
+	// ServeMux derives the 405 Allow set from the methods registered for a
+	// matching pattern, so before this change a PUT was answered with an Allow
+	// that listed only the methods core happened to serve, which is exactly the
+	// section 4.3 c) 4) header a client uses to decide what it may do next.
+	// Both new shapes are declared in MintableHrefs in this same change:
+	// mounting and advertising are one act.
+	//
+	// Reachability through the bridge and server-go ACLs is NOT addressed here.
+	// Both wrappers classify /mup as read-and-create and return 405 before the
+	// mux, so these two methods stay dark in those deployments until
+	// IEEECORE-070 removes the wrapper tables. Editing those tables from here
+	// is the cross-repo lockstep drift that card exists to abolish.
+	mux.HandleFunc("PUT /mup/{id}", coremetering.HandlePutMirrorUsagePoint(
+		stores.MirrorUsagePoints, lfdiProvider, postRateProvider,
+	))
+	mux.HandleFunc("DELETE /mup/{id}", coremetering.HandleDeleteMirrorUsagePoint(
+		stores.MirrorUsagePoints, stores.MirrorMeterReadings, lfdiProvider,
+	))
 }
 
 func registerDERRoutes(mux routeRegistrar, stores *Stores) {
