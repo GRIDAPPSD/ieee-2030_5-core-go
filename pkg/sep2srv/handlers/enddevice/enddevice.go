@@ -177,12 +177,27 @@ func HandleCreateEndDevice(s store.EndDeviceStore, idx EndDeviceIndexer, identit
 		enabled := true
 		dev.Enabled = &enabled
 
-		// Check if already registered
+		// Check if already registered.
+		//
+		// A lookup that did not COMPLETE is not evidence that the device is
+		// unregistered, and the two must not be collapsed here, because the
+		// branch this guards is a WRITE. Falling through on a transient failure
+		// provisions a second EndDevice for a device that may already have one,
+		// under a second URL index allocated to the same LFDI: duplicate fleet
+		// state that nothing downstream can distinguish from a genuine second
+		// device, plus a re-addressing that strands the path a client was
+		// already given. A 500 costs the client a retry; the write costs
+		// corruption no later read can detect (IEEECORE-086).
 		existing, err := s.GetBySFDI(r.Context(), sfdi)
-		if err == nil {
+		switch {
+		case err == nil:
 			// Already exists: return 200 with existing device
 			w.Header().Set("Location", existing.Href)
 			encoding.WriteXML(w, http.StatusOK, &existing)
+			return
+		case !errors.Is(err, store.ErrNotFound):
+			log.Printf("edev create: registration lookup by SFDI failed, not provisioning: %v (path=%s)", err, r.URL.Path)
+			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 

@@ -666,3 +666,104 @@ type notifierFunc func(ctx context.Context, resourceHref string, status uint8)
 func (f notifierFunc) Notify(ctx context.Context, resourceHref string, status uint8) {
 	f(ctx, resourceHref, status)
 }
+
+// ----- POST /edev when the identity lookup cannot complete (IEEECORE-086) -----
+
+// lookupFailingEndDevices is an EndDeviceStore whose identity lookups fail
+// while every other operation succeeds.
+//
+// The asymmetry is the whole point. A store that failed everything would make
+// the create path fail at its next call for reasons of its own, and the status
+// code would look right while the branch under test was never established. This
+// models the case that actually matters on a durable backend: a read that times
+// out against a connection pool while the write that follows it succeeds.
+type lookupFailingEndDevices struct {
+	store.EndDeviceStore
+	err error
+}
+
+func (s *lookupFailingEndDevices) GetBySFDI(_ context.Context, _ string) (sep2.EndDevice, error) {
+	return sep2.EndDevice{}, s.err
+}
+
+func (s *lookupFailingEndDevices) GetByLFDI(_ context.Context, _ string) (sep2.EndDevice, error) {
+	return sep2.EndDevice{}, s.err
+}
+
+// TestCreateEndDeviceRefusesWhenTheIdentityLookupFails pins that a failed
+// "is this device already registered" lookup is refused rather than read as
+// "no".
+//
+// The status code is the smaller half of this. The consequential half is the
+// COUNT: treating an unanswered lookup as absence sends the handler down the
+// provisioning branch, so a device that is already registered is registered a
+// second time, under a second URL index allocated to the same LFDI. On a
+// durable backend that is duplicate fleet state written during a blip, and
+// nothing downstream can tell the duplicate from a genuine second device. The
+// index allocation compounds it: the device is re-addressed, so a client
+// holding /edev/3 finds its resources under a path it was never told about.
+//
+// A 500 asks the client to retry, which costs one request. The write costs a
+// corrupted fleet that no later read can detect.
+func TestCreateEndDeviceRefusesWhenTheIdentityLookupFails(t *testing.T) {
+	t.Parallel()
+
+	backend := memory.NewEndDeviceStore()
+	errBackendDown := errors.New("backend unavailable")
+	s := &lookupFailingEndDevices{EndDeviceStore: backend, err: errBackendDown}
+
+	h := coreedev.HandleCreateEndDevice(s, memory.NewEndDeviceIndex(), identityOK(testLFDI, testSFDI), sfdiFirst8)
+
+	req := httptest.NewRequest(http.MethodPost, "/edev", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500: a lookup that did not complete is not evidence the device is unregistered", w.Code)
+	}
+
+	// Nothing may have been written. This is the assertion that distinguishes
+	// "reported the right status" from "did not provision a duplicate".
+	count, err := backend.Count(context.Background())
+	if err != nil {
+		t.Fatalf("count devices: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("the store holds %d device(s) after a refused create; want 0, because the handler provisioned one on a lookup it could not complete", count)
+	}
+}
+
+// TestCreateEndDeviceStillReturnsTheExistingDeviceOnACleanMiss is the other
+// side of the same branch: an ordinary ErrNotFound still means "not
+// registered", so the provisioning path is unchanged for every case that is
+// not a backend failure.
+func TestCreateEndDeviceStillReturnsTheExistingDeviceOnACleanMiss(t *testing.T) {
+	t.Parallel()
+
+	s := memory.NewEndDeviceStore()
+	h := coreedev.HandleCreateEndDevice(s, memory.NewEndDeviceIndex(), identityOK(testLFDI, testSFDI), sfdiFirst8)
+
+	first := httptest.NewRecorder()
+	h.ServeHTTP(first, httptest.NewRequest(http.MethodPost, "/edev", nil))
+	if first.Code != http.StatusCreated {
+		t.Fatalf("first POST status = %d, want 201; body=%s", first.Code, first.Body.String())
+	}
+	firstLocation := first.Header().Get("Location")
+
+	second := httptest.NewRecorder()
+	h.ServeHTTP(second, httptest.NewRequest(http.MethodPost, "/edev", nil))
+	if second.Code != http.StatusOK {
+		t.Fatalf("second POST status = %d, want 200 for an already-registered device", second.Code)
+	}
+	if got := second.Header().Get("Location"); got != firstLocation {
+		t.Errorf("second POST Location = %q, want the first device's %q", got, firstLocation)
+	}
+
+	count, err := s.Count(context.Background())
+	if err != nil {
+		t.Fatalf("count devices: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("the store holds %d device(s) after two POSTs for one identity, want 1", count)
+	}
+}

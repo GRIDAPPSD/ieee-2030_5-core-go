@@ -105,6 +105,34 @@
 //
 // A caller that cannot complete a check MUST fail closed.
 //
+// The obligation runs in both directions, and neither half is optional. An
+// IMPLEMENTATION must not report a failure as one of the four sentinels, or as
+// a nil error, because the value channel cannot carry the difference: a failed
+// Get, a failed List and a failed Count each return exactly what the
+// successful-and-empty case returns. A CONSUMER must not flatten a
+// non-sentinel error into a 404, an empty list, or a synthesized default
+// resource, because each of those is a claim about the fleet that a server
+// whose backend stopped answering has not established. Only a 5xx says "I do
+// not know", and that is the one answer a client retries.
+//
+// # How the contract is checked rather than asserted
+//
+// Both halves are enforced by tests rather than left to review.
+//
+//   - An implementation is checked by storetest.RunTransientFailureSuite,
+//     which runs a healthy store and a failing one through the same calls and
+//     pins that the error return discriminates where the value return cannot.
+//   - Consumers are checked at the route level: the assembly package drives
+//     EVERY mounted route through stores wrapped in storetest's fault
+//     decorators and requires a 5xx from each, with the route list derived
+//     from the router's own pattern enumeration so a route mounted tomorrow is
+//     covered the day it appears rather than the day somebody remembers it.
+//
+// Both exist because the in-memory implementation essentially cannot fail, so
+// no amount of exercising the current code reaches these branches. They go
+// live all at once the day a durable backend is attached, which is the worst
+// possible moment to be discovering which of them were never written.
+//
 // # Partial failure
 //
 // The contract defines no batch or transactional primitive. A caller writing
