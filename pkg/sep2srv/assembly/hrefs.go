@@ -250,6 +250,8 @@ func MintableHrefs() []MintableHref {
 		// one href.
 		{"/mup/{}", http.MethodGet, "handlers/metering.MirrorHref", "the Location header returned by POST /mup"},
 		{"/mup/{}", http.MethodPost, "handlers/metering.MirrorHref", "IEEE 2030.5-2018 section 10.11.3 rule (d): the client posts readings to the resource identified in the server's response"},
+		{"/mup/{}", http.MethodPut, "handlers/metering.MirrorHref", "PUT on the MirrorUsagePoint is mode M (sep_wadl.xml:2303): a client updates the mirror at the Location POST /mup handed it, and rule (a)(4) has the new data written over the existing record"},
+		{"/mup/{}", http.MethodDelete, "handlers/metering.MirrorHref", "DELETE on the MirrorUsagePoint is mode M (sep_wadl.xml:2323): a client retires the mirror at the Location POST /mup handed it, and is served the stripped record back (sep_wadl.xml:2325)"},
 		{"/mup/{}/mr/{}", http.MethodGet, "handlers/metering.stampMirrorMeterReading", "the Location header returned by POST /mup/{}/mr and by POST /mup/{}"},
 		{"/upt/{}", http.MethodGet, "handlers/metering.UsagePointHref", "the Location header returned by POST /upt"},
 		{"/upt/{}/mr", http.MethodGet, "handlers/metering.HandleCreateUsagePoint MeterReadingListLink", "the MeterReading list under a UsagePoint"},
