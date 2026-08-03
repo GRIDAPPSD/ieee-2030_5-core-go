@@ -12,6 +12,29 @@
 //   - BuildProtocolRouter wires all core handlers plus the four ported families
 //     (enddevice, der, fsa, registration) and returns the composed http.Handler
 //     and the sorted pattern list for boot-time logging.
+//
+// # This package is the server's router and is destined to move
+//
+// A router is server state. A 2030.5 client has no router: it issues requests
+// against hrefs a server handed it. Under the four-layer target architecture
+// (core is the shared library for client and server, server-go is the server,
+// the bridge grafts onto the server), this package belongs in server-go, and it
+// lives in core today only because the server currently does. Nothing here is
+// part of the shared client-and-server surface, and callers should not treat it
+// as such.
+//
+// That applies to everything routing-shaped in this package, including the
+// mintable-href assertion in hrefs.go and the guards that back it in
+// hrefsource_test.go and pathvalue_test.go: they check the router against
+// itself, so they move with the router rather than calcifying here. Keep them
+// coupled to BuildProtocolRouter and to the handler packages, and to nothing in
+// the client half of core, so that the relocation stays a move rather than a
+// breaking API change.
+//
+// The relocation is sequenced with the layering split, not with any one card.
+// See the bridge/core boundary analysis (architecture decision IEEECORE-068)
+// for the reasoning, and pkg/store's package documentation for the same note
+// about the store contract.
 package assembly
 
 import (
@@ -261,19 +284,29 @@ func BuildProtocolRouter(
 		protocolChain = protocolMux
 	}
 
-	for _, prefix := range []string{
-		"/dcap", "/tm", "/sdev", "/sdev/",
-		"/edev", "/edev/",
-		"/mup", "/mup/",
-		"/dc", "/dc/",
-		"/upt", "/upt/", "/rt", "/rt/",
-		"/msg", "/msg/",
-		"/rsps", "/rsps/",
-	} {
+	for _, prefix := range topLevelMounts {
 		top.Handle(prefix, protocolChain)
 	}
 
 	return encoding.NamespaceMiddleware(top), protocolMux.Patterns()
+}
+
+// topLevelMounts are the prefixes under which the protocol mux is mounted on
+// the outer mux. A pattern registered on the protocol mux whose family is
+// absent here is unreachable no matter how well formed it is, which is the
+// same advertised-but-unrouted defect one layer up, so the href probe in
+// hrefs.go mounts the same list rather than testing the protocol mux alone.
+//
+// The paired bare and trailing-slash entries are both required: "/edev"
+// matches only the collection, "/edev/" matches everything beneath it.
+var topLevelMounts = []string{
+	"/dcap", "/tm", "/sdev", "/sdev/",
+	"/edev", "/edev/",
+	"/mup", "/mup/",
+	"/dc", "/dc/",
+	"/upt", "/upt/", "/rt", "/rt/",
+	"/msg", "/msg/",
+	"/rsps", "/rsps/",
 }
 
 // routeRegistrar is the surface the register*Routes helpers need from a mux.

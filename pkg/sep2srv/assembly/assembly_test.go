@@ -147,6 +147,147 @@ func TestAssembly_DCAPWired(t *testing.T) {
 	}
 }
 
+// deviceCapabilityLinkCase pairs a DeviceCapability link accessor with the
+// XML root element the resource behind it must have when the link is
+// present.
+//
+// IEEE 2030.5-2018 section 4.4 permits a Link element to be entirely absent
+// when its function set is not implemented, so a nil link is never itself a
+// failure here: this table only asserts "IF the link is present, it
+// resolves to the resource type its name promises", never "the link must
+// be present". That second, presence assertion is deliberately left
+// unencoded: it is enablement-policy-dependent (a server MAY legitimately
+// decline a function set, per section 4.3 modes), and that policy is a
+// separate, config-driven design (IEEECORE-064 follow-up, in design by
+// Noor as of 2026-08-03). Extending this test for that design means adding
+// a "wantPresent bool" (or an enablement predicate) alongside wantEl on
+// each case, so a declined function set asserts absence and an enabled one
+// asserts both presence and correct root element, from the SAME table:
+// today every case leaves that axis unchecked, matching the fact that
+// nothing yet declines a function set at runtime.
+type deviceCapabilityLinkCase struct {
+	name string
+	href func(dc *sep2.DeviceCapability) (href string, present bool)
+	// wantEl is the local XML element name the resource at href must have.
+	wantEl string
+}
+
+func linkHref(get func(dc *sep2.DeviceCapability) *sep2.Link) func(dc *sep2.DeviceCapability) (string, bool) {
+	return func(dc *sep2.DeviceCapability) (string, bool) {
+		l := get(dc)
+		if l == nil {
+			return "", false
+		}
+		return l.Href, true
+	}
+}
+
+func listLinkHref(get func(dc *sep2.DeviceCapability) *sep2.ListLink) func(dc *sep2.DeviceCapability) (string, bool) {
+	return func(dc *sep2.DeviceCapability) (string, bool) {
+		l := get(dc)
+		if l == nil {
+			return "", false
+		}
+		return l.Href, true
+	}
+}
+
+var deviceCapabilityLinkCases = []deviceCapabilityLinkCase{
+	{"CustomerAccountListLink", listLinkHref(func(dc *sep2.DeviceCapability) *sep2.ListLink { return dc.CustomerAccountListLink }), "CustomerAccountList"},
+	{"DemandResponseProgramListLink", listLinkHref(func(dc *sep2.DeviceCapability) *sep2.ListLink { return dc.DemandResponseProgramListLink }), "DemandResponseProgramList"},
+	{"DERProgramListLink", listLinkHref(func(dc *sep2.DeviceCapability) *sep2.ListLink { return dc.DERProgramListLink }), "DERProgramList"},
+	{"FileListLink", listLinkHref(func(dc *sep2.DeviceCapability) *sep2.ListLink { return dc.FileListLink }), "FileList"},
+	{"MessagingProgramListLink", listLinkHref(func(dc *sep2.DeviceCapability) *sep2.ListLink { return dc.MessagingProgramListLink }), "MessagingProgramList"},
+	{"PrepaymentListLink", listLinkHref(func(dc *sep2.DeviceCapability) *sep2.ListLink { return dc.PrepaymentListLink }), "PrepaymentList"},
+	{"ResponseSetListLink", listLinkHref(func(dc *sep2.DeviceCapability) *sep2.ListLink { return dc.ResponseSetListLink }), "ResponseSetList"},
+	{"TariffProfileListLink", listLinkHref(func(dc *sep2.DeviceCapability) *sep2.ListLink { return dc.TariffProfileListLink }), "TariffProfileList"},
+	{"TimeLink", linkHref(func(dc *sep2.DeviceCapability) *sep2.Link { return dc.TimeLink }), "Time"},
+	{"UsagePointListLink", listLinkHref(func(dc *sep2.DeviceCapability) *sep2.ListLink { return dc.UsagePointListLink }), "UsagePointList"},
+	{"EndDeviceListLink", listLinkHref(func(dc *sep2.DeviceCapability) *sep2.ListLink { return dc.EndDeviceListLink }), "EndDeviceList"},
+	{"MirrorUsagePointListLink", listLinkHref(func(dc *sep2.DeviceCapability) *sep2.ListLink { return dc.MirrorUsagePointListLink }), "MirrorUsagePointList"},
+	{"SelfDeviceLink", linkHref(func(dc *sep2.DeviceCapability) *sep2.Link { return dc.SelfDeviceLink }), "SelfDevice"},
+}
+
+// rootElementName decodes just enough of body to read the root element's
+// local XML name, without needing a typed struct per resource kind.
+func rootElementName(t *testing.T, body []byte) string {
+	t.Helper()
+	var probe struct {
+		XMLName xml.Name
+	}
+	if err := xml.Unmarshal(body, &probe); err != nil {
+		t.Fatalf("decode root element: %v; body = %s", err, body)
+	}
+	return probe.XMLName.Local
+}
+
+// TestAssembly_DeviceCapabilityLinkContract asserts, for every link
+// DeviceCapability can carry, that a present link resolves to a resource
+// whose XML root element matches what the link name promises
+// (data-invariants Rule 1: assert the actual field/element, not just 200).
+// This is the check that catches IEEECORE-064: a status-code sweep of every
+// linked resource stayed green while DERProgramListLink pointed at "/dc"
+// and served a DERCurveList instead of a DERProgramList.
+func TestAssembly_DeviceCapabilityLinkContract(t *testing.T) {
+	handler, _ := assembly.BuildProtocolRouter(
+		assembly.RouterConfig{},
+		testStores(),
+		testAuthPolicy(),
+		"serverSFDI", "serverLFDI",
+		nil,
+	)
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/dcap")
+	if err != nil {
+		t.Fatalf("GET /dcap: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		t.Fatalf("GET /dcap: want 200, got %d", resp.StatusCode)
+	}
+	var dc sep2.DeviceCapability
+	decodeXML(t, resp, &dc)
+
+	for _, tc := range deviceCapabilityLinkCases {
+		href, present := tc.href(&dc)
+		if !present {
+			// Section 4.4: omitting the link is conformant when the
+			// function set is not implemented. Nothing to dereference.
+			continue
+		}
+
+		linkResp, err := http.Get(srv.URL + href)
+		if err != nil {
+			t.Fatalf("%s: GET %s: %v", tc.name, href, err)
+		}
+		body, err := io.ReadAll(linkResp.Body)
+		linkResp.Body.Close()
+		if err != nil {
+			t.Fatalf("%s: GET %s: read body: %v", tc.name, href, err)
+		}
+		if linkResp.StatusCode != http.StatusOK {
+			t.Fatalf("%s: GET %s: status = %d, want 200; body = %s", tc.name, href, linkResp.StatusCode, body)
+		}
+
+		gotEl := rootElementName(t, body)
+		if gotEl != tc.wantEl {
+			t.Errorf("%s: GET %s: root element = %q, want %q (link name promises %s but %s serves %s)",
+				tc.name, href, gotEl, tc.wantEl, tc.wantEl, href, gotEl)
+		}
+	}
+
+	// IEEECORE-064 regression: DERProgramListLink must be omitted, not
+	// pointed at /dc (which serves DERCurveList, a different resource
+	// type). Core has no top-level DERProgramList resource: DERProgram is
+	// served only nested under FunctionSetAssignments
+	// (GET /edev/{id}/fsa/{fsaId}/derp).
+	if dc.DERProgramListLink != nil {
+		t.Errorf("dc.DERProgramListLink = %+v, want nil (section 4.4: omit links to function sets with no top-level resource); IEEECORE-064", dc.DERProgramListLink)
+	}
+}
+
 // TestAssembly_EndDeviceCreateRoundTrip asserts that POST /edev creates an
 // EndDevice and GET /edev returns a list containing it with the test SFDI
 // (data-invariants Rule 1: assert stored field values).
