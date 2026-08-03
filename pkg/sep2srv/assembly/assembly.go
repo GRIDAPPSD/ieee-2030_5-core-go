@@ -46,6 +46,7 @@ import (
 	"log"
 	"net/http"
 	"sort"
+	"strings"
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
@@ -425,6 +426,31 @@ func registrationBoundEndDevices(stores *Stores) store.EndDeviceStore {
 	return memory.NewRegisteredEndDeviceStore(stores.EndDevices, stores.Registrations, stores.RegistrationPolicy)
 }
 
+// logEventLinkedEndDevices returns the EndDevice store the /edev routes must
+// use so every served EndDevice advertises its LogEventList (IEEECORE-084).
+//
+// THE GATE IS THE MOUNT GATE. It decorates exactly when Stores.LogEvents is
+// non-nil, which is the same condition registerNewFunctionSetRoutes uses to
+// mount GET, POST /edev/{id}/lel and the instance routes. One decision enables
+// the link and the routes together, so a server cannot advertise a function set
+// it does not serve (2018 section 4.4 p.19) nor serve one it does not advertise
+// (which is the state this card found: routes mounted, no link anywhere, so
+// CSIP BASIC-027 step 2 could not pass). Changing either gate without the other
+// is the regression to look for.
+//
+// It declines to decorate twice for the same reason registrationBoundEndDevices
+// does: an embedder that seeds devices at boot builds the binding itself, and a
+// second wrapper in front of the configured one buys nothing.
+func logEventLinkedEndDevices(devs store.EndDeviceStore, stores *Stores) store.EndDeviceStore {
+	if devs == nil || stores.LogEvents == nil {
+		return devs
+	}
+	if linked, ok := devs.(*memory.LogEventLinkedEndDeviceStore); ok {
+		return linked
+	}
+	return memory.NewLogEventLinkedEndDeviceStore(devs)
+}
+
 func registerEndDeviceRoutes(mux routeRegistrar, stores *Stores, authPolicy AuthPolicy, notifier ResourceNotifier) {
 	// A nil index allocator is substituted rather than rejected so a
 	// zero-value Stores stays usable, but the substitute is process-local:
@@ -441,7 +467,14 @@ func registerEndDeviceRoutes(mux routeRegistrar, stores *Stores, authPolicy Auth
 	// one act on the write side and one derivation on the read side. Every
 	// route below takes edevs, not stores.EndDevices: a route left on the
 	// undecorated store would be the one that reintroduces the drift.
-	edevs := registrationBoundEndDevices(stores)
+	//
+	// IEEECORE-084 layers the LogEventList advertisement on top of that, and
+	// the order matters only in that both derivations must survive: the
+	// LogEvent decorator wraps the registration-bound store, so a read passes
+	// through the registration derivation first and the LogEventListLink
+	// derivation second, and a device carries both links or neither of them
+	// according to its own gate.
+	edevs := logEventLinkedEndDevices(registrationBoundEndDevices(stores), stores)
 
 	mux.HandleFunc("GET /edev", corelisthandler.ListHandler[sep2.EndDevice, sep2.EndDeviceList](
 		edevs, coreedev.BuildEndDeviceList, 900,
@@ -764,14 +797,31 @@ type itemMethods struct {
 	// Put mounts PUT on the resource, upserting the request body at the id the
 	// path names.
 	Put bool
+
+	// Delete mounts DELETE on the resource, removing the record the path
+	// names. It is a WRITE, and this helper carries no ownership binding: it
+	// constrains WHERE a record may be reached from, not WHO may reach it.
+	// Set it only for a shape whose DELETE the WADL declares Mandatory, and
+	// read the caveat at [scopedResourceHandler] before setting it for a new
+	// one.
+	Delete bool
 }
 
 // allow renders the Allow header value for a 405 on this mount.
+//
+// The order matches what http.ServeMux produces for the same method set (it
+// sorts), so a 405 raised by the mux and a 405 raised by this handler cannot
+// give a client two different Allow headers for the same shape.
 func (m itemMethods) allow() string {
-	if m.Put {
-		return "GET, HEAD, PUT"
+	allowed := []string{"GET", "HEAD"}
+	if m.Delete {
+		allowed = append(allowed, "DELETE")
 	}
-	return "GET, HEAD"
+	if m.Put {
+		allowed = append(allowed, "PUT")
+	}
+	sort.Strings(allowed)
+	return strings.Join(allowed, ", ")
 }
 
 // scopedResourceHandler creates a single-resource handler scoped by the path
@@ -809,6 +859,17 @@ func (m itemMethods) allow() string {
 // are settled, so a document served from the store and a document just written
 // by a client cannot disagree about either. It may be nil for a resource that
 // needs no completion.
+//
+// WRITE SURFACE, stated plainly because it is easy to read the scoping above as
+// more than it is. Both write methods this handler can mount, PUT and DELETE,
+// are constrained by the store scope and by NOTHING ELSE. The scope binds a
+// record to the parent path it was stored under; it does not bind the CALLER to
+// that parent. A caller who supplies another device's parent id directly is not
+// rejected here at all, so with DELETE mounted any authenticated caller that can
+// name a path can remove the record under it. Ownership enforcement is
+// IEEECORE-031's cross-cutting sweep, retargeted to server-go by ADR-002, and it
+// is not present in this package. Do not read a passing scope test as evidence
+// that unauthorized cross-device writes are blocked.
 func scopedResourceHandler[T store.Copier[T]](
 	scopedStore *memory.ScopedStore[T],
 	parentParam string,
@@ -865,6 +926,21 @@ func scopedResourceHandler[T store.Copier[T]](
 					http.Error(w, "internal error", http.StatusInternalServerError)
 					return
 				}
+			}
+			w.WriteHeader(http.StatusNoContent)
+
+		case r.Method == http.MethodDelete && methods.Delete:
+			// A miss is a 404, not a 204. A 204 for an id that was never
+			// there tells a client its delete took effect, and a client that
+			// believes a stale event is gone stops reconciling it.
+			if err := scopedStore.Delete(r.Context(), parentKey, id); err != nil {
+				if errors.Is(err, store.ErrNotFound) {
+					http.Error(w, "not found", http.StatusNotFound)
+					return
+				}
+				log.Printf("assembly: delete parent=%q id=%q: %v (path=%s)", parentKey, id, err, r.URL.Path)
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
 			}
 			w.WriteHeader(http.StatusNoContent)
 
@@ -927,10 +1003,42 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 		))
 	}
 	if stores.LogEvents != nil {
-		mux.HandleFunc("GET /edev/{id}/log", scopedListHandler[sep2.LogEvent, sep2.LogEventList](
+		// The LogEvent function set at its WADL address (IEEECORE-084).
+		//
+		// These four routes used to be two, mounted at /edev/{id}/log with no
+		// instance route at all, while the WADL declares the list at
+		// /edev/{id1}/lel (sep_wadl.xml:1358) and the instance at
+		// /edev/{id1}/lel/{id2} (sep_wadl.xml:1404); 2018 A.3.5.1 and A.3.5.2
+		// give the same sample URIs and Annex A.1 p.132 makes the WADL
+		// normative. The data was served correctly at an address no conforming
+		// client looks for, and the Location the POST minted resolved nowhere.
+		//
+		// The /log routes are REMOVED rather than kept as an alias. Nothing
+		// advertised them: no production path assigned LogEventListLink at all
+		// before this card, so /log was reachable only by knowing the string.
+		// Keeping it would mean holding a list, a POST and an instance
+		// conformant at two addresses forever, and any drift between them shows
+		// a client a different LogEvent set depending on which it used.
+		//
+		// GET, HEAD and POST are mode M on the list; GET, HEAD and DELETE are
+		// mode M on the instance. Every Mandatory method is mounted. PUT and
+		// DELETE on the list (mode E), and PUT (mode O) and POST (mode E) on
+		// the instance, are not, and each answers 405 from http.ServeMux with
+		// an Allow derived from the registered method set.
+		//
+		// DELETE on the instance is a WRITE with no ownership binding; see the
+		// caveat on scopedResourceHandler. It is mounted because the WADL
+		// declares it Mandatory, and the gap is carried on IEEECORE-031 rather
+		// than papered over by leaving a Mandatory method unserved.
+		mux.HandleFunc("GET /edev/{id}/lel", scopedListHandler[sep2.LogEvent, sep2.LogEventList](
 			stores.LogEvents, "id", corelogevent.BuildLogEventList, 900,
 		))
-		mux.HandleFunc("POST /edev/{id}/log", corelogevent.HandlePostLogEvent(stores.LogEvents))
+		mux.HandleFunc("POST /edev/{id}/lel", corelogevent.HandlePostLogEvent(stores.LogEvents))
+
+		logEventInstance := scopedResourceHandler[sep2.LogEvent](
+			stores.LogEvents, "id", "lelId", itemMethods{Delete: true}, nil)
+		mux.HandleFunc("GET /edev/{id}/lel/{lelId}", logEventInstance)
+		mux.HandleFunc("DELETE /edev/{id}/lel/{lelId}", logEventInstance)
 	}
 	if stores.PowerStatuses != nil {
 		mux.HandleFunc("GET /edev/{id}/ps", corepowerstatus.HandlePowerStatus(stores.PowerStatuses))

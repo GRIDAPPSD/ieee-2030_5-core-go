@@ -198,6 +198,14 @@ func MintableHrefs() []MintableHref {
 		{"/edev/{}/fsa/{}", http.MethodGet, "handlers/fsa.HandleFSA", "a single FunctionSetAssignments"},
 		{"/edev/{}/fsa/{}/derp", http.MethodGet, "handlers/fsa.HandleFSA DERProgramListLink", "the DERProgram list under an FSA"},
 		{"/edev/{}/fsa/{}/derp/{}", http.MethodGet, "handlers/der.DERProgramHref", "a single DERProgram member's self href (IEEECORE-082)"},
+		// The source moved in IEEECORE-084, for the same reason the
+		// Registration link moved in IEEECORE-083: the link is minted by the
+		// store binding that decides whether the function set is served, not
+		// by a handler that stamps it unconditionally. Before that card
+		// nothing in the tree assigned LogEventListLink at all, so the list
+		// was served at an address no client could learn.
+		{"/edev/{}/lel", http.MethodGet, "memory.LogEventLinkedEndDeviceStore LogEventListLink", "CSIP V1.2 BASIC-027 step 2 has the client find LogEventListLink on its EndDevice and read the list behind it"},
+		{"/edev/{}/lel", http.MethodPost, "memory.LogEventLinkedEndDeviceStore LogEventListLink", "a device reports an alarm by POSTing a LogEvent to the list its EndDevice advertises (sep_wadl.xml:1385, mode M)"},
 		{"/edev/{}/cfg", http.MethodGet, "handlers/configuration.HandleConfiguration", "Configuration self href"},
 		{"/edev/{}/dstat", http.MethodGet, "assembly.registerNewFunctionSetRoutes DeviceStatus", "DeviceStatus self href"},
 		{"/edev/{}/ps", http.MethodGet, "handlers/power_status.HandlePowerStatus", "PowerStatus self href"},
@@ -217,7 +225,8 @@ func MintableHrefs() []MintableHref {
 		// just created now lives.
 		{"/edev/{}/sub/{}", http.MethodGet, "handlers/subscription.HandleCreateSubscription", "the Location header returned by POST /edev/{}/sub; a client re-reads its subscription to confirm what the server stored"},
 		{"/edev/{}/sub/{}", http.MethodDelete, "handlers/subscription.HandleCreateSubscription", "the same Location header, used to cancel the subscription"},
-		{"/edev/{}/log/{}", http.MethodGet, "handlers/logevent.HandlePostLogEvent", "the Location header returned by POST /edev/{}/log"},
+		{"/edev/{}/lel/{}", http.MethodGet, "handlers/logevent.HandlePostLogEvent", "the Location header returned by POST /edev/{}/lel"},
+		{"/edev/{}/lel/{}", http.MethodDelete, "handlers/logevent.HandlePostLogEvent", "the same Location header, used to remove the event; DELETE on the LogEvent is Mandatory (sep_wadl.xml:1430)"},
 		{"/edev/{}/frq/{}", http.MethodGet, "handlers/flow_reservation.HandlePostFlowReservationRequest", "the Location header returned by POST /edev/{}/frq"},
 		{"/edev/{}/frp/{}", http.MethodGet, "handlers/flow_reservation.HandlePostFlowReservationRequest", "the FlowReservationResponse href stamped alongside the request, which the client polls for the server's decision"},
 		{"/msg/{}/tm/{}", http.MethodGet, "handlers/messaging.HandlePostTextMessage", "the Location header returned by POST /msg/{}/tm"},
@@ -259,12 +268,21 @@ func MintableHrefs() []MintableHref {
 // fails if an entry here starts routing, so the set cannot quietly stop
 // shrinking, and it fails if a shape stops routing without being added here.
 // IEEECORE-081 removed three entries by mounting their routes: GET
-// /edev/{}/frq/{}, GET /edev/{}/frp/{} and GET /msg/{}/tm/{}. The three that
-// remain are held by other cards, and each says which, because an entry with no
-// owner is a suppression rather than a ratchet.
+// /edev/{}/frq/{}, GET /edev/{}/frp/{} and GET /msg/{}/tm/{}.
+//
+// IEEECORE-084 removed the fourth, GET /edev/{}/log/{}. That one is worth being
+// precise about, because an entry can leave this set for two very different
+// reasons and only one of them is a fix. It did NOT leave because its mint site
+// vanished and took the shape with it: the resource the Location named is now
+// SERVED, at /edev/{}/lel/{}, which is the address the WADL declares
+// (sep_wadl.xml:1404) and which the registry above now carries for both GET and
+// DELETE. The old shape is gone from the registry only because the POST handler
+// stamps the declared address instead of the undeclared one; the reachability
+// the entry recorded as missing is present. The two entries that remain are held
+// by other cards, and each says which, because an entry with no owner is a
+// suppression rather than a ratchet.
 var knownUnroutedHrefs = map[string]string{
 	"GET /edev/{}/sub/{}": "IEEECORE-070: POST /edev/{id}/sub returns this Location but only DELETE is routed, so a client re-reading its own subscription gets 405. The path IS mounted, so this is a method gap rather than a dead link, and it belongs with the card that mounts every WADL-declared method",
-	"GET /edev/{}/log/{}": "IEEECORE-084: POST /edev/{id}/log returns this Location and nothing serves it. Not fixed by mounting /log: the WADL address is /edev/{id1}/lel/{id2} (sep_wadl.xml:1404), so that card moves the list, the POST and the instance together rather than entrenching a path the WADL does not name",
 	"GET /mup/{}/mr/{}":   "IEEECORE-065: POST /mup/{id}/mr and POST /mup/{id} both return this Location and nothing serves it",
 }
 
