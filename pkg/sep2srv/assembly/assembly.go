@@ -103,6 +103,52 @@ import (
 // a new gate written as a nil comparison reintroduces exactly that fault, and
 // it fails at request time on a consumer's deployment rather than in this
 // repository's tests.
+//
+// # THE GATE IS PER FAMILY, NOT PER FIELD (IEEECORE-112)
+//
+// The paragraph above says "every gate", and there are thirteen of them. Each
+// reads ONE ANCHOR field and mounts a whole family behind it; fifteen handles
+// have no gate of their own and are mounted on the strength of a sibling:
+//
+//	anchor                    family members it also mounts
+//	Registrations             (its own route only)
+//	FSAs                      (its own routes only)
+//	Subscriptions             (its own routes only)
+//	MirrorUsagePoints         MirrorMeterReadings
+//	DERs                      DERCapabilities, DERSettings, DERStatuses,
+//	                          DERAvailabilities, DERPrograms, DERControls,
+//	                          DefaultDERControls, DERCurves
+//	UsagePoints               MeterReadings, Readings, ReadingTypes
+//	Configurations            (its own routes only)
+//	DeviceStatuses            (its own routes only)
+//	LogEvents                 (its own routes only)
+//	PowerStatuses             (its own routes only)
+//	MessagingPrograms         TextMessages
+//	FlowReservationRequests   FlowReservationResponses
+//	ResponseSets              Responses
+//
+// So wiring an anchor is a PROMISE that its whole family is wired. A member
+// left out is a mis-wired deployment, not a narrower server: the routes that
+// read it are already mounted and the links that point at them are already
+// minted by handler packages that consult no store at all.
+//
+// Such a member is not dereferenced as a nil. BuildProtocolRouter substitutes a
+// store that refuses every operation, logs the substitution once naming the
+// field, and the routes answer 500 rather than panicking. See miswired.go for
+// why the routes stay mounted, why the answer is a 500 and not an empty list,
+// and why per-field gating was rejected.
+//
+// EndDevices is on NEITHER side of that table, and the omission is recorded
+// here rather than quietly implied. It has no gate at all: the /edev routes are
+// mounted whenever stores is non-nil, so an absent EndDevices handle is
+// dereferenced on the first request exactly as a co-gated member used to be.
+// IEEECORE-112 fixed the co-gated members and left this one, because /edev is
+// the root of the discovery walk and refusing it is a different decision from
+// refusing a leaf function set: a server with no EndDevice store is arguably
+// not a 2030.5 server at all, and whether that should be a boot-time panic, a
+// refusal, or an unmounted family is a design question rather than a bug fix.
+// Do not read the absence of a substitute here as evidence that a nil
+// EndDevices is handled.
 type Stores struct {
 	EndDevices store.EndDeviceStore
 
@@ -542,6 +588,9 @@ func registerMirrorRoutes(mux routeRegistrar, stores *Stores, authPolicy AuthPol
 	if store.IsAbsent(stores.MirrorUsagePoints) {
 		return
 	}
+	// MirrorMeterReadings has no gate of its own: it is mounted on the
+	// strength of MirrorUsagePoints (IEEECORE-112, see miswired.go).
+	mirrorMeterReadings := requireScoped(stores.MirrorMeterReadings, "MirrorMeterReadings")
 	// LFDIProvider extracts the device LFDI from the request context via the
 	// injected AuthPolicy.Identity. Keeps internal/auth out of core (the same
 	// callback-injection pattern that Phase D1 applied to the obs callback).
@@ -555,7 +604,7 @@ func registerMirrorRoutes(mux routeRegistrar, stores *Stores, authPolicy AuthPol
 	mux.HandleFunc("POST /mup", coremetering.HandleCreateMirrorUsagePoint(stores.MirrorUsagePoints, lfdiProvider, postRateProvider))
 	mux.HandleFunc("GET /mup/{id}", coremetering.HandleMirrorUsagePoint(stores.MirrorUsagePoints, lfdiProvider))
 	mux.HandleFunc("POST /mup/{id}/mr", coremetering.HandlePostMirrorMeterReading(
-		stores.MirrorUsagePoints, stores.MirrorMeterReadings, lfdiProvider,
+		stores.MirrorUsagePoints, mirrorMeterReadings, lfdiProvider,
 	))
 
 	// IEEE 2030.5-2018 section 10.11.3 rule (d): the client posts readings
@@ -573,7 +622,7 @@ func registerMirrorRoutes(mux routeRegistrar, stores *Stores, authPolicy AuthPol
 	// drift into minting different href shapes, or into enforcing creator
 	// scope on one path and not the other, for the same resource kind.
 	mux.HandleFunc("POST /mup/{id}", coremetering.HandlePostMirrorMeterReading(
-		stores.MirrorUsagePoints, stores.MirrorMeterReadings, lfdiProvider,
+		stores.MirrorUsagePoints, mirrorMeterReadings, lfdiProvider,
 	))
 
 	// The two Mandatory methods on the MirrorUsagePoint instance
@@ -600,7 +649,7 @@ func registerMirrorRoutes(mux routeRegistrar, stores *Stores, authPolicy AuthPol
 		stores.MirrorUsagePoints, lfdiProvider, postRateProvider,
 	))
 	mux.HandleFunc("DELETE /mup/{id}", coremetering.HandleDeleteMirrorUsagePoint(
-		stores.MirrorUsagePoints, stores.MirrorMeterReadings, lfdiProvider,
+		stores.MirrorUsagePoints, mirrorMeterReadings, lfdiProvider,
 	))
 }
 
@@ -609,8 +658,23 @@ func registerDERRoutes(mux routeRegistrar, stores *Stores) {
 		return
 	}
 
+	// The DER family's own gate is Stores.DERs, above; every handle below is
+	// mounted on the strength of it and has no gate of its own. requireScoped
+	// and requireResource are what make that a stated contract rather than an
+	// accident: a member left unwired is logged once here and refuses at
+	// request time, instead of being dereferenced as a nil (IEEECORE-112).
+	// See miswired.go for why the routes stay mounted.
+	derCapabilities := requireScoped(stores.DERCapabilities, "DERCapabilities")
+	derSettings := requireScoped(stores.DERSettings, "DERSettings")
+	derStatuses := requireScoped(stores.DERStatuses, "DERStatuses")
+	derAvailabilities := requireScoped(stores.DERAvailabilities, "DERAvailabilities")
+	derPrograms := requireScoped(stores.DERPrograms, "DERPrograms")
+	derControls := requireScoped(stores.DERControls, "DERControls")
+	defaultDERControls := requireScoped(stores.DefaultDERControls, "DefaultDERControls")
+	derCurves := requireResource(stores.DERCurves, "DERCurves")
+
 	dercap, derg, ders, dera := coreder.DERSingletonHandlers(
-		stores.DERCapabilities, stores.DERSettings, stores.DERStatuses, stores.DERAvailabilities,
+		derCapabilities, derSettings, derStatuses, derAvailabilities,
 	)
 
 	// Which DER sub-resource links this router is permitted to advertise, per
@@ -670,7 +734,7 @@ func registerDERRoutes(mux routeRegistrar, stores *Stores) {
 	// wrapper shadows no read method and would have quietly bypassed one that
 	// it did.
 	mux.HandleFunc("GET /edev/{id}/fsa/{fsaId}/derp", scopedListHandler[sep2.DERProgram, sep2.DERProgramList](
-		stores.DERPrograms, "id", coreder.BuildDERProgramList, 900,
+		derPrograms, "id", coreder.BuildDERProgramList, 900,
 	))
 
 	// A DERProgram's own href, so the FSA-to-DERProgramList-to-member link
@@ -683,12 +747,12 @@ func registerDERRoutes(mux routeRegistrar, stores *Stores) {
 	// what says so, and it renders exactly the Allow this route answered with
 	// before the method set became declarative: GET, HEAD.
 	mux.HandleFunc("GET /edev/{id}/fsa/{fsaId}/derp/{derpId}",
-		scopedResourceHandler[sep2.DERProgram](stores.DERPrograms, "id", "derpId", itemMethods{}, nil))
+		scopedResourceHandler[sep2.DERProgram](derPrograms, "id", "derpId", itemMethods{}, nil))
 
 	// DERControl under DERProgram
 	mux.HandleFunc("GET /edev/{id}/fsa/{fsaId}/derp/{derpId}/derc",
 		scopedListHandlerDeep[sep2.DERControl, sep2.DERControlList](
-			stores.DERControls, coreder.BuildDERControlList, 900,
+			derControls, coreder.BuildDERControlList, 900,
 		))
 
 	// A DERControl's own href, so an activated event resolves. A client that
@@ -708,18 +772,18 @@ func registerDERRoutes(mux routeRegistrar, stores *Stores) {
 	// URI and responseRequired is a constant, unlike the DER instance stamp
 	// above, which derives links from path values.
 	mux.HandleFunc("GET /edev/{id}/fsa/{fsaId}/derp/{derpId}/derc/{dercId}",
-		scopedResourceHandlerDeep[sep2.DERControl](stores.DERControls, "dercId",
+		scopedResourceHandlerDeep[sep2.DERControl](derControls, "dercId",
 			func(_ *http.Request, ctrl *sep2.DERControl) { coreder.StampResponseRequest(ctrl) }))
 
 	// DefaultDERControl
 	mux.HandleFunc("GET /edev/{id}/fsa/{fsaId}/derp/{derpId}/dderc",
-		coreder.DefaultDERControlHandler(stores.DefaultDERControls))
+		coreder.DefaultDERControlHandler(defaultDERControls))
 	mux.HandleFunc("PUT /edev/{id}/fsa/{fsaId}/derp/{derpId}/dderc",
-		coreder.DefaultDERControlHandler(stores.DefaultDERControls))
+		coreder.DefaultDERControlHandler(defaultDERControls))
 
 	// Global DERCurve
 	mux.HandleFunc("GET /dc", corelisthandler.ListHandler[sep2.DERCurve, sep2.DERCurveList](
-		stores.DERCurves, coreder.BuildDERCurveList, 900,
+		derCurves, coreder.BuildDERCurveList, 900,
 	))
 }
 
@@ -1012,6 +1076,11 @@ func registerMeteringRoutes(mux routeRegistrar, stores *Stores) {
 	if store.IsAbsent(stores.UsagePoints) {
 		return
 	}
+	// None of these three has a gate of its own: all are mounted on the
+	// strength of UsagePoints (IEEECORE-112, see miswired.go).
+	meterReadings := requireScoped(stores.MeterReadings, "MeterReadings")
+	readings := requireScoped(stores.Readings, "Readings")
+	readingTypes := requireResource(stores.ReadingTypes, "ReadingTypes")
 	mux.HandleFunc("GET /upt", corelisthandler.ListHandler[sep2.UsagePoint, sep2.UsagePointList](
 		stores.UsagePoints, coremetering.BuildUsagePointList, 900,
 	))
@@ -1019,20 +1088,20 @@ func registerMeteringRoutes(mux routeRegistrar, stores *Stores) {
 	mux.HandleFunc("GET /upt/{uptId}", coremetering.HandleUsagePoint(stores.UsagePoints))
 
 	mux.HandleFunc("GET /upt/{uptId}/mr", scopedListHandler[sep2.MeterReading, sep2.MeterReadingList](
-		stores.MeterReadings, "uptId", coremetering.BuildMeterReadingList, 900,
+		meterReadings, "uptId", coremetering.BuildMeterReadingList, 900,
 	))
 
 	mux.HandleFunc("GET /upt/{uptId}/mr/{mrId}/r", func(w http.ResponseWriter, r *http.Request) {
 		key := r.PathValue("uptId") + "/" + r.PathValue("mrId")
-		st := store.Under(stores.Readings, key)
+		st := store.Under(readings, key)
 		h := corelisthandler.ListHandler[sep2.Reading, sep2.ReadingList](st, coremetering.BuildReadingList, 900)
 		h.ServeHTTP(w, r)
 	})
 
 	mux.HandleFunc("GET /rt", corelisthandler.ListHandler[sep2.ReadingType, sep2.ReadingTypeList](
-		stores.ReadingTypes, coremetering.BuildReadingTypeList, 900,
+		readingTypes, coremetering.BuildReadingTypeList, 900,
 	))
-	mux.HandleFunc("GET /rt/{id}", coremetering.HandleReadingType(stores.ReadingTypes))
+	mux.HandleFunc("GET /rt/{id}", coremetering.HandleReadingType(readingTypes))
 }
 
 func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
@@ -1104,14 +1173,18 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 	}
 
 	if !store.IsAbsent(stores.MessagingPrograms) {
+		// TextMessages has no gate of its own: it is mounted on the strength
+		// of MessagingPrograms (IEEECORE-112, see miswired.go).
+		textMessages := requireScoped(stores.TextMessages, "TextMessages")
+
 		mux.HandleFunc("GET /msg", corelisthandler.ListHandler[sep2.MessagingProgram, sep2.MessagingProgramList](
 			stores.MessagingPrograms, coremessaging.BuildMessagingProgramList, 900,
 		))
 		mux.HandleFunc("GET /msg/{msgId}", coremessaging.HandleMessagingProgram(stores.MessagingPrograms))
 		mux.HandleFunc("GET /msg/{msgId}/tm", scopedListHandler[sep2.TextMessage, sep2.TextMessageList](
-			stores.TextMessages, "msgId", coremessaging.BuildTextMessageList, 900,
+			textMessages, "msgId", coremessaging.BuildTextMessageList, 900,
 		))
-		mux.HandleFunc("POST /msg/{msgId}/tm", coremessaging.HandlePostTextMessage(stores.TextMessages))
+		mux.HandleFunc("POST /msg/{msgId}/tm", coremessaging.HandlePostTextMessage(textMessages))
 
 		// The TextMessage instance (IEEECORE-081). The POST above returns this
 		// href in a Location header and nothing served it, so a client that
@@ -1127,18 +1200,23 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 		// is not called {id}, and reading an undeclared one would silently key
 		// every message under the empty parent.
 		mux.HandleFunc("GET /msg/{msgId}/tm/{tmId}",
-			scopedResourceHandler[sep2.TextMessage](stores.TextMessages, "msgId", "tmId", itemMethods{}, nil))
+			scopedResourceHandler[sep2.TextMessage](textMessages, "msgId", "tmId", itemMethods{}, nil))
 	}
 
 	if !store.IsAbsent(stores.FlowReservationRequests) {
+		// FlowReservationResponses has no gate of its own: it is mounted on
+		// the strength of FlowReservationRequests, and one POST writes both
+		// halves (IEEECORE-112, see miswired.go).
+		flowReservationResponses := requireScoped(stores.FlowReservationResponses, "FlowReservationResponses")
+
 		mux.HandleFunc("GET /edev/{id}/frq", scopedListHandler[sep2.FlowReservationRequest, sep2.FlowReservationRequestList](
 			stores.FlowReservationRequests, "id", coreflowrsv.BuildFlowReservationRequestList, 900,
 		))
 		mux.HandleFunc("POST /edev/{id}/frq", coreflowrsv.HandlePostFlowReservationRequest(
-			stores.FlowReservationRequests, stores.FlowReservationResponses,
+			stores.FlowReservationRequests, flowReservationResponses,
 		))
 		mux.HandleFunc("GET /edev/{id}/frp", scopedListHandler[sep2.FlowReservationResponse, sep2.FlowReservationResponseList](
-			stores.FlowReservationResponses, "id", coreflowrsv.BuildFlowReservationResponseList, 900,
+			flowReservationResponses, "id", coreflowrsv.BuildFlowReservationResponseList, 900,
 		))
 
 		// The two FlowReservation instances (IEEECORE-081). One POST mints both
@@ -1163,11 +1241,16 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 		mux.HandleFunc("GET /edev/{id}/frq/{frqId}", frqInstance)
 
 		frpInstance := scopedResourceHandler[sep2.FlowReservationResponse](
-			stores.FlowReservationResponses, "id", "frpId", itemMethods{}, nil)
+			flowReservationResponses, "id", "frpId", itemMethods{}, nil)
 		mux.HandleFunc("GET /edev/{id}/frp/{frpId}", frpInstance)
 	}
 
 	if !store.IsAbsent(stores.ResponseSets) {
+		// Responses has no gate of its own: it is mounted on the strength of
+		// ResponseSets, and every DERControl this server emits carries a
+		// replyTo into it (IEEECORE-112, see miswired.go).
+		responses := requireScoped(stores.Responses, "Responses")
+
 		// Seed the default ResponseSet before the routes that serve it.
 		//
 		// Every DERControl this server emits carries a replyTo pointing into
@@ -1186,13 +1269,13 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 		mux.HandleFunc("GET /rsps/{rspsId}", coreresponse.HandleResponseSet(stores.ResponseSets))
 		mux.HandleFunc("GET /rsps/{rspsId}/rsp", func(w http.ResponseWriter, r *http.Request) {
 			rspsID := r.PathValue("rspsId")
-			inner := store.Under(stores.Responses, rspsID)
+			inner := store.Under(responses, rspsID)
 			corelisthandler.ListHandler[sep2.Response, sep2.ResponseList](
 				inner, coreflowrsv.BuildResponseList, 900,
 			)(w, r)
 		})
-		mux.HandleFunc("POST /rsps/{rspsId}/rsp", coreflowrsv.HandlePostResponse(stores.Responses))
-		mux.HandleFunc("GET /rsps/{rspsId}/rsp/{rspId}", coreresponse.HandleResponse(stores.Responses))
+		mux.HandleFunc("POST /rsps/{rspsId}/rsp", coreflowrsv.HandlePostResponse(responses))
+		mux.HandleFunc("GET /rsps/{rspsId}/rsp/{rspId}", coreresponse.HandleResponse(responses))
 	}
 }
 
