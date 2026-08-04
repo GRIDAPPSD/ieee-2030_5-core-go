@@ -165,11 +165,21 @@ var _ store.EndDeviceStore = (*RegisteredEndDeviceStore)(nil)
 // exists to eliminate. Failing at construction, which happens once when the
 // server is assembled, is loud; failing at request time inside net/http's
 // per-request recover would turn a mis-wired server into a silent 500.
+//
+// Both guards ask [store.IsAbsent] rather than comparing against nil
+// (IEEECORE-112). These parameters are interfaces, and an interface holding a
+// nil concrete pointer is not equal to nil, so a plain comparison accepted the
+// one shape a mis-wired consumer actually produces: the zero value of the
+// concrete store it would otherwise have constructed. The diagnostic this
+// function exists to give was withheld from precisely the caller who needed
+// it, and the mis-wiring surfaced as a nil dereference on the first request
+// instead. It is the same fault IEEECORE-085 closed at the mount gates; read
+// [store.IsAbsent] before writing a new guard here as a nil comparison.
 func NewRegisteredEndDeviceStore(devs store.EndDeviceStore, regs store.ResourceStore[sep2.Registration], policy RegistrationPolicy) *RegisteredEndDeviceStore {
-	if devs == nil {
+	if store.IsAbsent(devs) {
 		panic("memory: NewRegisteredEndDeviceStore: devs (EndDeviceStore) must not be nil")
 	}
-	if regs == nil {
+	if store.IsAbsent(regs) {
 		panic("memory: NewRegisteredEndDeviceStore: regs (RegistrationStore) must not be nil")
 	}
 	return &RegisteredEndDeviceStore{devs: devs, regs: regs, policy: policy}

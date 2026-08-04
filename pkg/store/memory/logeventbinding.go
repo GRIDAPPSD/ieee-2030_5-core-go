@@ -82,8 +82,14 @@ var _ store.EndDeviceStore = (*LogEventLinkedEndDeviceStore)(nil)
 // devs is required. Failing at construction, which happens once when the server
 // is assembled, is loud; a nil decorated store would fail at request time inside
 // net/http's per-request recover, turning a mis-wired server into a silent 500.
+//
+// The guard asks [store.IsAbsent] rather than comparing against nil
+// (IEEECORE-112), for the reason argued at [NewRegisteredEndDeviceStore]: devs
+// is an interface, and an interface holding a nil concrete pointer is not equal
+// to nil, so a plain comparison let the one mis-wiring a consumer actually
+// produces past the check that exists to catch it.
 func NewLogEventLinkedEndDeviceStore(devs store.EndDeviceStore) *LogEventLinkedEndDeviceStore {
-	if devs == nil {
+	if store.IsAbsent(devs) {
 		panic("memory: NewLogEventLinkedEndDeviceStore: devs (EndDeviceStore) must not be nil")
 	}
 	return &LogEventLinkedEndDeviceStore{devs: devs}
