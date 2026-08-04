@@ -39,8 +39,11 @@
 // implementation's ForParent, which returns a concrete per-parent store and
 // materializes one on demand. Create-on-read is not implementable on a durable
 // backend and turns a GET for an arbitrary path segment into an allocation.
-// It remains available on the in-memory type as an implementation
-// convenience; it is not part of the contract.
+// It remains available on the in-memory type, but nothing on its read half
+// calls it any more (IEEECORE-111): the reads there go through a lookup that
+// creates nothing, so the contract's reading of an unknown parent, ErrNotFound
+// from Get, an empty page from List, zero from Count, is now what the in-memory
+// implementation does rather than what it emulates by allocating.
 //
 // # Paging, and the two things zero does not mean
 //

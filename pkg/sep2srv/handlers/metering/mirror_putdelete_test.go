@@ -620,9 +620,12 @@ func TestHandleDeleteMirrorUsagePoint_CascadesReadingsAndServesTheStrippedRecord
 	}
 	assertMirrorUnchanged(t, mupStore, idB, "MUP_B", putVictimLFDI, "site meter B")
 
-	// THE CASCADE. HasParent is checked BEFORE Count, because ForParent
-	// materialises a bucket on read and a Count would recreate the very parent
-	// entry this asserts is gone.
+	// THE CASCADE. HasParent is checked BEFORE Count, and the order is kept
+	// deliberately: reads no longer materialise a bucket (IEEECORE-111), so a
+	// Count first would no longer recreate the entry under test, but a check
+	// that only holds under one ordering is one the next reader should not have
+	// to work out. HasParent is also the stronger assertion of the two, since
+	// Count answers zero for an absent parent and an empty one alike.
 	present, err := mmrStore.HasParent(context.Background(), idA)
 	if err != nil {
 		t.Fatalf("HasParent %q: %v", idA, err)

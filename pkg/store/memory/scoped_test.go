@@ -134,8 +134,11 @@ func TestScopedStoreDeleteParentRemovesOnlyThatParentsResources(t *testing.T) {
 		t.Errorf("removed = %d, want 2", removed)
 	}
 
-	// HasParent is checked before any Count, because ForParent materialises a
-	// bucket on read and a Count would recreate the entry under test.
+	// HasParent is the assertion that the ENTRY is gone, not just its contents:
+	// Count answers zero for an absent parent and for an empty one alike, so a
+	// Count alone would pass against a cascade that emptied the bucket and left
+	// it in the map. It ran first for a second reason before IEEECORE-111, when
+	// a Count would have recreated the entry under test; that hazard is gone.
 	has, err := s.HasParent(ctx, "parent-A")
 	if err != nil {
 		t.Fatalf("HasParent: %v", err)
