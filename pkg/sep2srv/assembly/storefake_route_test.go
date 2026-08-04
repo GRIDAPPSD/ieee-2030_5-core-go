@@ -33,8 +33,9 @@ import (
 // extends a verified claim rather than starting a fresh unverified one. They
 // share no code and no data structure with the memory store: a flat slice
 // sorted at list time rather than a map plus a maintained sort order, and for
-// the scoped half no per-parent object at all, so a read of an unknown parent
-// materializes nothing where the memory store's ForParent allocates a bucket.
+// the scoped half no per-parent object at all. The memory store used to differ
+// here, allocating a bucket for an unknown parent on read; IEEECORE-111 removed
+// that, so the two implementations now agree that a read creates nothing.
 //
 // The requests cover both halves of the contract in both directions: a flat
 // POST and GET (UsagePoint, [store.ResourceStore]) and a scoped POST, GET and
