@@ -10,12 +10,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/srverr"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 )
 
@@ -101,8 +101,7 @@ func HandleEndDevice(s store.EndDeviceStore) http.HandlerFunc {
 				http.Error(w, "not found", http.StatusNotFound)
 				return
 			}
-			log.Printf("edev: GET id=%q: %v (path=%s)", id, err, r.URL.Path)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 
@@ -196,8 +195,7 @@ func HandleCreateEndDevice(s store.EndDeviceStore, idx EndDeviceIndexer, identit
 			encoding.WriteXML(w, http.StatusOK, &existing)
 			return
 		case !errors.Is(err, store.ErrNotFound):
-			log.Printf("edev create: registration lookup by SFDI failed, not provisioning: %v (path=%s)", err, r.URL.Path)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, fmt.Errorf("the registration lookup by SFDI failed, so no device was provisioned: %w", err))
 			return
 		}
 
@@ -205,8 +203,7 @@ func HandleCreateEndDevice(s store.EndDeviceStore, idx EndDeviceIndexer, identit
 		// device is admitted. The returned prefix is intentionally discarded;
 		// it used to be the device id, and addressing now comes from idx.
 		if _, err := sfdiPrefix(sfdi); err != nil {
-			log.Printf("edev create: %v", err)
-			http.Error(w, "invalid device identity", http.StatusInternalServerError)
+			srverr.InternalMessage(w, r, "invalid device identity", err)
 			return
 		}
 
@@ -215,8 +212,7 @@ func HandleCreateEndDevice(s store.EndDeviceStore, idx EndDeviceIndexer, identit
 		// its certificate), so a rotated certificate yields a new index here.
 		id, err := idx.Allocate(lfdi)
 		if err != nil {
-			log.Printf("edev create: allocate index: %v", err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, fmt.Errorf("allocate a device index: %w", err))
 			return
 		}
 		dev.Href = "/edev/" + id
@@ -237,16 +233,14 @@ func HandleCreateEndDevice(s store.EndDeviceStore, idx EndDeviceIndexer, identit
 				// rather than a zero-value 200 (silent data loss).
 				existing, getErr := s.Get(r.Context(), id)
 				if getErr != nil {
-					log.Printf("edev: race-loss after ErrAlreadyExists for id=%q: %v", id, getErr)
-					http.Error(w, "registration race", http.StatusInternalServerError)
+					srverr.InternalMessage(w, r, "registration race", fmt.Errorf("re-read after ErrAlreadyExists: %w", getErr))
 					return
 				}
 				w.Header().Set("Location", existing.Href)
 				encoding.WriteXML(w, http.StatusOK, &existing)
 				return
 			}
-			log.Printf("edev: create id=%q: %v (path=%s)", id, err, r.URL.Path)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 
@@ -259,8 +253,7 @@ func HandleCreateEndDevice(s store.EndDeviceStore, idx EndDeviceIndexer, identit
 		// answering, and a zero-value 200 would be silent data loss.
 		created, err := s.Get(r.Context(), id)
 		if err != nil {
-			log.Printf("edev: re-read after create id=%q: %v (path=%s)", id, err, r.URL.Path)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, fmt.Errorf("re-read after create: %w", err))
 			return
 		}
 
@@ -303,8 +296,7 @@ func HandleUpdateEndDevice(s store.EndDeviceStore) http.HandlerFunc {
 				http.Error(w, "not found", http.StatusNotFound)
 				return
 			}
-			log.Printf("edev: update id=%q: %v (path=%s)", id, err, r.URL.Path)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 
@@ -336,8 +328,7 @@ func HandleDeleteEndDevice(s store.EndDeviceStore, n ResourceNotifier) http.Hand
 				http.Error(w, "not found", http.StatusNotFound)
 				return
 			}
-			log.Printf("edev: delete id=%q: %v", id, err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 

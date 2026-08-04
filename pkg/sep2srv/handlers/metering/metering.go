@@ -5,8 +5,8 @@ import (
 	"encoding/hex"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -14,6 +14,7 @@ import (
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/srverr"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 )
 
@@ -76,7 +77,7 @@ func HandleUsagePoint(uptStore store.ResourceStore[sep2.UsagePoint]) http.Handle
 				http.Error(w, "not found", http.StatusNotFound)
 				return
 			}
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 		encoding.WriteXML(w, http.StatusOK, &upt)
@@ -221,8 +222,7 @@ func HandleCreateUsagePoint(uptStore store.ResourceStore[sep2.UsagePoint]) http.
 				// before dereferencing its failed URI parse.
 				existing, getErr := uptStore.Get(r.Context(), id)
 				if getErr != nil {
-					log.Printf("upt: race-loss after ErrAlreadyExists for id=%q: %v", id, getErr)
-					http.Error(w, "registration race", http.StatusInternalServerError)
+					srverr.InternalMessage(w, r, "registration race", fmt.Errorf("re-read after ErrAlreadyExists: %w", getErr))
 					return
 				}
 
@@ -234,8 +234,7 @@ func HandleCreateUsagePoint(uptStore store.ResourceStore[sep2.UsagePoint]) http.
 				encoding.WriteXML(w, http.StatusOK, &existing)
 				return
 			}
-			log.Printf("upt: create id=%q: %v (path=%s)", id, err, r.URL.Path)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 
@@ -258,7 +257,7 @@ func HandleReadingType(rtStore store.ResourceStore[sep2.ReadingType]) http.Handl
 				http.Error(w, "not found", http.StatusNotFound)
 				return
 			}
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 		encoding.WriteXML(w, http.StatusOK, &rt)

@@ -17,6 +17,7 @@ import (
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/srverr"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 )
 
@@ -276,8 +277,7 @@ func authorizeMirrorOwner(
 			http.Error(w, "mirror usage point not found", http.StatusNotFound)
 			return zero, "", false
 		}
-		log.Printf("mup: ownership lookup id=%q: %v (path=%s)", id, err, r.URL.Path)
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		srverr.Internal(w, r, fmt.Errorf("the ownership lookup failed: %w", err))
 		return zero, "", false
 	}
 
@@ -476,8 +476,7 @@ func HandleCreateMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint], 
 				// (silent data loss).
 				existing, getErr := s.Get(r.Context(), id)
 				if getErr != nil {
-					log.Printf("mup: race-loss after ErrAlreadyExists for id=%q: %v", id, getErr)
-					http.Error(w, "registration race", http.StatusInternalServerError)
+					srverr.InternalMessage(w, r, "registration race", fmt.Errorf("re-read after ErrAlreadyExists: %w", getErr))
 					return
 				}
 
@@ -522,8 +521,7 @@ func HandleCreateMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint], 
 				// outside the rule's stated scope, this overwrite leaves
 				// mmrStore untouched.
 				if err := s.Update(r.Context(), id, mup); err != nil {
-					log.Printf("mup: overwrite id=%q: %v (path=%s)", id, err, r.URL.Path)
-					http.Error(w, "internal error", http.StatusInternalServerError)
+					srverr.Internal(w, r, fmt.Errorf("overwrite an existing mirror: %w", err))
 					return
 				}
 
@@ -542,8 +540,7 @@ func HandleCreateMirrorUsagePoint(s store.ResourceStore[sep2.MirrorUsagePoint], 
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}
-			log.Printf("mup: create id=%q: %v (path=%s)", id, err, r.URL.Path)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 
@@ -720,8 +717,7 @@ func HandlePutMirrorUsagePoint(
 				http.Error(w, "mirror usage point not found", http.StatusNotFound)
 				return
 			}
-			log.Printf("mup: PUT update id=%q: %v (path=%s)", id, err, r.URL.Path)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 
@@ -823,9 +819,8 @@ func HandleDeleteMirrorUsagePoint(
 				// with a cascade. Answering 204 here would report a clean
 				// deletion while leaving exactly the state the cascade exists
 				// to prevent, and the client could not tell.
-				log.Printf("mup: the readings store (%T) cannot cascade a parent delete, "+
-					"MirrorUsagePoint id=%q left in place", mmrStore, id)
-				http.Error(w, "internal error", http.StatusInternalServerError)
+				srverr.Internal(w, r, fmt.Errorf("the readings store (%T) cannot cascade a parent delete, "+
+					"so the MirrorUsagePoint is left in place", mmrStore))
 				return
 			}
 			removed, err := cascader.DeleteParent(r.Context(), id)
@@ -833,9 +828,8 @@ func HandleDeleteMirrorUsagePoint(
 				// The parent is deliberately still here. Surfacing the failure
 				// with the resource intact is recoverable; deleting it anyway
 				// would leave orphans no client could see or clean up.
-				log.Printf("mup: cascade delete of readings under parent=%q failed, "+
-					"MirrorUsagePoint left in place: %v", id, err)
-				http.Error(w, "internal error", http.StatusInternalServerError)
+				srverr.Internal(w, r, fmt.Errorf("the cascade delete of the readings under this parent failed, "+
+					"so the MirrorUsagePoint is left in place: %w", err))
 				return
 			}
 			if removed > 0 {
@@ -853,8 +847,7 @@ func HandleDeleteMirrorUsagePoint(
 				http.Error(w, "mirror usage point not found", http.StatusNotFound)
 				return
 			}
-			log.Printf("mup: DELETE id=%q: %v (path=%s)", id, err, r.URL.Path)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 
@@ -1056,13 +1049,18 @@ func HandlePostMirrorMeterReading(
 		// and the operator needs to know.
 		for i := range readings {
 			if err := mmrStore.Create(r.Context(), parentID, ids[i], readings[i]); err != nil {
-				log.Printf("mup: store reading %d of %d under parent=%q: %v", i+1, len(readings), parentID, err)
+				rollbackErr := fmt.Errorf("store reading %d of %d: %w", i+1, len(readings), err)
 				for _, done := range ids[:i] {
 					if delErr := mmrStore.Delete(r.Context(), parentID, done); delErr != nil {
-						log.Printf("mup: rollback of reading id=%q under parent=%q failed, batch is partially stored: %v", done, parentID, delErr)
+						// Reported through the same 500 line rather than a
+						// separate one, so that the fact the batch is
+						// partially stored cannot be read without the failure
+						// that caused it.
+						rollbackErr = fmt.Errorf("%w; and the rollback of an already-stored reading failed, "+
+							"so the batch is partially stored: %w", rollbackErr, delErr)
 					}
 				}
-				http.Error(w, "internal error", http.StatusInternalServerError)
+				srverr.Internal(w, r, rollbackErr)
 				return
 			}
 		}

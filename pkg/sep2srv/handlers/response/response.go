@@ -22,6 +22,7 @@ import (
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/srverr"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 )
 
@@ -116,7 +117,7 @@ func HandleResponseSet(sets store.ResourceStore[sep2.ResponseSet]) http.HandlerF
 				http.Error(w, "not found", http.StatusNotFound)
 				return
 			}
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 		encoding.WriteXML(w, http.StatusOK, &set)
@@ -141,7 +142,7 @@ func HandleResponse(responses store.ScopedStore[sep2.Response]) http.HandlerFunc
 				http.Error(w, "not found", http.StatusNotFound)
 				return
 			}
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 		encoding.WriteXML(w, http.StatusOK, &rsp)

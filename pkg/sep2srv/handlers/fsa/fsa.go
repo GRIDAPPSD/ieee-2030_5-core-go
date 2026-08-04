@@ -11,6 +11,7 @@ import (
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/srverr"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 )
 
@@ -51,7 +52,7 @@ func HandleFSA(fsaStore store.ScopedStore[sep2.FunctionSetAssignments]) http.Han
 				encoding.WriteXML(w, http.StatusOK, &defaultFSA)
 				return
 			}
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 
@@ -85,7 +86,7 @@ func HandleCreateFSA(fsaStore store.ScopedStore[sep2.FunctionSetAssignments]) ht
 		}
 
 		if err := fsaStore.Create(r.Context(), edevID, fsaID, fsa); err != nil {
-			http.Error(w, "create FSA failed", http.StatusInternalServerError)
+			srverr.InternalMessage(w, r, "create FSA failed", err)
 			return
 		}
 

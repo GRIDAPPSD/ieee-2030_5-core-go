@@ -5,6 +5,7 @@ import (
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/paging"
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/srverr"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 )
 
@@ -28,7 +29,7 @@ func ListHandler[T store.Copier[T], L any](
 		params := paging.ParseQuery(r.URL.Query())
 		result, err := s.List(r.Context(), params.ToListOptions())
 		if err != nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 

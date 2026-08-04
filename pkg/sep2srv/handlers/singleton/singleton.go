@@ -4,10 +4,10 @@ import (
 	"encoding/xml"
 	"errors"
 	"io"
-	"log"
 	"net/http"
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/srverr"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 )
 
@@ -38,8 +38,7 @@ func HandleSingletonGetPut[T store.Copier[T]](
 					encoding.WriteXML(w, http.StatusOK, &def)
 					return
 				}
-				log.Printf("singleton: GET parent=%q: %v (path=%s)", parentKey, err, r.URL.Path)
-				http.Error(w, "internal error", http.StatusInternalServerError)
+				srverr.Internal(w, r, err)
 				return
 			}
 			encoding.WriteXML(w, http.StatusOK, &resource)
@@ -66,13 +65,11 @@ func HandleSingletonGetPut[T store.Copier[T]](
 					// it, which is the one condition under which the scoped
 					// Update's own unknown-parent ErrNotFound cannot fire.
 					if err := scopedStore.Update(r.Context(), parentKey, SingletonKey, resource); err != nil {
-						log.Printf("singleton: update parent=%q: %v (path=%s)", parentKey, err, r.URL.Path)
-						http.Error(w, "internal error", http.StatusInternalServerError)
+						srverr.Internal(w, r, err)
 						return
 					}
 				} else {
-					log.Printf("singleton: create parent=%q: %v (path=%s)", parentKey, err, r.URL.Path)
-					http.Error(w, "internal error", http.StatusInternalServerError)
+					srverr.Internal(w, r, err)
 					return
 				}
 			}

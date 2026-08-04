@@ -9,6 +9,7 @@ import (
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/srverr"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 )
 
@@ -61,7 +62,7 @@ func HandlePostLogEvent(logStore store.ScopedStore[sep2.LogEvent]) http.HandlerF
 		logEvent.Href = fmt.Sprintf("/edev/%s/lel/%s", edevID, id)
 
 		if err := logStore.Create(r.Context(), edevID, id, logEvent); err != nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 

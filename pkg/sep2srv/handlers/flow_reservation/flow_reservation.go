@@ -5,13 +5,13 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
 	coreresponse "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/handlers/response"
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/srverr"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 )
 
@@ -81,7 +81,7 @@ func HandlePostFlowReservationRequest(
 		frq.CreationTime = time.Now().Unix()
 
 		if err := frqStore.Create(r.Context(), edevID, frqID, frq); err != nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 
@@ -119,8 +119,7 @@ func HandlePostFlowReservationRequest(
 		frp.EventStatus = &sep2.EventStatus{CurrentStatus: status, DateTime: now.Unix()}
 
 		if err := frpStore.Create(r.Context(), edevID, frpID, frp); err != nil {
-			log.Printf("frq: create flow reservation response edev=%q frp=%q: %v", edevID, frpID, err)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, fmt.Errorf("create the auto-approving FlowReservationResponse: %w", err))
 			return
 		}
 
@@ -164,7 +163,7 @@ func HandlePostResponse(rspStore store.ScopedStore[sep2.Response]) http.HandlerF
 		rsp.CreatedDateTime = time.Now().Unix()
 
 		if err := rspStore.Create(r.Context(), rspsID, id, rsp); err != nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 

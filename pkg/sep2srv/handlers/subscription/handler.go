@@ -13,6 +13,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/paging"
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/srverr"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
@@ -70,7 +71,7 @@ func HandleListSubscriptionsByDevice(subStore *memory.SubscriptionStore, pollRat
 		edevID := r.PathValue("id")
 		records, err := subStore.ListByDeviceWithIDs(r.Context(), edevID)
 		if err != nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 
@@ -175,7 +176,7 @@ func HandleCreateSubscription(subStore *memory.SubscriptionStore) http.HandlerFu
 		sub.Href = fmt.Sprintf("/edev/%s/sub/%s", edevID, id)
 
 		if err := subStore.Create(r.Context(), id, sub); err != nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 
@@ -220,8 +221,7 @@ func HandleDeleteSubscription(subStore *memory.SubscriptionStore, notifyRemoved 
 				http.Error(w, "not found", http.StatusNotFound)
 				return
 			}
-			log.Printf("subscription: lookup %q before delete: %v", subID, getErr)
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, fmt.Errorf("the lookup before delete failed: %w", getErr))
 			return
 		}
 
@@ -230,7 +230,7 @@ func HandleDeleteSubscription(subStore *memory.SubscriptionStore, notifyRemoved 
 				http.Error(w, "not found", http.StatusNotFound)
 				return
 			}
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 

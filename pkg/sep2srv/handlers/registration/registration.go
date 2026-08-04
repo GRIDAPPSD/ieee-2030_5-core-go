@@ -7,10 +7,12 @@ package registration
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/srverr"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 )
 
@@ -63,7 +65,7 @@ func HandleGetRegistration(edevs store.EndDeviceStore, regs store.ResourceStore[
 				http.Error(w, "not found", http.StatusNotFound)
 				return
 			}
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, fmt.Errorf("the owning-device lookup failed: %w", err))
 			return
 		}
 
@@ -78,7 +80,7 @@ func HandleGetRegistration(edevs store.EndDeviceStore, regs store.ResourceStore[
 				http.Error(w, "not found", http.StatusNotFound)
 				return
 			}
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 
