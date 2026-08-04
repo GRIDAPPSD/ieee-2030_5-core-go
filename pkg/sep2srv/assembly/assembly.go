@@ -69,6 +69,7 @@ import (
 	coresingleton "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/handlers/singleton"
 	coresub "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/handlers/subscription"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/paging"
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/srverr"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
@@ -826,7 +827,7 @@ func scopedResourceHandlerDeep[T store.Copier[T]](
 				http.Error(w, "not found", http.StatusNotFound)
 				return
 			}
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 
@@ -950,8 +951,7 @@ func scopedResourceHandler[T store.Copier[T]](
 					http.Error(w, "not found", http.StatusNotFound)
 					return
 				}
-				log.Printf("assembly: get parent=%q id=%q: %v (path=%s)", parentKey, id, err, r.URL.Path)
-				http.Error(w, "internal error", http.StatusInternalServerError)
+				srverr.Internal(w, r, err)
 				return
 			}
 			if stamp != nil {
@@ -978,13 +978,11 @@ func scopedResourceHandler[T store.Copier[T]](
 			}
 			if err := scopedStore.Create(r.Context(), parentKey, id, resource); err != nil {
 				if !errors.Is(err, store.ErrAlreadyExists) {
-					log.Printf("assembly: create parent=%q id=%q: %v (path=%s)", parentKey, id, err, r.URL.Path)
-					http.Error(w, "internal error", http.StatusInternalServerError)
+					srverr.Internal(w, r, err)
 					return
 				}
 				if err := scopedStore.Update(r.Context(), parentKey, id, resource); err != nil {
-					log.Printf("assembly: update parent=%q id=%q: %v (path=%s)", parentKey, id, err, r.URL.Path)
-					http.Error(w, "internal error", http.StatusInternalServerError)
+					srverr.Internal(w, r, err)
 					return
 				}
 			}
@@ -999,8 +997,7 @@ func scopedResourceHandler[T store.Copier[T]](
 					http.Error(w, "not found", http.StatusNotFound)
 					return
 				}
-				log.Printf("assembly: delete parent=%q id=%q: %v (path=%s)", parentKey, id, err, r.URL.Path)
-				http.Error(w, "internal error", http.StatusInternalServerError)
+				srverr.Internal(w, r, err)
 				return
 			}
 			w.WriteHeader(http.StatusNoContent)

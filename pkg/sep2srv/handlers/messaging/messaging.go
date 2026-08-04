@@ -10,6 +10,7 @@ import (
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2/encoding"
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/srverr"
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 )
 
@@ -57,7 +58,7 @@ func HandleMessagingProgram(msgStore store.ResourceStore[sep2.MessagingProgram])
 				http.Error(w, "not found", http.StatusNotFound)
 				return
 			}
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 		encoding.WriteXML(w, http.StatusOK, &msg)
@@ -105,7 +106,7 @@ func HandlePostTextMessage(tmStore store.ScopedStore[sep2.TextMessage]) http.Han
 		tm.CreationTime = now.Unix()
 
 		if err := tmStore.Create(r.Context(), msgID, id, tm); err != nil {
-			http.Error(w, "internal error", http.StatusInternalServerError)
+			srverr.Internal(w, r, err)
 			return
 		}
 
