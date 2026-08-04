@@ -37,11 +37,21 @@ func (s *Store[T]) Get(_ context.Context, id string) (T, error) {
 	return item.Copy(), nil
 }
 
-func (s *Store[T]) List(_ context.Context, opts store.ListOptions) (store.ListResult[T], error) {
-	// Self-contradictory options are refused before any state is read: a page
-	// served for them would be one of two different answers chosen silently.
+// validateListOptions refuses the option combinations this implementation
+// cannot serve a page for, before any state is read.
+//
+// It is a package-level function rather than inline in List because
+// [ScopedStore.List] must apply the SAME refusals to a parent it does not know.
+// That path used to reach here by materializing an empty bucket and listing it,
+// which is the allocation IEEECORE-111 removed; sharing the check is what keeps
+// removing the allocation from also removing the validation. A copy would drift,
+// and the drift would show up as a malformed request being answered with an
+// empty collection for unknown parents only.
+func validateListOptions(opts store.ListOptions) error {
+	// Self-contradictory options are refused: a page served for them would be
+	// one of two different answers chosen silently.
 	if err := opts.Validate(); err != nil {
-		return store.ListResult[T]{}, err
+		return err
 	}
 
 	// Reject an unrecognized sort key rather than silently serving the
@@ -49,8 +59,15 @@ func (s *Store[T]) List(_ context.Context, opts store.ListOptions) (store.ListRe
 	// page through a sequence that does not match what it requested.
 	switch opts.Sort {
 	case store.SortByIDAsc, store.SortByIDDesc:
+		return nil
 	default:
-		return store.ListResult[T]{}, fmt.Errorf("%w: %d", store.ErrUnsupportedSort, uint8(opts.Sort))
+		return fmt.Errorf("%w: %d", store.ErrUnsupportedSort, uint8(opts.Sort))
+	}
+}
+
+func (s *Store[T]) List(_ context.Context, opts store.ListOptions) (store.ListResult[T], error) {
+	if err := validateListOptions(opts); err != nil {
+		return store.ListResult[T]{}, err
 	}
 
 	s.mu.RLock()

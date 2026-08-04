@@ -26,10 +26,18 @@ func NewScopedStore[T store.Copier[T]]() *ScopedStore[T] {
 // ForParent returns the Store for the given parent ID, creating it if needed.
 //
 // ForParent is deliberately NOT part of store.ScopedStore. It returns a
-// concrete type, and it materializes a parent bucket on read, which no durable
-// backend can implement sensibly and which lets an arbitrary path segment
-// allocate. It stays here as an implementation convenience for existing call
-// sites; new code should use the contract methods.
+// concrete type, and it materializes a parent bucket, which no durable backend
+// can implement sensibly and which lets an arbitrary path segment allocate.
+//
+// Nothing on the read half of this type calls it any more (IEEECORE-111): Get,
+// List, Count and Delete take [ScopedStore.parentStore], which looks a parent up
+// without establishing one, and Create is the single caller left, where
+// establishing the parent is the point. Reaching for ForParent from a read path
+// reintroduces client-driven unbounded growth, because every parent id on the
+// scoped surface is a path segment the client chose.
+//
+// It remains exported because callers outside this module hold it; new code
+// should use the contract methods.
 func (s *ScopedStore[T]) ForParent(parentID string) *Store[T] {
 	s.mu.RLock()
 	st, ok := s.stores[parentID]
@@ -51,6 +59,26 @@ func (s *ScopedStore[T]) ForParent(parentID string) *Store[T] {
 	return st
 }
 
+// parentStore returns the Store for parentID WITHOUT creating one, and reports
+// whether it exists.
+//
+// This is the read half's counterpart to ForParent, and the difference is the
+// whole of IEEECORE-111: the parent id reaching every scoped route is a path
+// segment the client chose, so a read that creates on miss is an allocation
+// primitive an authenticated client can drive without bound, storing nothing
+// any later request can retrieve.
+//
+// It returns the child store and releases s.mu before the caller touches it,
+// which is the lock discipline ForParent already had: this type never holds the
+// parent lock across a call into a child store, so the two locks are never
+// ordered against each other.
+func (s *ScopedStore[T]) parentStore(parentID string) (*Store[T], bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	st, ok := s.stores[parentID]
+	return st, ok
+}
+
 // HasParent reports whether a store exists for the given parent ID.
 //
 // The error return is always nil here because the lookup is a local map read,
@@ -58,8 +86,10 @@ func (s *ScopedStore[T]) ForParent(parentID string) *Store[T] {
 // this is a query that can fail, can report that failure instead of returning
 // a bare false that a caller would read as "absent".
 //
-// Note that ForParent materializes a bucket, so a parent that has only ever
-// been read is reported present. Callers must not infer emptiness from this.
+// Since IEEECORE-111 no read materializes a bucket, so this reports what was
+// WRITTEN. A parent still lingers after its last resource is deleted, though, so
+// callers must not infer emptiness from a true: the store.ScopedReader contract
+// leaves that implementation-defined and Count is the question to ask.
 func (s *ScopedStore[T]) HasParent(_ context.Context, parentID string) (bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -69,9 +99,11 @@ func (s *ScopedStore[T]) HasParent(_ context.Context, parentID string) (bool, er
 
 // Parents returns the known parent IDs in ascending order.
 //
-// The result includes parents materialized by ForParent that hold no
-// resources, per the store.ScopedReader contract, which requires only that
-// every parent holding at least one resource appears.
+// The result may include parents that hold no resources, per the
+// store.ScopedReader contract, which requires only that every parent holding at
+// least one resource appears. Since IEEECORE-111 those can only come from a
+// write: a parent emptied by Delete, or one established by ForParent, and no
+// longer one that a read invented.
 func (s *ScopedStore[T]) Parents(_ context.Context) ([]string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -85,29 +117,60 @@ func (s *ScopedStore[T]) Parents(_ context.Context) ([]string, error) {
 }
 
 // Get retrieves a resource from a parent's store.
+//
+// An unknown parent is ErrNotFound, exactly as an unknown resource under a known
+// parent is, per store.ScopedReader. The two were already indistinguishable to a
+// caller: the empty bucket the old path created answered ErrNotFound too. What
+// is gone is the bucket.
 func (s *ScopedStore[T]) Get(ctx context.Context, parentID, id string) (T, error) {
-	return s.ForParent(parentID).Get(ctx, id)
+	st, ok := s.parentStore(parentID)
+	if !ok {
+		var zero T
+		return zero, store.ErrNotFound
+	}
+	return st.Get(ctx, id)
 }
 
 // List lists resources from a parent's store with paging.
+//
+// An unknown parent yields an empty page and a NIL error, which is what
+// store.ScopedReader requires and what a known but empty parent yields. It is
+// deliberately not ErrNotFound: a scoped list is addressed by a parent the
+// client names, and reporting absence there would turn every list of a
+// collection that has not been written into a 404 on the wire.
+//
+// The options are validated first even though there is nothing to page over.
+// The old path got that for free by listing an empty bucket, and dropping it
+// would mean a request the store cannot serve, an unsupported sort key or
+// contradictory paging, is answered with an empty collection instead of a
+// refusal, for unknown parents only. That is the error contract's "a failure
+// must not be flattened into the commonest successful answer" in miniature.
 func (s *ScopedStore[T]) List(ctx context.Context, parentID string, opts store.ListOptions) (store.ListResult[T], error) {
-	return s.ForParent(parentID).List(ctx, opts)
+	st, ok := s.parentStore(parentID)
+	if !ok {
+		if err := validateListOptions(opts); err != nil {
+			return store.ListResult[T]{}, err
+		}
+		return store.ListResult[T]{}, nil
+	}
+	return st.List(ctx, opts)
 }
 
 // Create adds a resource to a parent's store.
+//
+// This is the one operation that establishes a parent, and the only remaining
+// caller of ForParent: a create under a parent that does not yet exist is the
+// case the per-parent bucket exists for.
 func (s *ScopedStore[T]) Create(ctx context.Context, parentID, id string, resource T) error {
 	return s.ForParent(parentID).Create(ctx, id, resource)
 }
 
 // Update replaces a resource in a parent's store.
 //
-// Unlike the other scoped operations, Update does not go through ForParent: an
-// update against an unknown parent reports ErrNotFound rather than
-// materializing an empty bucket for it. Update never creates, at either level.
+// An update against an unknown parent reports ErrNotFound. Update never
+// creates, at either level.
 func (s *ScopedStore[T]) Update(ctx context.Context, parentID, id string, resource T) error {
-	s.mu.RLock()
-	st, ok := s.stores[parentID]
-	s.mu.RUnlock()
+	st, ok := s.parentStore(parentID)
 	if !ok {
 		return store.ErrNotFound
 	}
@@ -115,13 +178,30 @@ func (s *ScopedStore[T]) Update(ctx context.Context, parentID, id string, resour
 }
 
 // Delete removes a resource from a parent's store.
+//
+// An unknown parent is ErrNotFound, which is what deleting a resource under an
+// empty bucket already reported. A delete is a read of the parent map: it
+// removes a child, it never establishes a parent, so it must not allocate one on
+// its way to reporting that there was nothing to remove.
 func (s *ScopedStore[T]) Delete(ctx context.Context, parentID, id string) error {
-	return s.ForParent(parentID).Delete(ctx, id)
+	st, ok := s.parentStore(parentID)
+	if !ok {
+		return store.ErrNotFound
+	}
+	return st.Delete(ctx, id)
 }
 
 // Count returns the number of resources in a parent's store.
+//
+// An unknown parent counts zero and is not an error, per store.ScopedReader.
+// Zero here is an answer about the collection, never a stand-in for a count that
+// could not be taken.
 func (s *ScopedStore[T]) Count(ctx context.Context, parentID string) (uint32, error) {
-	return s.ForParent(parentID).Count(ctx)
+	st, ok := s.parentStore(parentID)
+	if !ok {
+		return 0, nil
+	}
+	return st.Count(ctx)
 }
 
 // DeleteParent removes a parent's whole collection and reports how many
@@ -130,10 +210,10 @@ func (s *ScopedStore[T]) Count(ctx context.Context, parentID string) (uint32, er
 // It exists for CASCADE deletion: when the parent resource is deleted, the
 // children scoped under it have to go too, or the collection outlives the only
 // thing that could address it. Deleting the parent and leaving its children is
-// not a tidiness problem, it is a correctness one: ForParent materialises a
-// bucket on read, so the orphaned collection stays reachable to any code that
-// names the same parent id, and a later resource created under a RE-USED id
-// would inherit the dead parent's children as if they were its own.
+// not a tidiness problem, it is a correctness one: the orphaned bucket stays in
+// the map, so it is served to any code that names the same parent id, and a
+// later resource created under a RE-USED id would inherit the dead parent's
+// children as if they were its own.
 //
 // It is one operation rather than a list-then-delete loop for two reasons.
 // The store exposes no way to enumerate KEYS, only values, so a loop would have
