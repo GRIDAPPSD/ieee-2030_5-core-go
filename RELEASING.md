@@ -1,11 +1,12 @@
 # Releasing ieee-2030_5-core-go
 
-Sections 2 to 5, 7 to 9 and 11 to 15 are shared doctrine: they read
+Sections 2 to 5, 7 to 9, 11 to 15 and 17 are shared doctrine: they read
 identically in the `RELEASING.md` of all four repositories in this family
 (`ieee-2030_5-core-go`, `ieee-2030_5-server-go`, `ieee-2030_5-client-go`, and
 `gridappsd-ieee-2030_5-go`, the bridge), so a releaser moving between
 repositories is not re-learning the process. Sections 1, 6, 10 and 16 hold
-this repository's own facts. Section numbers mean the same thing in all four.
+this repository's own facts, as does subsection 17.6 inside the shared section
+17. Section numbers mean the same thing in all four.
 
 ## 1. This repository and its release shape
 
@@ -246,6 +247,12 @@ zero SKIP, and name the tests in the notes.
 Core owns the schema gate for the whole family (`schema` and
 `internal/xsdgate`). The WADL gate lives in server-go. The two contracts are
 deliberately the same shape, so learning one teaches the other.
+
+**These gates are the machine half of what runs before a tag.** Section 17 is
+the other half: an independent read of the whole commit range by somebody who
+did not write it. Core's own instrument for that is building the three
+consumers against the candidate commit, which is the only check here that
+catches a break in code this repository does not contain (17.6).
 ## 7. Env-gated test suites: confirm they RAN, and name the tests
 
 Several suites in this family are gated behind an environment variable and
@@ -404,7 +411,15 @@ signal there at all, and the pin moves only when a person remembers.
    surfaces a misclassified range while it is still free to fix; writing them
    after means discovering the mistake at a point where the only honest remedy
    is another version.
-5. Tag:
+5. Have the range independently verified and the outcome recorded
+   (section 17). Somebody who did not write the range checks the specific
+   claims the notes and the cards make about it, and returns CONFIRMED,
+   CONTRADICTED or UNVERIFIABLE for each. This step sits here for two reasons:
+   after the notes, because the notes are where most of the claims are, and
+   before the tag, because the tag is where a wrong claim stops being
+   editable. Its depth follows the same classification that chose the version
+   (section 17.5), so a patch range gets a light pass and stays affordable.
+6. Tag:
    ```
    git tag -a vX.Y.Z -m "vX.Y.Z"
    git push origin vX.Y.Z
@@ -413,12 +428,12 @@ signal there at all, and the pin moves only when a person remembers.
    next step is what makes it a full release either way. Tag history in this
    family mixes both kinds, which is why section 12's dereference step is
    written the way it is.
-6. Run the section 8 licensed-material check against the pushed tag.
-7. Publish the release:
+7. Run the section 8 licensed-material check against the pushed tag.
+8. Publish the release:
    ```
    gh release create vX.Y.Z --notes-file <path>
    ```
-8. Run the section 12 post-release verification before telling anyone the
+9. Run the section 12 post-release verification before telling anyone the
    release is done.
 
 **A tag is not a release.** Both are required and they serve different
@@ -559,3 +574,253 @@ instead of an investigation.
 `pkg/sep2srv`) under the target layering. When that happens, the parts of this
 document that describe them move with the code. Do not let a release note
 assert the current home of a package without checking it.
+
+## 17. Independent verification of the range before tagging
+
+### 17.1 The gate
+
+Before the tag is pushed, one person who did not write the commit range reads
+it and returns a verdict on each specific claim the release notes and the cards
+make about it. The verdicts are written down. A release with no verification
+record does not get tagged.
+
+This is a gate with a recorded outcome, not a suggestion, and it is not a code
+review. Code review asks whether the change is any good, and it already
+happened, on the pull request. This asks a narrower question: is what we are
+about to publish about this range true. Those are different questions, and the
+second is the one that has been getting answered wrong.
+
+### 17.2 The reviewer did not author the range
+
+This is the entire mechanism, and it is the part that cannot be traded away for
+convenience.
+
+"Did not author" means: wrote none of the commits in `vPREV..<candidate>`, and
+did not merge them. The releaser may be the reviewer only if the releaser also
+authored none of the range, which is uncommon.
+
+A verification pass by the author reproduces the author's assumptions. The
+author already believes the claim, so re-reading their own diff is how they
+confirm it. Every contradiction this family has found this way was found by
+somebody reading code they had not written, and the same claims had already
+survived being restated by the people who wrote them.
+
+Depth scales with the range (17.5). Independence does not. A one-merge
+documentation range still gets a reader who did not write it, because that pass
+is cheap: a handful of claims and a small diff.
+
+If genuinely nobody else is available, that is a recorded outcome and a weaker
+one, not a waiver. Write "no independent reviewer available; the range was
+verified by its author" into the notes' Verified section, in those words, so a
+reader can weigh the release accordingly. What is never acceptable is a release
+that reads as independently verified when it was not.
+
+### 17.3 Name the claims; never ask for a general review
+
+An open-ended "please review this release" produces style notes and a thumbs
+up. Naming the claims is what produces contradictions, because a named claim
+has a truth value and a general impression does not.
+
+The releaser builds the claim list, drawn from what the release is about to
+assert in public:
+
+- every Difference cell in the section 5.1 table;
+- every count and every absolute: "every", "all six", "at all fifteen", "none";
+- every statement about a consumer: what it does or does not reference, and
+  what was built or run to determine that (section 9);
+- every "verified" statement in the notes, including which env-gated suites ran
+  (section 7);
+- every claim already recorded on the cards in the range, especially one
+  written from somebody's report rather than from the code.
+
+The reviewer returns, per claim, exactly one of three verdicts, each with
+`file:line` evidence:
+
+- **CONFIRMED**: true as written. A claim that holds only in a narrower form is
+  not confirmed; see 17.4.
+- **CONTRADICTED**: false as written, with what is true instead.
+- **UNVERIFIABLE**: cannot be settled from what the reviewer has, with the
+  reason (an input not available, a system not running, a claim about intent
+  rather than about code). UNVERIFIABLE is a legitimate and useful answer. It
+  is never upgraded to CONFIRMED on the grounds that it is probably fine.
+
+Two habits carry most of the weight here. They come from the workspace rule
+`.claude/rules/claims-and-provenance.md`, and are restated so this section
+stands on its own:
+
+- **Re-run the count; never read it off a commit message.** A claim of the form
+  "every X is now a Y" is checked by enumerating X again, in the tree being
+  released. Three of the six contradictions in 17.8 were counts whose exception
+  the commit message stated plainly, and nobody re-ran the enumeration.
+- **Print the denominator.** "0 remaining, across 47 declarations examined" is
+  evidence. "0 remaining" is indistinguishable from a search pointed at the
+  wrong tree, and a check that ran against nothing looks exactly like a check
+  that passed.
+
+### 17.4 A contradiction is the outcome that pays for the gate
+
+A pass that finds nothing has cost one reading. A pass that finds one wrong
+claim has stopped a false statement from being published under a version number
+that cannot be withdrawn (section 13). The second is the expected case, not an
+incident, and a run of passes that never contradict anything is a sign the
+claim list is too vague rather than that the claims are unusually good.
+
+Record every contradiction. Do not resolve one quietly by editing the sentence
+and moving on: the edit leaves no trace that the claim was ever wrong, and the
+same claim tends to return in the next release from the same source.
+
+**"Technically true" is not CONFIRMED.** A claim that is true only in a form
+narrower than it was written is recorded as CONTRADICTED, with the narrower
+true statement supplied. "Fifteen call sites covering thirteen decisions" is
+not "at all fifteen gates", and the gap between those two sentences is where a
+reproducible nil-dereference panic lived. If the narrower statement is what
+ends up in the notes, the notes were corrected by this gate, which is the gate
+working rather than a formality being satisfied.
+
+Resolving a contradiction before tagging is one of:
+
+- change the notes so the claim matches the code, which is the cheap path and
+  is always available;
+- change the code, which lengthens the range and sends the changed part back
+  through 17.1;
+- keep the claim, downgraded to what was actually established, with its
+  provenance attached: "the implementer reports X" is a different sentence from
+  "X", and it is the honest one when nobody re-derived it.
+
+A contradiction that names something failing a build, a test or a gate RIGHT
+NOW is not a note. It is a card, filed at its real priority, before the release
+continues. A live failure whose signal is already firing is the most expensive
+thing to defer, because the signal keeps firing into a channel everybody has
+stopped reading.
+
+### 17.5 Depth follows the same signal as the version
+
+Section 2 reads the version off the range's classification. Verification depth
+is read off that same classification, so there is one judgment to make rather
+than two, and the depth cannot drift away from the risk.
+
+| Range classification (section 3) | Depth |
+|---|---|
+| All entries `bug fix`, `documentation`, `test` or `chore` (a range that may be PATCH) | **Light pass** |
+| Any entry `feature` or `breaking` (a range that forces at least MINOR) | **Full pass** |
+| A first release (section 4) | **Full pass** always: there is no prior tag, and every claim is new |
+
+**Light pass.** The reviewer reads the diff of every merge in the range and
+checks the claim list against it. It is bounded by the claim list, which for a
+patch range is usually a handful of cells. This is kept deliberately cheap: a
+gate that makes a patch release unaffordable gets skipped, and a skipped gate
+protects nothing.
+
+**Full pass.** The reviewer reads the diffs AND the surrounding code in the
+tree being released, and runs whatever mechanical instruments this repository
+has (17.6), reading their output rather than a summary of it. The distinction
+is load-bearing. A diff shows what changed; it does not show the three
+declarations left alone while a claim said all of them moved, and it does not
+show that a recorded structure has no reader anywhere in the tree. Both of
+those were found by reading the tree, not the diff.
+
+**One rule crosses the split.** Any claim stating a count or an absolute gets
+the full check even inside a light range. Those are the claims that have gone
+wrong, they go wrong silently, and re-running one enumeration costs a minute.
+### 17.6 What this repository gives the reviewer (core)
+
+Core has no Makefile gates and no harness of its own. Its instruments are the
+Go toolchain, the schema gate, and the three consumers.
+
+**The consumers are the instrument.** Core is the only module in this family
+with internal consumers (section 10), and a claim that a core change is safe
+for them is settled by building them, not by reading core. Independent means
+the reviewer does this in their own checkout rather than reading a transcript:
+
+```
+go mod edit -replace github.com/GRIDAPPSD/ieee-2030_5-core-go=<path to a core checkout at the candidate commit>
+go build ./... && go test -count=1 ./...
+go mod edit -dropreplace github.com/GRIDAPPSD/ieee-2030_5-core-go
+```
+
+At least one consumer for a light range, all three for a full pass, reported
+per consumer by name. A repository in this family sat red against core's `main`
+for two days while every claim about it was written from reasoning rather than
+from a build (17.8). `GOPRIVATE=github.com/GRIDAPPSD/*` is required in the
+consumer's environment (section 10), or a resolution failure will read as a
+network problem and be dismissed as one.
+
+**Claims about the assembly are counts, and counts are re-run.** Core's
+contradicted claims were all one shape: an absolute about a set of fields or
+types under `pkg/`. Check one by enumerating the set again in the tree being
+released, and report both numbers:
+
+```
+grep -rn '<the declaration pattern the claim is about>' --include='*.go' pkg/ | wc -l
+```
+
+The pattern belongs to the claim, so derive it from the claim rather than from
+this document. What matters is that the reviewer produces a number and the
+denominator it came from, and takes neither from a commit message: the commit
+message accompanying one of those claims stated its exception plainly and was
+read past.
+
+**The schema gate is the reviewer's too.** Section 6 arms it with
+`SEP2_SCHEMA_PATH` and `SEP2_SCHEMA_REQUIRED=1`. On a full pass the reviewer
+runs it in their own session rather than accepting the releaser's output, and
+confirms zero SKIP. Where the schema is not available to them, the claims that
+depend on it are UNVERIFIABLE and are recorded that way.
+
+**A light pass here is genuinely light.** A documentation or chore range in
+core has few claims and no behaviour to check, so the pass is one diff read,
+one consumer build, and the claim list. Do not inflate it, and do not skip the
+consumer build: it is the cheapest evidence core has.
+### 17.7 Recording the outcome
+
+The verification record lives in the release notes' Verified section (section
+5.4), or in an artifact that the Verified section names and links. It states:
+
+- who reviewed, and that they authored none of the range;
+- the exact range reviewed, as `vPREV..<sha>`, with the SHA that was tagged;
+- the depth, light or full, and the classification that selected it (17.5);
+- the counts with their denominator: "14 claims checked: 11 CONFIRMED,
+  2 CONTRADICTED, 1 UNVERIFIABLE";
+- each CONTRADICTED claim, what was true instead, and how it was resolved;
+- each UNVERIFIABLE claim and why it could not be settled.
+
+Contradictions stay in the published notes even when they were fixed before the
+tag. A reader learns more from "this claim was corrected during verification"
+than from a clean list that hides the correction, and the next releaser learns
+where the claims in this repository tend to go wrong.
+
+A record that says only "independently verified" satisfies nothing. It is the
+same failure as a green tick over a skipped gate (section 7): unreadable,
+uncheckable, and indistinguishable from the case where nobody looked.
+
+### 17.8 Why this exists
+
+On 2026-08-03 and 04, a long run of work in this family was recorded onto cards
+and into notes largely from implementers' reports, with a couple of pull
+requests spot checked. One independent pass was then run over it, by readers
+who had written none of it. That single pass contradicted six claims that had
+already been recorded as fact:
+
+- "every store field in the assembly is an interface": three were still
+  concrete, and the commit message said so plainly;
+- "all six embedding types carry the fix": four did;
+- "the absence check is at all fifteen gates": fifteen call sites covering
+  thirteen mount decisions, and a nil-dereference panic was reproduced on a
+  field the check did not cover;
+- "the ledger proves the identifier outlives the resource": the ledger had no
+  production reader, the success response was unconditional, and the test
+  offered as proof would still have passed with the ledger deleted;
+- a release labelled PATCH whose range carried new routes, a new exported type
+  and behaviour changes (section 3 exists because of this one);
+- a repository in this family that did not compile against core's `main`, with
+  its scheduled job red for two days, recorded as a note rather than as a card.
+
+The last one is the argument in miniature: the break existed, a signal was
+firing, and nobody looked until somebody was asked to.
+
+The reports behind those claims were substantially accurate. The looseness
+entered when they were restated in somebody else's voice, which is why care
+alone does not fix this: care was present throughout. The workspace rule
+`.claude/rules/claims-and-provenance.md` carries the underlying discipline (a
+claim you did not personally verify carries whose claim it is, and never write
+a number you did not count). This section applies that rule at the one moment
+where a wrong claim stops being editable, which is the tag.
