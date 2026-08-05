@@ -1,4 +1,4 @@
-// Tests for DER sub-resource link derivation (IEEECORE-052).
+// Tests for DER sub-resource link derivation.
 //
 // The rules under test are prose obligations the schema cannot express: 2018
 // section 4.4 p.19 forbids a link to an unimplemented function set, and section
@@ -90,7 +90,7 @@ func TestFillAbsentDERLinks(t *testing.T) {
 			policy: coredel.DERLinkPolicy{Capability: true},
 			want: map[string]string{
 				"DERCapabilityLink": testBase + "/dercap",
-				// Stripping stored data on a read path is IEEECORE-062's
+				// Stripping stored data on a read path is a separate
 				// decision to make, not this function's.
 				"DERStatusLink": testBase + "/ders",
 			},

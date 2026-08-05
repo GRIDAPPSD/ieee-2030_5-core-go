@@ -7,8 +7,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 )
 
-// IEEECORE-084: mounting the LogEvent function set and advertising it are one
-// act.
+// Mounting the LogEvent function set and advertising it are one act.
 //
 // Before this file NO production path assigned EndDevice.LogEventListLink. The
 // only assignments anywhere in the tree were in a wire-order test fixture, so
@@ -16,7 +15,7 @@ import (
 // CSIP V1.2 BASIC-027 step 2, "using the EndDevice instance, find the
 // LogEventListLink", could not pass against this server at any address.
 //
-// The routing half of the same card moved the list from /edev/{id}/log to the
+// The routing half of this same fix moved the list from /edev/{id}/log to the
 // WADL address /edev/{id}/lel (sep_wadl.xml:1358). Moving the route without
 // closing the advertisement half would have left the function set exactly as
 // dark as it was, one path over, which is why both halves land together.
@@ -83,9 +82,9 @@ var _ store.EndDeviceStore = (*LogEventLinkedEndDeviceStore)(nil)
 // is assembled, is loud; a nil decorated store would fail at request time inside
 // net/http's per-request recover, turning a mis-wired server into a silent 500.
 //
-// The guard asks [store.IsAbsent] rather than comparing against nil
-// (IEEECORE-112), for the reason argued at [NewRegisteredEndDeviceStore]: devs
-// is an interface, and an interface holding a nil concrete pointer is not equal
+// The guard asks [store.IsAbsent] rather than comparing against nil, for the
+// reason argued at [NewRegisteredEndDeviceStore]: devs is an interface, and
+// an interface holding a nil concrete pointer is not equal
 // to nil, so a plain comparison let the one mis-wiring a consumer actually
 // produces past the check that exists to catch it.
 func NewLogEventLinkedEndDeviceStore(devs store.EndDeviceStore) *LogEventLinkedEndDeviceStore {
