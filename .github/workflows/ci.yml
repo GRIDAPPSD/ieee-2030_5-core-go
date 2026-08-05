@@ -8,11 +8,11 @@ name: CI
 # for the posture this exception follows.
 #
 # Unlike the sibling gridappsd-ieee-2030_5-go bridge repo, this module
-# has no private GRIDAPPSD dependencies (see go.mod: only
+# imports no other GRIDAPPSD modules (see go.mod: only
 # golang.org/x/crypto and pgregory.net/rapid), so no GitHub App
-# installation token is needed to resolve it. If a private dependency
-# is ever added here, port the token-minting steps from the bridge's
-# ci.yml rather than reinventing them.
+# installation token is needed to resolve one. If a GRIDAPPSD module
+# dependency is ever added here, port the token-minting steps from the
+# bridge's ci.yml rather than reinventing them.
 #
 # The schema-gated tests need the IEEE 2030.5 sep.xsd, which is
 # copyrighted by IEEE and is not in this repository (see NOTICE).
