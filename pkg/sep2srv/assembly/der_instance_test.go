@@ -17,7 +17,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 )
 
-// The DER instance route (IEEECORE-052).
+// The DER instance route.
 //
 // Every assertion here is on a wire VALUE rather than on a status code alone,
 // because the defect this route fixes is a client following an href the server
@@ -158,8 +158,8 @@ func TestDERInstance_GETServesTheResourceWithItsSubResourceLinks(t *testing.T) {
 	})
 
 	t.Run("no link is emitted for a function set this server does not serve", func(t *testing.T) {
-		// AssociatedDERProgramList is not mounted (IEEECORE-054), and 2018
-		// section 4.4 p.19 says a link to an unimplemented function set SHALL
+		// AssociatedDERProgramList is not mounted, and 2018 section 4.4 p.19
+		// says a link to an unimplemented function set SHALL
 		// NOT be included. Absence here is the conformant answer, not a gap.
 		d := getDER(t, srv, derHref("7", "4"))
 		if d.AssociatedDERProgramListLink != nil {
@@ -241,8 +241,8 @@ func TestDERInstance_UnservedMethodsGet405WithAnAccurateAllow(t *testing.T) {
 	seedDER(t, stores, "7", "3")
 	path := srv.URL + derHref("7", "3")
 
-	// POST is mode E (sep_wadl.xml:4122). DELETE is mode O and deferred to
-	// IEEECORE-058, so until it lands it answers the same way.
+	// POST is mode E (sep_wadl.xml:4122). DELETE is mode O and not yet
+	// implemented, so until it lands it answers the same way.
 	for _, method := range []string{http.MethodPost, http.MethodDelete, http.MethodPatch} {
 		t.Run(method, func(t *testing.T) {
 			req, err := http.NewRequest(method, path, strings.NewReader(""))

@@ -14,21 +14,21 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/storetest"
 )
 
-// The router, over stores that can FAIL (IEEECORE-086).
+// The router, over stores that can FAIL.
 //
 // Every store in this repository is in-memory and essentially cannot fail, so
 // the distinction the error contract draws between "the resource is absent" and
 // "the backend did not answer" has never been exercised on a single route. The
-// moment a durable backend is attached (IEEECORE-075) that distinction goes
-// live across the whole surface at once, and a route that renders a failed
+// moment a durable backend is attached that distinction goes live across the
+// whole surface at once, and a route that renders a failed
 // lookup as a 404, as an empty list, or as a synthesized default resource is a
 // silent wrong answer on the wire: the client is told a fact about the fleet
 // that the server does not actually know.
 //
 // It matters beyond status codes because the store is a seam the bridge reads
 // directly. A store error rendered as an empty list is indistinguishable to the
-// bridge from a genuinely empty fleet, which is the confusion GAGO-051 already
-// had to add a fail-loud guard for on the CIM side.
+// bridge from a genuinely empty fleet, the same confusion a fail-loud guard
+// already had to be added for on the CIM side.
 //
 // The route list here is DERIVED from BuildProtocolRouter's own pattern
 // enumeration, never hand-written, so a route added tomorrow is covered the day

@@ -18,10 +18,10 @@ import (
 )
 
 // PUT and DELETE on /mup/{id} are both wx:mode="M" (sep_wadl.xml:2303 and
-// 2323), and neither was mounted before IEEECORE-066. These tests drive the
-// handlers directly against the core routes, with no wrapper ACL in the path,
-// which is the whole scope of that card: reachability through the bridge and
-// server-go ACLs is IEEECORE-070's and is BLOCKED, not passing, today.
+// 2323), and neither was mounted before. These tests drive the handlers
+// directly against the core routes, with no wrapper ACL in the path, which
+// is the whole scope here: reachability through the bridge and server-go
+// ACLs is separate work and is BLOCKED, not passing, today.
 //
 // Three properties here are asserted on STORE CONTENTS or on RESPONSE BYTES
 // rather than on a status code, because for each of them the status code is
@@ -621,8 +621,8 @@ func TestHandleDeleteMirrorUsagePoint_CascadesReadingsAndServesTheStrippedRecord
 	assertMirrorUnchanged(t, mupStore, idB, "MUP_B", putVictimLFDI, "site meter B")
 
 	// THE CASCADE. HasParent is checked BEFORE Count, and the order is kept
-	// deliberately: reads no longer materialise a bucket (IEEECORE-111), so a
-	// Count first would no longer recreate the entry under test, but a check
+	// deliberately: reads no longer materialise a bucket, so a Count first
+	// would no longer recreate the entry under test, but a check
 	// that only holds under one ordering is one the next reader should not have
 	// to work out. HasParent is also the stronger assertion of the two, since
 	// Count answers zero for an absent parent and an empty one alike.

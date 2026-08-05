@@ -3,7 +3,7 @@
 // (DERCapability, DERSettings, DERStatus, DERAvailability), and
 // DefaultDERControl. Ported verbatim from the reference server's
 // internal/handler/der.go (no auth touch points; import paths rewritten
-// to core). IEEECORE-001.
+// to core).
 package der
 
 import (
@@ -92,12 +92,12 @@ func BuildDERProgramList(href string, result store.ListResult[sep2.DERProgram], 
 
 // DERProgramHref returns the canonical href for a single DERProgram member,
 // matching the only route this package mounts a DERProgram under: GET
-// /edev/{id}/fsa/{fsaId}/derp/{derpId} (IEEECORE-082). A DERProgram's own
-// href is server-assigned, so every site that builds one (seeding code,
-// admin creation, bootfixture and conformance-test data) MUST call this
-// instead of hand-rolling the path. IEEECORE-082 found the FSA segment
-// dropped in three independently-written call sites once already, which is
-// exactly the drift a single shared builder exists to prevent.
+// /edev/{id}/fsa/{fsaId}/derp/{derpId}. A DERProgram's own href is
+// server-assigned, so every site that builds one (seeding code, admin
+// creation, bootfixture and conformance-test data) MUST call this instead of
+// hand-rolling the path. The FSA segment was once found dropped in three
+// independently-written call sites, which is exactly the drift a single
+// shared builder exists to prevent.
 func DERProgramHref(edevID, fsaID, derpID string) string {
 	return fmt.Sprintf("/edev/%s/fsa/%s/derp/%s", edevID, fsaID, derpID)
 }

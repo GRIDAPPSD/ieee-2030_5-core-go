@@ -12,7 +12,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/assembly"
 )
 
-// The FlowReservation instance routes (IEEECORE-081).
+// The FlowReservation instance routes.
 //
 // POST /edev/{id}/frq hands back a Location at /edev/{id}/frq/{frqId} and
 // stamps a sibling FlowReservationResponse href at /edev/{id}/frp/{frpId}.
@@ -116,7 +116,7 @@ func TestFlowReservationRequest_LocationHeaderResolves(t *testing.T) {
 		t.Errorf("durationRequested = %v, want 3600", got.DurationRequested)
 	}
 	if got.CreationTime == 0 {
-		t.Error("creationTime = 0: a served event with no creation instant cannot be ordered against another (IEEECORE-018)")
+		t.Error("creationTime = 0: a served event with no creation instant cannot be ordered against another")
 	}
 }
 
@@ -242,7 +242,7 @@ func TestFlowReservationInstances_UnknownIDIsACleanNotFound(t *testing.T) {
 //
 // This is store scoping, NOT caller ownership: nothing in core checks that the
 // caller is the device named by {id}, and this test does not claim otherwise
-// (ownership is IEEECORE-031's sweep).
+// (ownership is a separate cross-cutting sweep).
 func TestFlowReservationInstances_ScopeBindsToTheDeviceInThePath(t *testing.T) {
 	t.Parallel()
 
