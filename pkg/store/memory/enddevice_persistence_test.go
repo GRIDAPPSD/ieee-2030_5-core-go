@@ -12,8 +12,10 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// EndDeviceStore persistence: pin the same contract SubscriptionStore
-// already has. Each test creates a fresh store with
+// EndDeviceStore persistence (GRIDAPPSD/ieee-2030_5-server-go#165): pin
+// the same contract SubscriptionStore already has
+// (GRIDAPPSD/ieee-2030_5-server-go#224). Each test creates a fresh store
+// with
 // the persistence path wired to a file inside t.TempDir(), exercises the
 // mutation, and verifies a fresh store rehydrated from disk sees the same
 // state.

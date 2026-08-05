@@ -8,10 +8,11 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 )
 
-// Durable AdminFSAStore persistence.
+// Durable AdminFSAStore persistence (GRIDAPPSD/ieee-2030_5-server-go#165).
 //
 // Records carry the FSA itself plus the denormalized program-attachments
-// and device-assignments (kept next to the FSA: one source of truth).
+// and device-assignments (kept next to the FSA per
+// GRIDAPPSD/ieee-2030_5-server-go#163: one source of truth).
 // Persisting them together means a restart restores the
 // entire admin-authored topology in a single pass, with no risk of
 // orphaning attachments when the FSA load order differs from the link

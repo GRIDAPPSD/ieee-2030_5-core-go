@@ -8,10 +8,12 @@ import (
 	"path/filepath"
 )
 
-// Path B: durable subscription persistence.
+// Path B: durable subscription persistence
+// (GRIDAPPSD/ieee-2030_5-server-go#224).
 //
-// Path A is a test-only SnapshotForTesting / RestoreForTesting pair that
-// lets the CSIP harness simulate a server power-reset entirely in memory.
+// Path A (GRIDAPPSD/ieee-2030_5-server-go#25) is a test-only
+// SnapshotForTesting / RestoreForTesting pair that lets the CSIP harness
+// simulate a server power-reset entirely in memory.
 // Path A is sufficient for the harness; it is NOT sufficient for any
 // deployment claim that "subscriptions survive a real power loss."
 //

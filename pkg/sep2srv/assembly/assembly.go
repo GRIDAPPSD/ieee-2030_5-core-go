@@ -219,9 +219,10 @@ type Stores struct {
 	// FSA store
 	FSAs store.ScopedStore[sep2.FunctionSetAssignments]
 
-	// AdminFSAs is the admin FSA management plane (operator-authored
-	// templates, program links, device assignments). Distinct from FSAs
-	// above which is the spec-facing scoped surface.
+	// AdminFSAs is the admin FSA management plane
+	// (GRIDAPPSD/ieee-2030_5-server-go#163: operator-authored templates,
+	// program links, device assignments). Distinct from FSAs above which
+	// is the spec-facing scoped surface.
 	AdminFSAs *memory.AdminFSAStore
 
 	// Subscription store
@@ -307,8 +308,9 @@ type AuthPolicy struct {
 	Identity func(ctx context.Context) (lfdi, sfdi string, ok bool)
 
 	// SFDIPrefix derives the EndDevice id prefix from an SFDI, replacing
-	// auth.ExtractSFDIPrefix (the short-SFDI guard). Injected so the
-	// guard policy stays server-owned.
+	// auth.ExtractSFDIPrefix (the short-SFDI guard,
+	// GRIDAPPSD/ieee-2030_5-server-go#13). Injected so the guard policy
+	// stays server-owned.
 	//
 	// If nil, BuildProtocolRouter substitutes a stub that always returns an
 	// error so the create path fails with 500 rather than panicking.
@@ -560,7 +562,8 @@ func registerEndDeviceRoutes(mux routeRegistrar, stores *Stores, authPolicy Auth
 	mux.HandleFunc("PUT /edev/{id}", coreedev.HandleUpdateEndDevice(edevs))
 	mux.HandleFunc("DELETE /edev/{id}", coreedev.HandleDeleteEndDevice(edevs, notifier))
 
-	// Registration GET handler at /edev/{id}/rg.
+	// Registration GET handler at /edev/{id}/rg
+	// (GRIDAPPSD/ieee-2030_5-server-go#170).
 	if !store.IsAbsent(stores.Registrations) {
 		mux.HandleFunc("GET /edev/{id}/rg", corereg.HandleGetRegistration(edevs, stores.Registrations, authPolicy.Identity))
 	}

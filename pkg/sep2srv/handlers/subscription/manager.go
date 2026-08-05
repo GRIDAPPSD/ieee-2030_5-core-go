@@ -26,7 +26,8 @@ const notificationClientTimeout = 30 * time.Second
 // SubscriptionLister provides lookup of subscriptions by resource href.
 // The returned records pair each subscription with its storage ID so the
 // Manager can identify a specific subscription when calling Delete on a
-// receiver-terminated subscription (CSIP V1.2 ERR-002).
+// receiver-terminated subscription (CSIP V1.2 ERR-002,
+// GRIDAPPSD/ieee-2030_5-server-go#225).
 type SubscriptionLister interface {
 	ListByResource(ctx context.Context, resourceHref string) ([]memory.SubscriptionRecord, error)
 }
@@ -141,7 +142,7 @@ func (m *Manager) Start(ctx context.Context) {
 // recoverable from the caller's perspective: the spec does not require
 // the final Notification, so the deletion proceeds either way.
 //
-// Per CSIP V1.2 section 11.6.
+// Per CSIP V1.2 section 11.6 (GRIDAPPSD/ieee-2030_5-server-go#169).
 func (m *Manager) NotifyRemoved(_ context.Context, sub sep2.Subscription) error {
 	if sub.NotificationURI == "" {
 		return fmt.Errorf("notify removed for %q: %w", sub.Href, ErrInvalidNotificationURI)

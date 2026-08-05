@@ -10,7 +10,8 @@ import (
 )
 
 // AdminFSAStore is the management-plane store for FunctionSetAssignments
-// created via the admin API. It is distinct from the per-device
+// created via the admin API (GRIDAPPSD/ieee-2030_5-server-go#163). It is
+// distinct from the per-device
 // scoped FSA store (`ScopedStore[FunctionSetAssignments]`) which is the
 // spec-facing surface: an admin FSA is a template that the operator can
 // attach programs to and then assign to one or more devices.
@@ -28,8 +29,9 @@ type AdminFSAStore struct {
 	programLinks map[string][]string // fsaID -> sorted program hrefs
 	deviceLinks  map[string][]string // fsaID -> sorted device ids
 
-	// Durable persistence. Empty persistPath = pure in-memory (the
-	// historical AdminFSAStore behavior). When set, every mutation
+	// Durable persistence (GRIDAPPSD/ieee-2030_5-server-go#165). Empty
+	// persistPath = pure in-memory (the historical AdminFSAStore
+	// behavior). When set, every mutation
 	// flushes a snapshot under persistMu. Held separately from mu so the
 	// disk syscall does not block readers/writers on the in-memory state.
 	persistMu   sync.Mutex

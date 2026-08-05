@@ -41,8 +41,9 @@ type ResourceNotifier interface {
 type IdentityFunc func(ctx context.Context) (lfdi, sfdi string, ok bool)
 
 // SFDIPrefixFunc derives the EndDevice id prefix from an SFDI string.
-// Replaces auth.ExtractSFDIPrefix (the short-SFDI guard). The server
-// wires auth.ExtractSFDIPrefix; tests supply a trivial truncation.
+// Replaces auth.ExtractSFDIPrefix (the short-SFDI guard,
+// GRIDAPPSD/ieee-2030_5-server-go#13). The server wires
+// auth.ExtractSFDIPrefix; tests supply a trivial truncation.
 //
 // Its RETURN VALUE is no longer used to address the device: resource URLs
 // now carry the opaque index allocated by EndDeviceIndexer (see below). It

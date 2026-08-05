@@ -10,7 +10,8 @@ import (
 )
 
 // SubscriptionStore must surface subscriptions scoped to the EndDevice
-// they were POSTed under. This used to be broken: the secondary
+// they were POSTed under (GRIDAPPSD/ieee-2030_5-server-go#168). This
+// used to be broken: the secondary
 // deviceIndex existed but was never populated, so
 // ListByDeviceWithIDs (and ListByDevice) returned empty regardless of
 // state. The handler at GET /edev/{id}/sub was therefore wired to the

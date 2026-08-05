@@ -189,10 +189,11 @@ func TestGenerateDeviceTestCert(t *testing.T) {
 }
 
 // TestGenerateDeviceCertRejectsEmptyHWSerial verifies that the generator
-// refuses to produce a device cert without a hardware serial number.
-// Per CSIP section 6.2 / IEEE 2030.5 section 6.11, every device cert
-// participating in CSIP registration MUST carry a HardwareModuleName SAN:
-// silently omitting the SAN is non-compliant.
+// refuses to produce a device cert without a hardware serial number
+// (GRIDAPPSD/ieee-2030_5-server-go#17). Per CSIP section 6.2 / IEEE
+// 2030.5 section 6.11, every device cert participating in CSIP
+// registration MUST carry a HardwareModuleName SAN: silently omitting
+// the SAN is non-compliant.
 func TestGenerateDeviceCertRejectsEmptyHWSerial(t *testing.T) {
 	caCert, caKey := generateTestCA(t)
 

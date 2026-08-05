@@ -111,10 +111,11 @@ func TestDERProgramMarshal(t *testing.T) {
 }
 
 // TestDERControlBaseModeFieldsRoundTrip exercises the mode fields
-// (LVRT/HVRT/LFRT/HFRT curve refs, opModVoltWatt, opModFreqWatt)
-// for XML marshal -> unmarshal fidelity. Each subtest seeds exactly one
-// field so a regression in the per-field tag or omit-if-nil behavior
-// trips loudly. Curve-ref values are arbitrary non-zero int32s.
+// (LVRT/HVRT/LFRT/HFRT curve refs, opModVoltWatt, opModFreqWatt) added by
+// GRIDAPPSD/ieee-2030_5-server-go#140, for XML marshal -> unmarshal
+// fidelity. Each subtest seeds exactly one field so a regression in the
+// per-field tag or omit-if-nil behavior trips loudly. Curve-ref values are
+// arbitrary non-zero int32s.
 func TestDERControlBaseModeFieldsRoundTrip(t *testing.T) {
 	type modeField struct {
 		name    string

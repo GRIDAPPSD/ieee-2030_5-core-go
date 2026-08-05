@@ -15,8 +15,9 @@ import (
 )
 
 // GET /edev/{id}/sub must return only subscriptions scoped to EndDevice
-// {id}. The handler used to be wired to the underlying union Store and
-// returned the union across all EndDevices.
+// {id} (GRIDAPPSD/ieee-2030_5-server-go#168). The handler used to be
+// wired to the underlying union Store and returned the union across all
+// EndDevices.
 
 func seedSub(t *testing.T, store *memory.SubscriptionStore, id, edevID, resource string) {
 	t.Helper()

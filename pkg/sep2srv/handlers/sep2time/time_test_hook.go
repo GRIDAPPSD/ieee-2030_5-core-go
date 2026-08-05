@@ -1,8 +1,8 @@
 //go:build csip_test_hooks
 
 // Build-tag-gated time-advance hook for the CSIP V1.2 conformance harness
-// (CORE-006). Adds a test-controlled offset to the Time resource's clock
-// without touching wall-clock time.
+// (CORE-006, GRIDAPPSD/ieee-2030_5-server-go#28). Adds a test-controlled
+// offset to the Time resource's clock without touching wall-clock time.
 //
 // Enabled only when the binary is built with `-tags csip_test_hooks`.
 // The companion file time.go (no tag predicate) declares the nowFunc

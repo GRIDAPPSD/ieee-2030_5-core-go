@@ -56,7 +56,8 @@ func BuildSubscriptionList(href string, result store.ListResult[sep2.Subscriptio
 // subscription list under an EndDevice contains only that EndDevice's
 // subscriptions. This route used to pipe through the underlying union
 // Store, which leaked subscriptions across EndDevices and forced AGG-001
-// to a presence-only assertion as a workaround; that leak is fixed.
+// to a presence-only assertion as a workaround; that leak is fixed
+// (GRIDAPPSD/ieee-2030_5-server-go#168).
 //
 // Paging (s/l/a) follows the same spec-section-4.6.2 contract as the
 // generic list handler. The store returns the full per-EndDevice slice;
@@ -190,7 +191,8 @@ func HandleCreateSubscription(subStore *memory.SubscriptionStore) http.HandlerFu
 // On a successful delete, the handler dispatches a final "Removed"
 // Notification (Status=3) to the deleted subscription's notification
 // receiver via the supplied notifyRemoved callback, per CSIP V1.2 section
-// 11.6 strengthening. The notify call is best-effort: the spec does
+// 11.6 strengthening (GRIDAPPSD/ieee-2030_5-server-go#169). The notify
+// call is best-effort: the spec does
 // not require the final Notification, so a queue-full, marshal, or
 // transport error is logged but does not change the 204 response.
 //

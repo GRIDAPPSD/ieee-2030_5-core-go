@@ -15,8 +15,9 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// Per CSIP V1.2 section 11.6: final Removed-Notification on subscription
-// delete. The Manager exposes NotifyRemoved as a per-subscriber dispatch
+// Per CSIP V1.2 section 11.6 (GRIDAPPSD/ieee-2030_5-server-go#169): final
+// Removed-Notification on subscription delete. The Manager exposes
+// NotifyRemoved as a per-subscriber dispatch
 // (the existing Notify(href) broadcasts by SubscribedResource, which would
 // hit every co-tenant subscriber on the same resource: wrong semantics
 // for "this one subscription was deleted").

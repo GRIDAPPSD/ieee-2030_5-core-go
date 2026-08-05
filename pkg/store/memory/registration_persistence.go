@@ -12,7 +12,8 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 )
 
-// Durable RegistrationStore persistence.
+// Durable RegistrationStore persistence
+// (GRIDAPPSD/ieee-2030_5-server-go#165).
 //
 // RegistrationStore adds on-disk snapshots to a Registration collection: every
 // mutation that succeeds against the collection is followed by a whole-file

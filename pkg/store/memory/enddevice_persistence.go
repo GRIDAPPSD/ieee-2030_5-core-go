@@ -9,7 +9,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 )
 
-// Durable EndDeviceStore persistence.
+// Durable EndDeviceStore persistence (GRIDAPPSD/ieee-2030_5-server-go#165).
 //
 // Wraps the existing in-memory EndDeviceStore with on-disk JSON snapshots
 // using the shared envelope/atomic-write machinery in persistence.go. The

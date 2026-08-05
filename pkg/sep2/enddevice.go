@@ -30,8 +30,9 @@ type EndDevice struct {
 	Enabled                        *bool     `xml:"enabled,omitempty"`
 	FunctionSetAssignmentsListLink *ListLink `xml:"FunctionSetAssignmentsListLink,omitempty"`
 	RegistrationLink               *Link     `xml:"RegistrationLink,omitempty"`
-	// SubscriptionListLink is the per-EndDevice subscription list, per
-	// IEEE 2030.5 section 10.5.5 / CSIP V1.2 CORE-018 step 1. Servers that
+	// SubscriptionListLink is the per-EndDevice subscription list
+	// (GRIDAPPSD/ieee-2030_5-server-go#180), per IEEE 2030.5 section
+	// 10.5.5 / CSIP V1.2 CORE-018 step 1. Servers that
 	// support subscription/notification advertise this link so an inverter
 	// can POST a Subscription resource to it; servers that don't simply
 	// omit it (and any POST to a non-advertised path returns 405, which the

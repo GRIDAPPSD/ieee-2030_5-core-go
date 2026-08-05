@@ -133,7 +133,8 @@ func TestFormatSFDIRoundTrip(t *testing.T) {
 	}
 }
 
-// TestPropSFDIChecksumLaw is a property test (plan-4).
+// TestPropSFDIChecksumLaw is a property test (plan-4,
+// GRIDAPPSD/ieee-2030_5-server-go#214).
 //
 // Property: for any device certificate, SFDI(cert) always produces a valid
 // SFDI string: i.e. ValidateSFDI(SFDI(cert)) == true for all inputs.

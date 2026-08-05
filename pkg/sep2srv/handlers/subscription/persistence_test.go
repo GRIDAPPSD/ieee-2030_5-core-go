@@ -15,8 +15,9 @@ import (
 )
 
 // TestERR002RealRestartViaDiskPersistence covers the durable-persistence
-// happy path equivalent of TestERR002RestartPreservesSubscriptions, but
-// uses the durable JSON-file backend instead of the test-only
+// happy path (GRIDAPPSD/ieee-2030_5-server-go#224) equivalent of
+// TestERR002RestartPreservesSubscriptions, but uses the durable JSON-file
+// backend instead of the test-only
 // snapshot/restore hooks. The simulated "restart" is now a fresh
 // SubscriptionStore that reads its initial state from disk: the
 // binary-restart shape Pike flagged as missing from Path A.

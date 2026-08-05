@@ -11,13 +11,14 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// Durable subscription persistence: these tests pin the minimum contract
-// for the Path B JSON-file backend:
+// Durable subscription persistence (GRIDAPPSD/ieee-2030_5-server-go#224):
+// these tests pin the minimum contract for the Path B JSON-file backend:
 //   1. Create writes a recoverable snapshot to the configured path.
 //   2. Delete updates the on-disk snapshot.
 //   3. LoadFromFile rehydrates a fresh store from disk (cold start).
 //   4. Snapshot/restore parity: after a write/load cycle the in-memory
-//      view matches the SnapshotForTesting() shape from Path A.
+//      view matches the SnapshotForTesting() shape from Path A
+//      (GRIDAPPSD/ieee-2030_5-server-go#25).
 //   5. Crash-shape: a half-written temp file does not corrupt the live
 //      snapshot (atomic-rename).
 //   6. Concurrency: parallel Create/Delete/Get is race-clean and the

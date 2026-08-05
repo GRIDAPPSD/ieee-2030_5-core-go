@@ -12,9 +12,10 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// DERProgram persistence. FSA records reference program hrefs (e.g.
-// "/edev/1/fsa/A/derp/1"). For those hrefs to resolve
-// after a restart, the DERProgramStore has to survive too.
+// DERProgram persistence (GRIDAPPSD/ieee-2030_5-server-go#165). FSA
+// records (GRIDAPPSD/ieee-2030_5-server-go#163) reference program hrefs
+// (e.g. "/edev/1/fsa/A/derp/1"). For those hrefs to resolve after a
+// restart, the DERProgramStore has to survive too.
 //
 // DERPrograms live in a ScopedStore[*Store[sep2.DERProgram]] keyed by
 // device ID. The persistence wrapper flattens the (parent, id, program)

@@ -19,8 +19,9 @@ import (
 	septls "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls"
 )
 
-// TestLoadClientCAs covers the multi-root ClientCA loader the Enphase
-// runtime profile depends on. Each subtest is isolated under
+// TestLoadClientCAs covers the multi-root ClientCA loader
+// (GRIDAPPSD/ieee-2030_5-server-go#75) the Enphase runtime profile
+// depends on. Each subtest is isolated under
 // t.TempDir so concurrent runs cannot collide on disk.
 func TestLoadClientCAs(t *testing.T) {
 	t.Parallel()

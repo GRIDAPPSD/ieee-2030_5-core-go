@@ -1,9 +1,10 @@
 // Package sep2_test pins the ResponseStatus* named constants to their
 // IEEE 2030.5-2023 section 10.10 Table 31 wire values.
 //
-// The constants were renumbered because the pre-existing values were
-// off-by-one against Table 31 (EventReceived was 0 instead of 1,
-// EventCancelled was 5 instead of 6). The CSIP server-side test
+// The constants were renumbered (GRIDAPPSD/ieee-2030_5-server-go#109)
+// because the pre-existing values were off-by-one against Table 31
+// (EventReceived was 0 instead of 1, EventCancelled was 5 instead of 6).
+// The CSIP server-side test
 // `test/csip/core_022_responses_test.go` had to use raw uint8 literals
 // 1/2/3/6 to bypass the wrong constants. Now the constants match the wire
 // values and that test uses the named constants.

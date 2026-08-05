@@ -62,7 +62,8 @@ func TestNegotiateEncoderXMLExplicit(t *testing.T) {
 
 // TestNegotiateEncoderUnknownAccept verifies that an unrecognized Accept value
 // (including the removed "application/sep-exi") falls back to the XML encoder.
-// EXI support was removed; this is the post-removal contract.
+// EXI support was removed (GRIDAPPSD/ieee-2030_5-server-go#2); this is
+// the post-removal contract.
 func TestNegotiateEncoderUnknownAccept(t *testing.T) {
 	cases := []string{
 		"application/sep-exi",

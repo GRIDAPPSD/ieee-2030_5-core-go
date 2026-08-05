@@ -151,9 +151,10 @@ func TestEndDeviceCopy(t *testing.T) {
 	}
 }
 
-// SubscriptionListLink must round-trip when present and be omitted when
-// absent (omitempty). Backward XML compatibility for servers that don't
-// advertise subscription support.
+// SubscriptionListLink (GRIDAPPSD/ieee-2030_5-server-go#180) must
+// round-trip when present and be omitted when absent (omitempty).
+// Backward XML compatibility for servers that don't advertise
+// subscription support.
 func TestEndDeviceSubscriptionListLink_RoundTrip(t *testing.T) {
 	original := sep2.EndDevice{
 		SubscribableResource: sep2.SubscribableResource{

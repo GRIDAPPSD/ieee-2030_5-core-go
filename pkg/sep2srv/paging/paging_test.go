@@ -81,7 +81,8 @@ func TestToListOptions(t *testing.T) {
 	}
 }
 
-// TestPropLimitClamp is a property test (plan-4).
+// TestPropLimitClamp is a property test (plan-4,
+// GRIDAPPSD/ieee-2030_5-server-go#220).
 //
 // Property A (clamp): for any numeric value of the "l" query parameter,
 // ParseQuery returns Params.Limit in [0, MaxLimit]. Never above 255, never
