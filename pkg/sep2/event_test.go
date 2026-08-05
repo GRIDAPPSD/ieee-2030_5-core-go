@@ -3,7 +3,7 @@
 // XSD `RespondableResource` declare as ATTRIBUTES (sep.xsd:5435, sep.xsd:5440).
 //
 // These tests gate the OnTransition hook-wiring work
-// (GRIDAPPSD/ieee-2030_5-server-go#109): the hook reads
+// (GRIDAPPSD/ieee-2030_5-server-go#112): the hook reads
 // `ReplyTo` off a decoded DERControl to drive `(*SEP2Client).
 // PostResponse`, and reads the `ResponseRequired` bitmap to decide
 // which transition statuses warrant a Response POST.
