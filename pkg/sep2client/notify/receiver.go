@@ -40,7 +40,7 @@ import (
 type gotlsConnKey struct{}
 
 // contentTypeSEPXML is the mandatory content type for IEEE 2030.5 resource
-// payloads per IEEE 2030.5 §10 / CSIP §6.6.
+// payloads per IEEE 2030.5 section 10 / CSIP section 6.6.
 const contentTypeSEPXML = "application/sep+xml"
 
 // maxBodyBytes caps the Notification POST body to prevent OOM from a buggy
@@ -271,7 +271,7 @@ func (r *Receiver) Stop(ctx context.Context) error {
 
 // handler returns the http.HandlerFunc bound to POST /notify.
 //
-// Status code policy (IEEE 2030.5 §10.13):
+// Status code policy (IEEE 2030.5 section 10.13):
 //   - 405 Method Not Allowed for any non-POST method.
 //   - 415 Unsupported Media Type when the base media type is not application/sep+xml.
 //   - 400 Bad Request on read failure, body-too-large, empty body, malformed
@@ -288,7 +288,7 @@ func (r *Receiver) handler() http.HandlerFunc {
 			return
 		}
 
-		// IEEE 2030.5 §10 / CSIP §6.6 mandates application/sep+xml. Use
+		// IEEE 2030.5 section 10 / CSIP section 6.6 mandates application/sep+xml. Use
 		// mime.ParseMediaType to extract the base type so that valid
 		// variants such as "application/sep+xml; charset=utf-8" or
 		// uppercased values are accepted.

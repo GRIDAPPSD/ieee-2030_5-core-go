@@ -136,7 +136,7 @@ func TestFormatSFDIRoundTrip(t *testing.T) {
 // TestPropSFDIChecksumLaw is a property test (plan-4).
 //
 // Property: for any device certificate, SFDI(cert) always produces a valid
-// SFDI string — i.e. ValidateSFDI(SFDI(cert)) == true for all inputs.
+// SFDI string: i.e. ValidateSFDI(SFDI(cert)) == true for all inputs.
 //
 // The CA is generated once and shared across iterations; only the device cert
 // (varying HWSerialNum) is generated per iteration to keep the test fast.
@@ -209,8 +209,8 @@ func TestPropSFDIValidatorRejectsMalformed(t *testing.T) {
 	})
 
 	malformed := rapid.OneOf(
-		rapid.StringN(0, 11, -1),  // too short (0–11 runes)
-		rapid.StringN(13, 30, -1), // too long (13–30 runes)
+		rapid.StringN(0, 11, -1),  // too short (0-11 runes)
+		rapid.StringN(13, 30, -1), // too long (13-30 runes)
 		twelveWithNonDigit,        // exactly 12 runes but contains non-digit
 	)
 

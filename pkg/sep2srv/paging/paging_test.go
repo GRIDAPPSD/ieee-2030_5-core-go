@@ -60,7 +60,7 @@ func TestParseQueryInvalidValues(t *testing.T) {
 }
 
 func TestParseQueryLimitZero(t *testing.T) {
-	// l=0 is a spec-defined edge case per CSIP V1.2 §5.6: a client may request
+	// l=0 is a spec-defined edge case per CSIP V1.2 section 5.6: a client may request
 	// zero items to observe the All count without fetching any payload. The
 	// server returns zero items and sets Results=0 while All still reflects the
 	// full store count. ParseQuery must not clamp l=0 to DefaultLimit.
@@ -68,7 +68,7 @@ func TestParseQueryLimitZero(t *testing.T) {
 	p := paging.ParseQuery(q)
 
 	if p.Limit != 0 {
-		t.Errorf("l=0: Limit = %d, want 0 (spec-valid count-peek per CSIP V1.2 §5.6)", p.Limit)
+		t.Errorf("l=0: Limit = %d, want 0 (spec-valid count-peek per CSIP V1.2 section 5.6)", p.Limit)
 	}
 }
 
@@ -87,7 +87,7 @@ func TestToListOptions(t *testing.T) {
 // ParseQuery returns Params.Limit in [0, MaxLimit]. Never above 255, never
 // negative (uint32 rules out negative; MaxLimit caps the upper bound).
 //
-// Note: l=0 is a spec-defined edge case per CSIP V1.2 §5.6 (count-peek: zero
+// Note: l=0 is a spec-defined edge case per CSIP V1.2 section 5.6 (count-peek: zero
 // items returned, All still set). The lower bound here is 0, not 1.
 // TestPropLimitZeroSpecEdge below documents the l=0 contract separately.
 //
@@ -110,17 +110,17 @@ func TestPropLimitClamp(t *testing.T) {
 		// For valid in-range inputs [0, MaxLimit], the parsed value must be
 		// preserved exactly (including zero).
 		if v <= uint32(paging.MaxLimit) && p.Limit != v {
-			rt.Fatalf("Limit %d ≠ input %d (in-range, no clamping expected)", p.Limit, v)
+			rt.Fatalf("Limit %d != input %d (in-range, no clamping expected)", p.Limit, v)
 		}
 		// For over-range inputs (v > MaxLimit), Limit must equal MaxLimit.
 		if v > uint32(paging.MaxLimit) && p.Limit != paging.MaxLimit {
-			rt.Fatalf("Limit %d ≠ MaxLimit %d for over-range l=%d", p.Limit, paging.MaxLimit, v)
+			rt.Fatalf("Limit %d != MaxLimit %d for over-range l=%d", p.Limit, paging.MaxLimit, v)
 		}
 	})
 }
 
 // TestPropLimitZeroSpecEdge documents the l=0 spec contract as a standalone
-// property. CSIP V1.2 §5.6 defines l=0 as a "count-peek": the server returns
+// property. CSIP V1.2 section 5.6 defines l=0 as a "count-peek": the server returns
 // zero items in the body but sets All to the full store count. ParseQuery must
 // pass through Limit=0 without clamping.
 func TestPropLimitZeroSpecEdge(t *testing.T) {
@@ -139,7 +139,7 @@ func TestPropLimitZeroSpecEdge(t *testing.T) {
 		p := paging.ParseQuery(q)
 
 		if p.Limit != 0 {
-			rt.Fatalf("l=0: Limit = %d, want 0 (spec-valid count-peek per CSIP V1.2 §5.6)", p.Limit)
+			rt.Fatalf("l=0: Limit = %d, want 0 (spec-valid count-peek per CSIP V1.2 section 5.6)", p.Limit)
 		}
 	})
 }
@@ -186,7 +186,7 @@ func TestPropDefaulting(t *testing.T) {
 // TestPropInvalidInputInvariance is a property test (plan-4).
 //
 // Property C (invalid-input invariance): for any non-numeric or out-of-range
-// value for "s" or "l", ParseQuery falls back to defaults — never panics,
+// value for "s" or "l", ParseQuery falls back to defaults: never panics,
 // never returns an error to the caller.
 func TestPropInvalidInputInvariance(t *testing.T) {
 	// Generate strings that are definitely not valid uint32 decimal strings.
