@@ -13,7 +13,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// The LogEvent function set at its WADL address (IEEECORE-084).
+// The LogEvent function set at its WADL address.
 //
 // The list and the POST were mounted at /edev/{id}/log and the instance was
 // mounted nowhere, while the WADL declares the list at /edev/{id1}/lel
@@ -24,7 +24,7 @@ import (
 // Location for was served at no address at all.
 //
 // The /log routes are REMOVED rather than kept as an alias. Nothing advertised
-// them: no production path assigned LogEventListLink before this card, so the
+// them: no production path assigned LogEventListLink before this, so the
 // only way to reach /log was to know the string. An undeclared second address
 // is a second surface to keep conformant forever, and a resource reachable at
 // only one of two addresses shows a client a different LogEvent set depending
@@ -63,7 +63,7 @@ func sampleLogEvent(id uint16, code uint8) sep2.LogEvent {
 	return sep2.LogEvent{
 		CreatedDateTime: 1604963587 + int64(id),
 		// 18 characters. sep.xsd types details as String32, and the wire-format
-		// gate does not enforce maxLength (see the findings on IEEECORE-084), so
+		// gate does not enforce maxLength, so
 		// a fixture longer than 32 would go undetected here while being invalid
 		// on the standard's terms.
 		Details:      "gen software alarm",
@@ -105,7 +105,7 @@ func postLogEvent(t *testing.T, srv *httptest.Server, edevID string, evt sep2.Lo
 
 // getBytes issues a GET and returns the status and the raw body. The bytes are
 // returned, not a decoded struct, because a round trip through encoding/xml
-// cannot see an element emitted as an attribute or the reverse (IEEECORE-103).
+// cannot see an element emitted as an attribute or the reverse.
 func getBytes(t *testing.T, srv *httptest.Server, path string) (int, []byte) {
 	t.Helper()
 
@@ -260,8 +260,8 @@ func TestLogEvent_ScopeBindsToTheEndDeviceInThePath(t *testing.T) {
 //
 // The present event is fetched first, in this same test. A 404-only assertion
 // is vacuous while the route is unmounted, because an unrouted path 404s too:
-// that exact test was green against the very defect it was meant to catch in
-// IEEECORE-081.
+// that exact test was once green against the very defect it was meant to
+// catch.
 func TestLogEvent_UnknownIDIsACleanNotFound(t *testing.T) {
 	t.Parallel()
 
@@ -285,9 +285,9 @@ func TestLogEvent_UnknownIDIsACleanNotFound(t *testing.T) {
 // mode M at sep_wadl.xml:1430.
 //
 // DELETE is a WRITE, and this mount carries no ownership binding: any
-// authenticated caller that knows a path can delete the event under it. That is
-// the cross-cutting gap IEEECORE-031 owns (retargeted to server-go by ADR-002),
-// not something this route invented; the store scoping asserted below is what
+// authenticated caller that knows a path can delete the event under it. That
+// is a separate cross-cutting gap (retargeted to server-go by ADR-002), not
+// something this route invented; the store scoping asserted below is what
 // this layer does enforce, and it is not the same property.
 func TestLogEvent_DeleteIsServedAndScoped(t *testing.T) {
 	t.Parallel()
@@ -376,7 +376,7 @@ func TestLogEvent_InstanceUnservedMethodsGet405WithAnAccurateAllow(t *testing.T)
 // on the LIST (sep_wadl.xml:1358): PUT and DELETE.
 //
 // Neither is implemented and neither is in scope here: mounting PUT on a list
-// is the WADL-declared-method sweep IEEECORE-070 owns. What this card DOES owe
+// is a separate WADL-declared-method sweep. What this test DOES require
 // is that the refusal is an explicit 405 with an accurate Allow rather than the
 // 404 an unmounted path produces, because a 404 is indistinguishable from "this
 // server has no LogEvent function set at all" and would let a missing route
@@ -451,8 +451,8 @@ func TestLogEvent_HEADIsServedOnListAndInstance(t *testing.T) {
 //
 // A round trip cannot see an element-versus-attribute error: encoding/xml will
 // happily write logEventCode as an attribute and read it back into the same
-// field, and every value assertion still passes. That is exactly how the
-// IEEECORE-103 regression shipped. sep.xsd declares every LogEvent field below
+// field, and every value assertion still passes. That is exactly how a real
+// regression once shipped. sep.xsd declares every LogEvent field below
 // as an ELEMENT of the sequence, and href, all, results and pollRate as
 // ATTRIBUTES, so both directions are pinned here.
 func TestLogEvent_SerializedBytesCarryElementsNotAttributes(t *testing.T) {

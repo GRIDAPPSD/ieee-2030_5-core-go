@@ -8,7 +8,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 )
 
-// DER sub-resource link derivation (IEEECORE-052).
+// DER sub-resource link derivation.
 //
 // # Why derivation happens at serve time
 //
@@ -51,8 +51,8 @@ import (
 // act.
 //
 // AssociatedDERProgramList, CurrentDERProgram and AssociatedUsagePoint are
-// absent for exactly that reason: IEEECORE-054, IEEECORE-056 and IEEECORE-057
-// own their routes, and the last two have no field on [sep2.DER] yet either.
+// absent for exactly that reason: nothing yet owns their routes, and the
+// last two have no field on [sep2.DER] yet either.
 type DERLinkPolicy struct {
 	// Capability gates DERCapabilityLink, which 2018 section 10.10.5 requires
 	// on every served DER. A router that mounts the DER function set at all
@@ -87,9 +87,9 @@ type DERLinkPolicy struct {
 //
 // One case is deliberately NOT handled: a stored link pointing at a function set
 // that is not mounted. That is a live section 4.4 violation, and stripping it
-// here would make a read path rewrite stored data. It belongs to IEEECORE-062,
-// and it cannot fire today because the only links anything stamps are the
-// mounted four.
+// here would make a read path rewrite stored data. It is tracked as future
+// work, and it cannot fire today because the only links anything stamps are
+// the mounted four.
 func FillAbsentDERLinks(d *sep2.DER, base string, p DERLinkPolicy) {
 	if d == nil {
 		return
@@ -149,11 +149,11 @@ func DropUnpermittedDERLinks(d *sep2.DER, p DERLinkPolicy) {
 	dropLink(&d.DERStatusLink, p.Status, "DERStatusLink")
 
 	// AssociatedDERProgramListLink has no policy field because nothing derives
-	// it and no route serves /edev/{id}/der/{derId}/derp yet (IEEECORE-054), so
-	// it is never permitted. When that card lands it gains a field, a fill and a
-	// mount together, and this special case goes away.
+	// it and no route serves /edev/{id}/der/{derId}/derp yet, so it is never
+	// permitted. When that lands it gains a field, a fill and a mount
+	// together, and this special case goes away.
 	if d.AssociatedDERProgramListLink != nil {
-		log.Printf("der: dropping client-supplied AssociatedDERProgramListLink %q: no route serves the associated DERProgram list yet (IEEECORE-054)",
+		log.Printf("der: dropping client-supplied AssociatedDERProgramListLink %q: no route serves the associated DERProgram list yet",
 			d.AssociatedDERProgramListLink.Href)
 		d.AssociatedDERProgramListLink = nil
 	}
@@ -180,7 +180,7 @@ func dropLink(dst **sep2.Link, permitted bool, field string) {
 //   - On PUT the Href is re-stamped from the request path unconditionally. A
 //     client must not be able to write a DER whose own href disagrees with the
 //     URI it was written to, the same reasoning that makes the mirror path
-//     override a client-supplied Href server-side (IEEECORE-019).
+//     override a client-supplied Href server-side.
 //   - On GET a stored Href WINS, because it is upstream data rather than client
 //     input. A disagreement with the request path is logged, not corrected.
 func StampDERInstance(p DERLinkPolicy) func(r *http.Request, d *sep2.DER) {
