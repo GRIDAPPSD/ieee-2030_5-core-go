@@ -14,7 +14,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/storetest"
 )
 
-// The router, over a SECOND implementation of the store contract (IEEECORE-085).
+// The router, over a SECOND implementation of the store contract.
 //
 // This file is what makes the store interfaces a seam rather than a
 // declaration. The compile-time assertions in pkg/store/memory prove an
@@ -34,8 +34,8 @@ import (
 // share no code and no data structure with the memory store: a flat slice
 // sorted at list time rather than a map plus a maintained sort order, and for
 // the scoped half no per-parent object at all. The memory store used to differ
-// here, allocating a bucket for an unknown parent on read; IEEECORE-111 removed
-// that, so the two implementations now agree that a read creates nothing.
+// here, allocating a bucket for an unknown parent on read; that behavior was
+// removed, so the two implementations now agree that a read creates nothing.
 //
 // The requests cover both halves of the contract in both directions: a flat
 // POST and GET (UsagePoint, [store.ResourceStore]) and a scoped POST, GET and

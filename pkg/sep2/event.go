@@ -42,7 +42,7 @@ type Event struct {
 	// ATTRIBUTE, not element: sep.xsd:5435 declares it
 	// `<xs:attribute name="replyTo" use="optional" type="xs:anyURI"/>`.
 	// Emitting it as a child element made the EPRI reference client abort
-	// the whole DERControlList parse (IEEECORE-103).
+	// the whole DERControlList parse.
 	ReplyTo string `xml:"replyTo,attr,omitempty"`
 
 	// ResponseRequired is a HexBinary8 bitmap selecting which transition
@@ -60,7 +60,8 @@ type Event struct {
 	// a pointer is nil, so a non-nil pointer to 0x00 still reaches the wire
 	// as responseRequired="00". That is what lets a server express
 	// "explicitly no response wanted" distinguishably from "unset", which is
-	// the default-versus-override semantic IEEECORE-067 depends on.
+	// the default-versus-override semantic the server's response policy
+	// depends on.
 	ResponseRequired *HexBinary8 `xml:"responseRequired,attr,omitempty"`
 
 	MRID        string `xml:"mRID,omitempty"`

@@ -12,20 +12,20 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/assembly"
 )
 
-// CSIP V1.2 section 8.27, Alarms (LogEvent), as a LINK WALK (IEEECORE-084).
+// CSIP V1.2 section 8.27, Alarms (LogEvent), as a LINK WALK.
 //
-// This is the assertion the routing and the advertisement halves of the card
-// exist to make possible, and it is deliberately written the way a conforming
-// client behaves rather than the way a test with prior knowledge of the URL
-// space would: every address after /dcap is READ OFF THE PREVIOUS RESPONSE. No
+// This is the assertion the routing and the advertisement halves exist to
+// make possible, and it is deliberately written the way a conforming client
+// behaves rather than the way a test with prior knowledge of the URL space
+// would: every address after /dcap is READ OFF THE PREVIOUS RESPONSE. No
 // step hardcodes /lel. That is what makes the walk evidence rather than
-// decoration, because a server that served the list at the right address while
-// advertising nothing would pass a hardcoded test and fail this one at step 2,
-// which is the exact state this card found.
+// decoration, because a server that served the list at the right address
+// while advertising nothing would pass a hardcoded test and fail this one at
+// step 2, which is the exact state this once found.
 //
 // BASIC-027 step 2 is "Using the EndDevice instance, find the LogEventListLink",
 // with pass criteria "Client was able to successfully find the LogEventListLink
-// in its EndDevice". Before this card no production path assigned that link, so
+// in its EndDevice". Before this, no production path assigned that link, so
 // step 2 could not pass against this server at any address.
 //
 // Scope, stated so this file is not mistaken for the whole procedure: the
@@ -36,8 +36,8 @@ import (
 //
 // leGenSoftware is the LogEventCode V1.2 section 8.27 Table 8-27 assigns to the
 // "General Software" classification. It is a test-local constant because
-// pkg/sep2 does not model the LogEventCode enum; adding it is out of this
-// card's scope.
+// pkg/sep2 does not model the LogEventCode enum; adding it is out of scope
+// here.
 const leGenSoftware uint8 = 27
 
 // TestBASIC_027_Alarms walks a client from /dcap to a LogEvent instance.
@@ -192,11 +192,11 @@ func TestBASIC_027_Alarms(t *testing.T) {
 }
 
 // TestBASIC_027_ListPUTIsOutOfScopeAndRefused records the one method on the
-// LogEventList this card deliberately does not implement.
+// LogEventList deliberately not implemented here.
 //
 // PUT is mode E at sep_wadl.xml:1379: the server is required to answer 400 or
-// 405, explicitly, per section 4.3 c) 4). Mounting the full WADL-declared method
-// set is IEEECORE-070's sweep and is NOT done here.
+// 405, explicitly, per section 4.3 c) 4). Mounting the full WADL-declared
+// method set is a separate sweep and is NOT done here.
 //
 // It is recorded rather than left silent because the two ways to not implement a
 // method are not equivalent. A 404 means "there is nothing at this address at

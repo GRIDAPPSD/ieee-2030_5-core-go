@@ -132,8 +132,8 @@ func TestValidateCatches(t *testing.T) {
 			wantIn:   "bogusAttr",
 		},
 		{
-			// The root-level schemaVer tolerance (IEEECORE-078) is narrow:
-			// it applies to the root element only. A schemaVer attribute
+			// The root-level schemaVer tolerance is narrow: it applies to
+			// the root element only. A schemaVer attribute
 			// emitted on a non-root, nested complex element is still not
 			// declared by the schema and is still an unknown attribute
 			// there.
@@ -256,7 +256,7 @@ func TestValidateAcceptsConformantDocuments(t *testing.T) {
 			// element of every payload. The 2.1 schema this gate checks
 			// against predates that requirement and declares no such
 			// attribute, so a conformant 2023 peer must not be rejected for
-			// carrying it. See IEEECORE-078.
+			// carrying it.
 			name:     "2023 schemaVer attribute on the root element",
 			typeName: "Reading",
 			doc:      `<Reading ` + ns + ` schemaVer="2.2"></Reading>`,

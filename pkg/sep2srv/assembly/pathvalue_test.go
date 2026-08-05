@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-// Path-value declaration guard (IEEECORE-059).
+// Path-value declaration guard.
 //
 // A handler that calls r.PathValue("id") on a route whose pattern declares no
 // {id} gets the empty string back. No panic, no error, no log line: the handler
@@ -63,7 +63,7 @@ var patternWildcard = regexp.MustCompile(`\{([a-zA-Z0-9_]+)(\.\.\.)?\}`)
 // It is EMPTY, and that is the fixed state of this defect class rather than an
 // absence of coverage. The two entries it carried, GET /upt/{uptId}/mr and
 // GET /msg/{msgId}/tm, were both scopedListHandler mounts reading a hardcoded
-// "id"; IEEECORE-059 gave that helper the parentParam argument its sibling
+// "id"; that helper was given the parentParam argument its sibling
 // scopedResourceHandler already had, so there is no longer a mount that can read
 // a name without naming it. An entry added here again is a route knowingly
 // serving the wrong scope, and it needs the card that will remove it.
