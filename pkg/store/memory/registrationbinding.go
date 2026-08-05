@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -288,7 +289,7 @@ func (s *RegisteredEndDeviceStore) GetBySFDI(ctx context.Context, sfdi string) (
 	if err != nil {
 		return sep2.EndDevice{}, err
 	}
-	return s.deriveByHref(ctx, device), nil
+	return s.deriveByHref(ctx, device)
 }
 
 // GetByLFDI returns the device with the given LFDI, link-derived.
@@ -297,17 +298,28 @@ func (s *RegisteredEndDeviceStore) GetByLFDI(ctx context.Context, lfdi string) (
 	if err != nil {
 		return sep2.EndDevice{}, err
 	}
-	return s.deriveByHref(ctx, device), nil
+	return s.deriveByHref(ctx, device)
 }
 
 // List returns a page of EndDevices, each link-derived.
+//
+// IEEECORE-107: a Registration lookup that fails while deriving one item's
+// link is reported, not swallowed. A list that cannot be truthfully
+// constructed must not be served as though it were: the caller (ultimately
+// listhandler.ListHandler, which already routes a non-nil error here
+// through srverr.Internal) answers 5xx rather than a 200 whose entries
+// silently disagree with the Registration store's real state.
 func (s *RegisteredEndDeviceStore) List(ctx context.Context, opts store.ListOptions) (store.ListResult[sep2.EndDevice], error) {
 	result, err := s.devs.List(ctx, opts)
 	if err != nil {
 		return store.ListResult[sep2.EndDevice]{}, err
 	}
 	for i := range result.Items {
-		result.Items[i] = s.deriveByHref(ctx, result.Items[i])
+		derived, err := s.deriveByHref(ctx, result.Items[i])
+		if err != nil {
+			return store.ListResult[sep2.EndDevice]{}, err
+		}
+		result.Items[i] = derived
 	}
 	return result, nil
 }
@@ -375,25 +387,33 @@ func (s *RegisteredEndDeviceStore) linkFor(ctx context.Context, id string) (*sep
 // deriveByHref applies linkFor on the read paths that hand back a device
 // without its store key, recovering the key from the device's own Href.
 //
-// A key that cannot be recovered, or a lookup that fails, strips the link:
-// on these paths there is no error to return per item without changing the
-// store contract, so the fail-closed direction is chosen and the reason is
-// logged. No pIN is logged; the message names only the device href.
-func (s *RegisteredEndDeviceStore) deriveByHref(ctx context.Context, device sep2.EndDevice) sep2.EndDevice {
+// A key that cannot be recovered strips the link and returns no error: the
+// device's Href does not follow the "/edev/{key}" addressing invariant, so
+// there is no key to ask the Registration store about, and "no Registration
+// record can exist under a key that does not exist" is a fact this method
+// can assert on its own. That case is logged, since it means an EndDevice
+// was stored off the addressing scheme the rest of the package depends on.
+//
+// A key that IS recovered but whose Registration lookup fails is a
+// different case (IEEECORE-107) and is NOT silenced: whether that device
+// has a Registration is genuinely unknown, and reporting it as absent would
+// tell a client the same thing 2018 section 4.4 p.19 reserves for a
+// function set that truly is not implemented. The error is returned so
+// GetBySFDI, GetByLFDI and List answer the way Get already does, and no pIN
+// is logged or included in it either way.
+func (s *RegisteredEndDeviceStore) deriveByHref(ctx context.Context, device sep2.EndDevice) (sep2.EndDevice, error) {
 	key, ok := keyFromEndDeviceHref(device.Href)
 	if !ok {
 		if device.RegistrationLink != nil {
 			log.Printf("memory: EndDevice href %q does not follow the /edev/{key} addressing invariant; serving it without a RegistrationLink", device.Href)
 		}
 		device.RegistrationLink = nil
-		return device
+		return device, nil
 	}
 	link, err := s.linkFor(ctx, key)
 	if err != nil {
-		log.Printf("memory: cannot determine whether a Registration exists for EndDevice %q: %v; serving it without a RegistrationLink", device.Href, err)
-		device.RegistrationLink = nil
-		return device
+		return sep2.EndDevice{}, fmt.Errorf("determine whether a Registration exists for EndDevice %q: %w", device.Href, err)
 	}
 	device.RegistrationLink = link
-	return device
+	return device, nil
 }
