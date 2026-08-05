@@ -251,6 +251,29 @@ func TestHandleCreateEndDevicePanicsOnNilIndexer(t *testing.T) {
 	_ = coreedev.HandleCreateEndDevice(s, nil, identityOK(testLFDI, testSFDI), sfdiFirst8)
 }
 
+// TestHandleCreateEndDevicePanicsOnTypedNilIndexer is IEEECORE-107's fix to
+// the same guard: a nil *memory.EndDeviceIndex passed as the EndDeviceIndexer
+// interface parameter is NOT equal to the untyped nil literal the previous
+// test covers, because the interface value's type half is set. A plain
+// `idx == nil` comparison let exactly this shape through, which is the
+// caller the constructor's own doc comment says the guard exists for: "any
+// other caller of this exported constructor that passes nil directly."
+// store.IsAbsent (IEEECORE-112) is what closes that gap.
+func TestHandleCreateEndDevicePanicsOnTypedNilIndexer(t *testing.T) {
+	t.Parallel()
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("HandleCreateEndDevice(typed-nil idx) did not panic")
+		}
+	}()
+
+	s := memory.NewEndDeviceStore()
+	var idx *memory.EndDeviceIndex // nil concrete pointer, non-nil interface
+	_ = coreedev.HandleCreateEndDevice(s, idx, identityOK(testLFDI, testSFDI), sfdiFirst8)
+}
+
 // ----- PUT /edev/{id} -----
 
 func TestHandleUpdateEndDevice(t *testing.T) {

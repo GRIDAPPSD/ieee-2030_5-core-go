@@ -140,7 +140,14 @@ func HandleCreateEndDevice(s store.EndDeviceStore, idx EndDeviceIndexer, identit
 	// to a substitute before it ever calls this constructor, so that path
 	// never trips this panic; this check is for any other caller of this
 	// exported constructor that passes nil directly.
-	if idx == nil {
+	//
+	// The guard asks store.IsAbsent rather than comparing against nil
+	// (IEEECORE-112): idx is an interface parameter, and an interface
+	// holding a nil concrete pointer is not equal to nil, so a plain
+	// comparison misses exactly the caller this comment already names: any
+	// other caller of this exported constructor that passes a typed nil
+	// rather than the untyped literal.
+	if store.IsAbsent(idx) {
 		panic("enddevice: HandleCreateEndDevice: idx (EndDeviceIndexer) must not be nil")
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
