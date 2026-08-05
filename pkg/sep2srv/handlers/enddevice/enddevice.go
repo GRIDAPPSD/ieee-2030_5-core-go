@@ -1,7 +1,7 @@
 // Package enddevice provides IEEE 2030.5 EndDevice resource handlers for
 // GET/POST/PUT/DELETE /edev and /edev/{id}. Ported from the reference
 // server's internal/handler/edev.go; auth touch points replaced by the
-// injected AuthPolicy seam (IEEECORE-001 design section 4).
+// injected AuthPolicy seam.
 package enddevice
 
 import (
@@ -121,8 +121,8 @@ func HandleEndDevice(s store.EndDeviceStore) http.HandlerFunc {
 // what every ownership check compares against; the index only decides which
 // URL the record is served under.
 //
-// RegistrationLink is NOT stamped here and is not this handler's to decide
-// (IEEECORE-083). Whether a device may advertise a Registration depends on
+// RegistrationLink is NOT stamped here and is not this handler's to decide.
+// Whether a device may advertise a Registration depends on
 // whether the server holds one, which only the store knows. Pass a
 // *memory.RegisteredEndDeviceStore for s to get the coupled behavior; with
 // any other store no device carries a RegistrationLink, which is what 2018
@@ -141,9 +141,9 @@ func HandleCreateEndDevice(s store.EndDeviceStore, idx EndDeviceIndexer, identit
 	// never trips this panic; this check is for any other caller of this
 	// exported constructor that passes nil directly.
 	//
-	// The guard asks store.IsAbsent rather than comparing against nil
-	// (IEEECORE-112): idx is an interface parameter, and an interface
-	// holding a nil concrete pointer is not equal to nil, so a plain
+	// The guard asks store.IsAbsent rather than comparing against nil: idx
+	// is an interface parameter, and an interface holding a nil concrete
+	// pointer is not equal to nil, so a plain
 	// comparison misses exactly the caller this comment already names: any
 	// other caller of this exported constructor that passes a typed nil
 	// rather than the untyped literal.
@@ -193,7 +193,7 @@ func HandleCreateEndDevice(s store.EndDeviceStore, idx EndDeviceIndexer, identit
 		// state that nothing downstream can distinguish from a genuine second
 		// device, plus a re-addressing that strands the path a client was
 		// already given. A 500 costs the client a retry; the write costs
-		// corruption no later read can detect (IEEECORE-086).
+		// corruption no later read can detect.
 		existing, err := s.GetBySFDI(r.Context(), sfdi)
 		switch {
 		case err == nil:
@@ -225,7 +225,7 @@ func HandleCreateEndDevice(s store.EndDeviceStore, idx EndDeviceIndexer, identit
 		dev.Href = "/edev/" + id
 		dev.FunctionSetAssignmentsListLink = &sep2.ListLink{Href: fmt.Sprintf("/edev/%s/fsa", id)}
 
-		// RegistrationLink is deliberately NOT stamped here (IEEECORE-083).
+		// RegistrationLink is deliberately NOT stamped here.
 		// It used to be, unconditionally, while nothing ever wrote a
 		// Registration record, so every device advertised a resource that
 		// answered 404. The link now comes from the store, which stamps it

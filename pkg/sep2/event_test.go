@@ -11,7 +11,7 @@
 // DERControl and unmarshalling it back with our own encoder and decoder
 // passes identically whether the two fields are encoded as attributes or as
 // child elements, because our decoder accepts whatever our encoder produced.
-// That symmetry is exactly how IEEECORE-103 shipped: the round-trip tests
+// That symmetry is exactly how a real defect shipped: the round-trip tests
 // below were green against the element encoding that made the EPRI reference
 // client abort its parse. Only an assertion over the SERIALIZED BYTES, or a
 // foreign parser, distinguishes the two. Every test here that exists to gate
@@ -72,7 +72,7 @@ func TestEventReplyToRoundTrip(t *testing.T) {
 				t.Errorf("replyTo must be an ATTRIBUTE (sep.xsd:5435); got XML=%s", string(data))
 			}
 			if strings.Contains(string(data), "<replyTo>") {
-				t.Errorf("replyTo emitted as a child element, which is the IEEECORE-103 defect; got XML=%s", string(data))
+				t.Errorf("replyTo emitted as a child element; got XML=%s", string(data))
 			}
 
 			var decoded sep2.DERControl
@@ -128,7 +128,7 @@ func TestEventResponseRequiredRoundTrip(t *testing.T) {
 					wantAttr, string(data))
 			}
 			if strings.Contains(string(data), "<responseRequired>") {
-				t.Errorf("responseRequired emitted as a child element, which is the IEEECORE-103 defect; got XML=%s", string(data))
+				t.Errorf("responseRequired emitted as a child element; got XML=%s", string(data))
 			}
 
 			var decoded sep2.DERControl
@@ -174,8 +174,8 @@ func hexBinary8Text(v sep2.HexBinary8) string {
 // before creationTime before EventStatus) and, separately, that replyTo and
 // responseRequired appear on the START TAG rather than among the children.
 //
-// Before IEEECORE-103 this test asserted an ordering among `<replyTo>` and
-// `<responseRequired>` elements, which encoded the defect as the expectation:
+// This test used to assert an ordering among `<replyTo>` and
+// `<responseRequired>` elements, which encoded a defect as the expectation:
 // the test could only pass while the two fields were wrongly modelled. An
 // attribute has no position in the xsd:sequence, so the question the old
 // assertion asked was not a real one.
