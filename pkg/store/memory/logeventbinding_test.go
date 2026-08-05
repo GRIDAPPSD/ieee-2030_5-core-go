@@ -9,7 +9,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// LogEventListLink derivation (IEEECORE-084).
+// LogEventListLink derivation.
 //
 // The router-level assertions live in pkg/sep2srv/assembly, where a served
 // EndDevice is inspected on the wire. What is covered HERE is the derivation

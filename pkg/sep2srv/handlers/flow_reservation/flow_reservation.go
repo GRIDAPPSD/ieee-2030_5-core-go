@@ -134,10 +134,10 @@ func HandlePostFlowReservationRequest(
 // member path it creates, so the body is decoded with sep2.DecodeResponse
 // rather than unmarshalled straight into a sep2.Response. Unmarshalling into
 // the base type answered the EPRI reference client's conforming
-// <DERControlResponse> with 400, because Response.XMLName is pinned
-// (IEEECORE-067). The pin stays: DecodeResponse dispatches on the root element
-// and decodes the declared subtype, so the accepted set is exactly the
-// subtypes the WADL names.
+// <DERControlResponse> with 400, because Response.XMLName is pinned. The
+// pin stays: DecodeResponse dispatches on the root element and decodes the
+// declared subtype, so the accepted set is exactly the subtypes the WADL
+// names.
 func HandlePostResponse(rspStore store.ScopedStore[sep2.Response]) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

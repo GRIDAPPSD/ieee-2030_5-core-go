@@ -11,7 +11,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// The scoped store under reads of parents that do not exist (IEEECORE-111).
+// The scoped store under reads of parents that do not exist.
 //
 // A read used to reach ForParent, which creates the per-parent bucket when it
 // is absent, so a GET, a list or a count against an unknown parent LEFT STATE

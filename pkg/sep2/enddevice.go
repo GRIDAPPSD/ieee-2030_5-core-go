@@ -13,7 +13,7 @@ import "encoding/xml"
 // DeviceInformationLink, DeviceStatusLink, FileStatusLink,
 // IPInterfaceListLink, LoadShedAvailabilityListLink, PowerStatusLink,
 // FlowReservationRequestListLink, FlowReservationResponseListLink,
-// postRate) are omitted; see the IEEECORE-014 report for that gap.
+// postRate) are omitted.
 // Schema parsers (e.g., EPRI oeg_client) validate element order strictly.
 type EndDevice struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns EndDevice"`

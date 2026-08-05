@@ -8,8 +8,8 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 )
 
-// TestDERStatusStateOfChargeStatusUnmarshal is the IEEECORE-055 regression at
-// the type level. sep.xsd:4189 declares stateOfChargeStatus as
+// TestDERStatusStateOfChargeStatusUnmarshal is a regression test at the type
+// level. sep.xsd:4189 declares stateOfChargeStatus as
 // StateOfChargeStatusType, and sep.xsd:4566-4582 declares that type as a
 // sequence of a required dateTime (TimeType) and a required value (PerCent).
 // Modelling it as a bare *uint16 made encoding/xml try to parse the element's

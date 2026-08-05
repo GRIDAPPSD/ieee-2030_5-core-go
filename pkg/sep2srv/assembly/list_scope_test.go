@@ -10,8 +10,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/assembly"
 )
 
-// Scoped list routes bind to the parent wildcard their pattern declares
-// (IEEECORE-059).
+// Scoped list routes bind to the parent wildcard their pattern declares.
 //
 // scopedListHandler hardcoded r.PathValue("id"). Two mounts declare no {id}:
 // GET /upt/{uptId}/mr and GET /msg/{msgId}/tm. PathValue on an undeclared

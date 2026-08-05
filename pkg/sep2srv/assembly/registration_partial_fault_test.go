@@ -14,8 +14,8 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/storetest"
 )
 
-// IEEECORE-107: a Registrations-store failure must not be reported to a
-// client as "this device has no Registration".
+// A Registrations-store failure must not be reported to a client as "this
+// device has no Registration".
 //
 // TestEveryMountedRouteReportsAStoreFailureAsAServerError in
 // storefault_route_test.go arms ONE fault shared by every store, so on

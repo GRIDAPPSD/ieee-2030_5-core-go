@@ -9,7 +9,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/assembly"
 )
 
-// Mintable-href routing assertion (IEEECORE-065).
+// Mintable-href routing assertion.
 //
 // These tests are the CI half of the mechanism described in hrefs.go. The boot
 // half fails a misconfigured deployment; this half fails a regression before

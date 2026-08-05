@@ -1,7 +1,7 @@
 // Package registration provides the IEEE 2030.5 Registration resource handler
 // for GET /edev/{id}/rg. Ported from the reference server's
 // internal/handler/registration.go; the auth.GetIdentity call is replaced by
-// the injected IdentityFunc seam (IEEECORE-001 design section 4).
+// the injected IdentityFunc seam.
 package registration
 
 import (

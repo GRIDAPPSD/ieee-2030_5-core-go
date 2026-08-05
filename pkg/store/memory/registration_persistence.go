@@ -18,7 +18,7 @@ import (
 // mutation that succeeds against the collection is followed by a whole-file
 // snapshot write, so a restart rehydrates what the server last committed.
 //
-// # It holds the collection, it does not embed it (IEEECORE-085)
+// # It holds the collection, it does not embed it
 //
 // This wrapper used to embed *Store[sep2.Registration] and rely on method
 // promotion for Get, List and Count while shadowing the three mutators. That

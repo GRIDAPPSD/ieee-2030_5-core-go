@@ -242,8 +242,8 @@ func TestURLIndex_EveryEndDeviceLinkResolves(t *testing.T) {
 	ctx := context.Background()
 	// Seed the resources those links point at, keyed by the INDEX, which is
 	// what the path now carries. The Registration is deliberately NOT among
-	// them: registering the device created it (IEEECORE-083), and seeding
-	// one here would make this test pass whether or not that coupling holds.
+	// them: registering the device created it, and seeding one here would
+	// make this test pass whether or not that coupling holds.
 	derCap := sep2.DERCapability{}
 	derCap.Href = "/edev/1/der/1/dercap"
 	if err := stores.DERCapabilities.Create(ctx, "1/1", coresingleton.SingletonKey, derCap); err != nil {

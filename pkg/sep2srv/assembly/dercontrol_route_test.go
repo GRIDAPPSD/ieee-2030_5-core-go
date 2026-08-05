@@ -204,8 +204,9 @@ func TestSingleDERControlBytesMatchListMember(t *testing.T) {
 // own request path. Nothing in this test authenticates as device B and then
 // requests a path naming device A's {id}; that is the actual cross-device
 // read Leon's review demonstrated live against this same route, and closing
-// it is IEEECORE-028, not this route's scoping logic. Do not read a pass here
-// as evidence that cross-device reads are rejected.
+// it is a separate ownership-enforcement fix, not this route's scoping
+// logic. Do not read a pass here as evidence that cross-device reads are
+// rejected.
 func TestSingleDERControlRouteScopesByPathNotJustID(t *testing.T) {
 	t.Parallel()
 

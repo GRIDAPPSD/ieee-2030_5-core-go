@@ -14,8 +14,8 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// IEEECORE-083: the EndDevice and its Registration are advertised and served
-// as a pair, or neither.
+// The EndDevice and its Registration are advertised and served as a pair,
+// or neither.
 //
 // The defect these tests close: RegistrationLink was stamped on every
 // EndDevice while nothing ever wrote a Registration record, so GET

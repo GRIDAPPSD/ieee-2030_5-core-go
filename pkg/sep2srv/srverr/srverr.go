@@ -13,8 +13,8 @@
 //
 // That unevenness is cheap today only because every store in this repository
 // is in-memory and essentially cannot fail. The moment a durable backend is
-// attached (IEEECORE-075) a backend outage produces 500s across the whole
-// surface at once, and the operator's first symptom is a wall of identical
+// attached a backend outage produces 500s across the whole surface at once,
+// and the operator's first symptom is a wall of identical
 // 500 bodies. Whether that wall is a store outage or one client provoking
 // errors on one route is answerable only from the server-side log, and only
 // if every 500 is in it.

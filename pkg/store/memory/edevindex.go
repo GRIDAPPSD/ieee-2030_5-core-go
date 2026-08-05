@@ -109,11 +109,12 @@ type EndDeviceIndex struct {
 // the same version gate and atomic-rename durability contract as every other
 // persistent store in this package.
 //
-// IEEECORE-050 introduces an operator-editable per-device provisioning record
-// for registration PINs. A device's index belongs in THAT record rather than
-// in this parallel file once it exists: two files keyed by the same device
-// can disagree, and the index and the PIN are both per-device provisioning
-// facts with the same lifetime. Fold this in when that record lands.
+// Future work introduces an operator-editable per-device provisioning
+// record for registration PINs. A device's index belongs in THAT record
+// rather than in this parallel file once it exists: two files keyed by the
+// same device can disagree, and the index and the PIN are both per-device
+// provisioning facts with the same lifetime. Fold this in when that record
+// lands.
 type edevIndexRecord struct {
 	DeviceKey string `json:"device_key"`
 	Index     string `json:"index"`

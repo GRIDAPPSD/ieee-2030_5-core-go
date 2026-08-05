@@ -33,10 +33,11 @@ func BuildLogEventList(href string, result store.ListResult[sep2.LogEvent], poll
 //
 // The Href it stamps, and hands straight back in the Location header, is the
 // WADL address of the LogEvent instance, /edev/{id1}/lel/{id2}
-// (sep_wadl.xml:1404). It used to be /edev/{id}/log/{id}, which no route served
-// at that address OR at the declared one, so every device that reported an alarm
-// was handed a URI this server would answer 404 on (IEEECORE-084). The href goes
-// into the STORED document, not only into the header, so the instance route
+// (sep_wadl.xml:1404). It used to be /edev/{id}/log/{id}, which no route
+// served at that address OR at the declared one, so every device that
+// reported an alarm was handed a URI this server would answer 404 on. The
+// href goes into the STORED document, not only into the header, so the
+// instance route
 // serves back the same URI the client was told to follow.
 func HandlePostLogEvent(logStore store.ScopedStore[sep2.LogEvent]) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

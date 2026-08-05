@@ -1,6 +1,5 @@
 // Package notify provides the library-grade inbound HTTPS Notification
-// receiver for IEEE 2030.5 / CSIP CORE-018 subscription/notification flows
-// (IEEECORE-004).
+// receiver for IEEE 2030.5 / CSIP CORE-018 subscription/notification flows.
 //
 // The receiver is a spec-conformant HTTP listener that accepts POST /notify
 // requests, decodes the IEEE 2030.5 Notification XML body, and dispatches

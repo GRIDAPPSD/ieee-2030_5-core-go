@@ -14,7 +14,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/assembly"
 )
 
-// The router under GETs for parents that do not exist (IEEECORE-111).
+// The router under GETs for parents that do not exist.
 //
 // The scoped store used to create a per-parent bucket on read, and every parent
 // id on the scoped surface arrives as a path segment the client chose. So an

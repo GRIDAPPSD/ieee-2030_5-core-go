@@ -10,8 +10,9 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// IEEECORE-083 at the store layer. The HTTP-level acceptance lives in
-// pkg/sep2srv/assembly/registration_binding_test.go; this file pins the
+// The EndDevice-Registration coupling at the store layer. The HTTP-level
+// acceptance lives in pkg/sep2srv/assembly/registration_binding_test.go;
+// this file pins the
 // invariant on the type that owns it, so a future edit that breaks the
 // coupling fails next to the code rather than three packages away.
 //
