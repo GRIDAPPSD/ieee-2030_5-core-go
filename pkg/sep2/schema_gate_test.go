@@ -50,19 +50,17 @@ func TestSchemaGateCleanResources(t *testing.T) {
 		// link elements sep.xsd declares (AssociatedUsagePointLink and
 		// CurrentDERProgramLink) have no Go field yet, and when they arrive they
 		// insert at sequence positions 2 and 3 rather than appending, because
-		// encoding/xml emits in struct field order. That is the defect class
-		// IEEECORE-014 already fixed once for EndDevice and DERCapability, and
-		// without this entry nothing would catch a wrong insertion point.
+		// encoding/xml emits in struct field order. That defect class has
+		// already hit EndDevice and DERCapability once; without this entry
+		// nothing would catch a wrong insertion point here too.
 		{"DER", sep2.DER{}},
 		{"Registration", sep2.Registration{}},
 		{"Reading", sep2.Reading{}},
 		{"ReadingType", sep2.ReadingType{}},
 		{"MirrorMeterReading", sep2.MirrorMeterReading{}},
-		// LogEvent and its list are gated by IEEECORE-084, which put the
-		// function set on a client-reachable address for the first time. A
-		// resource nothing could reach was a resource nothing could be wrong
-		// about; now that an EndDevice advertises the list and a device POSTs
-		// alarms into it, the wire form is load-bearing and belongs here. The
+		// LogEvent and its list are gated here because the function set is now
+		// on a client-reachable address: an EndDevice advertises the list and
+		// a device POSTs alarms into it, so the wire form is load-bearing. The
 		// list is gated as well as the member because a LogEventList carries
 		// its own paging attributes, and an all or results emitted as an
 		// element rather than an attribute is invisible to a round trip.
@@ -103,7 +101,7 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 		{
 			// DERStatus is pinned as a known failure below, but only at its
 			// ZERO value, where every optional field is a nil pointer and so
-			// never reaches the wire. That blind spot is how IEEECORE-055 got
+			// never reaches the wire. That blind spot is how the defect got
 			// in: stateOfChargeStatus was modelled as a bare *uint16 against a
 			// schema complexType, and no fixture ever populated it, so the
 			// marshalled check had nothing to inspect. This entry populates
@@ -175,14 +173,13 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 			},
 		},
 		{
-			// The document DELETE /mup/{id} serves (IEEECORE-066). Until that
-			// route existed, MirrorUsagePoint appeared in this file only as a
-			// ZERO-VALUE known failure, where mRID and deviceLFDI are dropped by
-			// omitempty and so never reach the wire at all: the pin recorded
-			// their absence, and nothing ever validated a document in which they
-			// were PRESENT. Every other field was in the same blind spot, which
-			// is the IEEECORE-055 shape, an empty document mistaken for
-			// coverage.
+			// The document DELETE /mup/{id} serves. Until that route existed,
+			// MirrorUsagePoint appeared in this file only as a ZERO-VALUE known
+			// failure, where mRID and deviceLFDI are dropped by omitempty and so
+			// never reach the wire at all: the pin recorded their absence, and
+			// nothing ever validated a document in which they were PRESENT.
+			// Every other field was in the same blind spot: an empty document
+			// mistaken for coverage.
 			//
 			// The fixture is deliberately the STRIPPED form, with no
 			// MirrorMeterReading child. That is what both GET and DELETE
@@ -249,7 +246,7 @@ func populatedLogEvent() sep2.LogEvent {
 }
 
 // ---------------------------------------------------------------------------
-// RespondableResource: the IEEECORE-103 class
+// RespondableResource
 // ---------------------------------------------------------------------------
 
 // respondableTypes are the concrete resources that inherit replyTo and
@@ -257,11 +254,11 @@ func populatedLogEvent() sep2.LogEvent {
 // embed. Every one of them is affected by any defect in how those two fields
 // are modelled, because all four share the single declaration on sep2.Event.
 //
-// DERControl is the reason this list exists. Until IEEECORE-103 it appeared
-// NOWHERE in this file: not in the clean table, not in the known-failure
-// table, and not in TestSchemaGateCoversKnownResources' required list. The
-// resource whose wire format broke the EPRI reference client was the one
-// resource in the DER function set that no schema-gated test ever looked at.
+// DERControl is the reason this list exists. It used to appear NOWHERE in
+// this file: not in the clean table, not in the known-failure table, and not
+// in TestSchemaGateCoversKnownResources' required list. The resource whose
+// wire format broke the EPRI reference client was the one resource in the DER
+// function set that no schema-gated test ever looked at.
 func respondableFixtures() map[string]any {
 	replyTo := "/rsps/1/rsp"
 	rr := sep2.HexBinary8(0x07)
@@ -302,27 +299,21 @@ func respondableFixtures() map[string]any {
 }
 
 // TestSchemaGatePopulatedRespondableResources is the check that would have
-// caught IEEECORE-103 before it shipped, and it is deliberately built on
+// caught this defect before it shipped, and it is deliberately built on
 // POPULATED fixtures.
 //
-// The zero-value lane cannot see this defect class at all. Both fields are
-// omitempty, so at the zero value ReplyTo is "" and ResponseRequired is nil,
-// neither reaches the wire, and the marshalled document that the gate
-// validates is one in which the defect is structurally invisible. Every
-// existing marshal-lane pin for a respondable resource was therefore
-// validating a document that could not disagree with the schema about these
-// two fields no matter how they were tagged. That is the same shape as the
-// IEEECORE-055 blind spot recorded on the DERStatus fixture above: a gate
-// reading an empty document and the emptiness being mistaken for coverage.
+// The zero-value lane cannot see this defect class at all: both fields are
+// omitempty, so at the zero value neither reaches the wire, and a gate
+// reading an empty document mistakes the emptiness for coverage (the same
+// blind spot recorded on the DERStatus fixture above).
 //
 // The assertion is over the SERIALIZED BYTES rather than a round trip. A
 // marshal-then-unmarshal test through this package's own encoder and decoder
 // passes identically whether these fields are attributes or child elements,
-// because encoding/xml decodes whatever encoding/xml produced. Such a test is
-// green in BOTH the correct and the broken world and can never gate this
-// class. The EPRI reference client is a foreign parser and caught the defect
-// on its first run; short of running one in CI, asserting bytes is the
-// substitute.
+// because encoding/xml decodes whatever encoding/xml produced, so such a test
+// can never gate this class. The EPRI reference client is a foreign parser
+// and caught the defect on its first run; short of running one in CI,
+// asserting bytes is the substitute.
 func TestSchemaGatePopulatedRespondableResources(t *testing.T) {
 	for typeName, v := range respondableFixtures() {
 		t.Run(typeName, func(t *testing.T) {
@@ -331,7 +322,7 @@ func TestSchemaGatePopulatedRespondableResources(t *testing.T) {
 			for _, p := range xsdgate.CollectStructProblems(t, typeName, v).Summary() {
 				if strings.HasPrefix(p, "placement ") &&
 					(strings.HasSuffix(p, ".ReplyTo") || strings.HasSuffix(p, ".ResponseRequired")) {
-					t.Errorf("IEEECORE-103 regression: %s", p)
+					t.Errorf("respondable field placed as a child element: %s", p)
 				}
 			}
 
@@ -341,7 +332,7 @@ func TestSchemaGatePopulatedRespondableResources(t *testing.T) {
 			problems, data := xsdgate.CollectProblems(t, typeName, v)
 			for _, p := range problems.Summary() {
 				if strings.Contains(p, "replyTo") || strings.Contains(p, "responseRequired") {
-					t.Errorf("IEEECORE-103 regression in marshalled %s: %s\nXML:\n%s", typeName, p, data)
+					t.Errorf("respondable field regression in marshalled %s: %s\nXML:\n%s", typeName, p, data)
 				}
 			}
 
@@ -358,7 +349,7 @@ func TestSchemaGatePopulatedRespondableResources(t *testing.T) {
 			}
 			for _, forbidden := range []string{"<replyTo>", "<responseRequired>"} {
 				if strings.Contains(string(data), forbidden) {
-					t.Errorf("%s emitted %s as a child element (IEEECORE-103); XML:\n%s", typeName, forbidden, data)
+					t.Errorf("%s emitted %s as a child element; XML:\n%s", typeName, forbidden, data)
 				}
 			}
 		})
@@ -366,7 +357,7 @@ func TestSchemaGatePopulatedRespondableResources(t *testing.T) {
 }
 
 // TestSchemaGateRejectsRespondableFieldsAsElements pins the gate's ability to
-// catch IEEECORE-103, permanently and independently of the struct.
+// catch this defect class, permanently and independently of the struct.
 //
 // The bytes below are the exact defective wire form this server emitted
 // before the fix, transcribed from the DERControlList that made the EPRI
@@ -377,10 +368,10 @@ func TestSchemaGatePopulatedRespondableResources(t *testing.T) {
 // silently stops testing the moment the struct is correct, whereas these
 // bytes keep their meaning forever.
 //
-// This is the RED proof asked for on IEEECORE-103. Reverting the two ,attr
-// tags on sep2.Event makes TestSchemaGatePopulatedRespondableResources fail;
-// this test fails only if the gate ITSELF loses the ability to tell the two
-// encodings apart, which is the deeper regression.
+// Reverting the two ,attr tags on sep2.Event makes
+// TestSchemaGatePopulatedRespondableResources fail; this test fails only if
+// the gate ITSELF loses the ability to tell the two encodings apart, which is
+// the deeper regression.
 func TestSchemaGateRejectsRespondableFieldsAsElements(t *testing.T) {
 	const defective = `<DERControl xmlns="urn:ieee:std:2030.5:ns" href="/derp/0/derc/1">
   <replyTo>/rsps/1/rsp</replyTo>
@@ -409,7 +400,7 @@ func TestSchemaGateRejectsRespondableFieldsAsElements(t *testing.T) {
 			}
 		}
 		if !found {
-			t.Errorf("the schema gate no longer reports %q for the pre-IEEECORE-103 wire form.\n"+
+			t.Errorf("the schema gate no longer reports %q for the pre-fix wire form.\n"+
 				"That form is what broke the EPRI reference client, so a gate that accepts it "+
 				"cannot protect this class.\nobserved: %v\ndocument:\n%s", w, got, defective)
 		}
@@ -523,13 +514,14 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 				"for that, and UsagePoint does not use it, so emitting subscribable puts an " +
 				"undeclared attribute on the wire.",
 		},
-		// The three resources IEEECORE-081 put on the wire as addressable
-		// instances. Their lists were already served, so the wire format is not
-		// new, but the instance routes make each one fetchable on its own and
-		// that is the point at which an unmodelled element becomes a client's
-		// problem rather than a list-shaped curiosity. Pinned rather than fixed:
-		// dropping omitempty changes the wire format of shipped resources and
-		// belongs in its own reviewed change, one resource at a time.
+		// The three resources below became addressable instances when their
+		// single-resource routes shipped. Their lists were already served, so
+		// the wire format is not new, but the instance routes make each one
+		// fetchable on its own and that is the point at which an unmodelled
+		// element becomes a client's problem rather than a list-shaped
+		// curiosity. Pinned rather than fixed: dropping omitempty changes the
+		// wire format of shipped resources and belongs in its own reviewed
+		// change, one resource at a time.
 		{
 			typeName: "FlowReservationRequest",
 			zero:     sep2.FlowReservationRequest{},
@@ -576,12 +568,10 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 			reason: "one defect beyond the usual omitempty set, from the embedded " +
 				"RandomizableEvent: the schema derives FlowReservationResponse from Event, not " +
 				"RandomizableEvent, so randomizeStart and randomizeDuration are elements the " +
-				"schema does not declare here. That is IEEECORE-098 and is NOT fixed here. " +
-				"This entry previously also pinned 'placement ReplyTo' and 'placement " +
-				"ResponseRequired', which was this gate correctly reporting IEEECORE-103 and " +
-				"the pin turning that report into an expected value. IEEECORE-103 fixed it, so " +
-				"those two are gone. See TestSchemaGateRejectsRespondableFieldsAsElements for " +
-				"the guard that now keeps them gone.",
+				"schema does not declare here; a known gap, not fixed here. This entry used " +
+				"to also pin 'placement ReplyTo' and 'placement ResponseRequired'; both are " +
+				"now fixed and guarded by TestSchemaGateRejectsRespondableFieldsAsElements " +
+				"instead.",
 		},
 		{
 			typeName: "TextMessage",
@@ -599,11 +589,10 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 				"missing-element TextMessage/mRID",
 			},
 			reason: "the same RandomizableEvent-versus-Event divergence as " +
-				"FlowReservationResponse (IEEECORE-098, not fixed here): the schema derives " +
-				"TextMessage from Event. The missing EventStatus is the absent-element half of " +
-				"IEEECORE-044, which already records that nothing on the TextMessage path ever " +
-				"constructs one. The two 'placement' entries this list used to carry were " +
-				"IEEECORE-103 and are fixed.",
+				"FlowReservationResponse (not fixed here): the schema derives TextMessage from " +
+				"Event. The missing EventStatus reflects that nothing on the TextMessage path " +
+				"ever constructs one. The two 'placement' entries this list used to carry are " +
+				"now fixed.",
 		},
 		{
 			typeName: "EndDevice",
@@ -690,23 +679,20 @@ func assertPinned(t *testing.T, lane, typeName string, got, want []string) {
 // resource to the package without adding it here would leave it ungated, and
 // an ungated resource is exactly how the current defects got in.
 func TestSchemaGateCoversKnownResources(t *testing.T) {
-	// Every resource named in the IEEECORE-048 scope must appear in one of
-	// the two tables above.
+	// Every resource this server SERVES must appear in one of the two tables
+	// above; the rule is explicit rather than tied to any fixed enumeration.
 	//
-	// The four RespondableResource types were added by IEEECORE-103. DERControl
-	// in particular was absent from every list in this file while being the
+	// The four RespondableResource types are here because DERControl in
+	// particular was absent from every list in this file while being the
 	// single most control-critical resource the server serves, which is how a
 	// wire-format defect on it reached a released tag with this gate green in
-	// CI. A gate's coverage list is only as good as the argument for what is
-	// on it, so the rule now is explicit: every resource this server SERVES is
-	// in scope, not only the ones an old card happened to enumerate.
+	// CI.
 	//
-	// LogEvent and LogEventList were added by IEEECORE-084. They were out of
-	// scope for the old enumeration because the function set was unreachable:
-	// it was served at /edev/{id}/log while the WADL declares /edev/{id}/lel,
-	// and no EndDevice advertised a LogEventListLink at either address. That is
-	// no longer true, so the rule stated above applies to them: this server
-	// serves them, therefore they are in scope.
+	// LogEvent and LogEventList are here because the function set used to be
+	// unreachable: it was served at /edev/{id}/log while the WADL declares
+	// /edev/{id}/lel, and no EndDevice advertised a LogEventListLink at
+	// either address. That is no longer true, so this server now serves them
+	// and they are in scope.
 	required := []string{
 		"DERCapability", "DERSettings", "DERStatus",
 		"MirrorUsagePoint", "MirrorMeterReading", "Registration",
@@ -727,8 +713,8 @@ func TestSchemaGateCoversKnownResources(t *testing.T) {
 	// Appearing in the zero-value tables is NOT full coverage. A resource
 	// whose optional fields are all nil pointers marshals to almost nothing,
 	// so the marshalled check has no values to inspect and a wrong Go type
-	// behind an optional element stays invisible. That is exactly how
-	// IEEECORE-055 reached an interop run. Resources listed here must have a
+	// behind an optional element stays invisible. That is exactly how a real
+	// defect once reached an interop run. Resources listed here must have a
 	// populated fixture in TestSchemaGatePopulatedResources.
 	populated := []string{
 		"Registration", "Reading", "ReadingType", "MirrorMeterReading", "MirrorUsagePoint", "DERStatus",
@@ -766,7 +752,7 @@ func TestSchemaGateCoversKnownResources(t *testing.T) {
 }
 
 // TestSchemaGateDetectsScalarForComplexType pins the gate's ability to catch
-// the IEEECORE-055 defect class: a schema complexType modelled in Go as a bare
+// a defect class where a schema complexType is modelled in Go as a bare
 // scalar, so the element carries chardata instead of the required child
 // elements.
 //

@@ -2,7 +2,7 @@
 // AuthPolicy: the surface a consumer server (or a test) needs to assemble
 // a fully-wired IEEE 2030.5 protocol mux from core handlers.
 //
-// Design (IEEECORE-001, Noor 2026-06-23):
+// Design (2026-06-23):
 //
 //   - Stores is a verbatim lift of the reference server's Stores struct; every
 //     field resolves to pkg/store or pkg/store/memory.
@@ -32,9 +32,8 @@
 // breaking API change.
 //
 // The relocation is sequenced with the layering split, not with any one card.
-// See the bridge/core boundary analysis (architecture decision IEEECORE-068)
-// for the reasoning, and pkg/store's package documentation for the same note
-// about the store contract.
+// See the bridge/core boundary analysis for the reasoning, and pkg/store's
+// package documentation for the same note about the store contract.
 package assembly
 
 import (
@@ -76,7 +75,7 @@ import (
 
 // Stores holds all resource stores for the protocol router.
 //
-// # The handles are interfaces (IEEECORE-085)
+// # The handles are interfaces
 //
 // Every collection here is declared as a pkg/store interface rather than as a
 // pkg/store/memory type, so a consumer can attach state that is not the
@@ -104,7 +103,7 @@ import (
 // it fails at request time on a consumer's deployment rather than in this
 // repository's tests.
 //
-// # THE GATE IS PER FAMILY, NOT PER FIELD (IEEECORE-112)
+// # THE GATE IS PER FAMILY, NOT PER FIELD
 //
 // The paragraph above says "every gate", and there are thirteen of them. Each
 // reads ONE ANCHOR field and mounts a whole family behind it; fifteen handles
@@ -142,8 +141,8 @@ import (
 // here rather than quietly implied. It has no gate at all: the /edev routes are
 // mounted whenever stores is non-nil, so an absent EndDevices handle is
 // dereferenced on the first request exactly as a co-gated member used to be.
-// IEEECORE-112 fixed the co-gated members and left this one, because /edev is
-// the root of the discovery walk and refusing it is a different decision from
+// A prior fix addressed the co-gated members and left this one, because /edev
+// is the root of the discovery walk and refusing it is a different decision from
 // refusing a leaf function set: a server with no EndDevice store is arguably
 // not a 2030.5 server at all, and whether that should be a boot-time panic, a
 // refusal, or an unmounted family is a design question rather than a bug fix.
@@ -176,7 +175,7 @@ type Stores struct {
 	Registrations store.ResourceStore[sep2.Registration]
 
 	// RegistrationPolicy supplies the pIN and pollRate for the Registration
-	// that is created with every EndDevice (IEEECORE-083).
+	// that is created with every EndDevice.
 	//
 	// The zero value provisions nothing, and that is fail-closed rather
 	// than degraded: a server that cannot say what a device's pIN is has no
@@ -318,7 +317,6 @@ type AuthPolicy struct {
 
 // ResourceNotifier is aliased from the enddevice package so consumers can
 // name assembly.ResourceNotifier without importing the enddevice subpackage.
-// (IEEECORE-002)
 type ResourceNotifier = coreedev.ResourceNotifier
 
 // BuildProtocolRouter creates the HTTP router for the protocol listener
@@ -481,8 +479,7 @@ func asNotifyRemoved(n ResourceNotifier) func(context.Context, sep2.Subscription
 
 // registrationBoundEndDevices returns the EndDevice store the /edev routes
 // must use: one that writes an EndDevice and its Registration as a single
-// act and serves a RegistrationLink only when the record behind it exists
-// (IEEECORE-083).
+// act and serves a RegistrationLink only when the record behind it exists.
 //
 // It decorates rather than replaces, and it declines to decorate twice. An
 // embedder that seeds devices at boot has to build the binding itself,
@@ -506,7 +503,7 @@ func registrationBoundEndDevices(stores *Stores) store.EndDeviceStore {
 }
 
 // logEventLinkedEndDevices returns the EndDevice store the /edev routes must
-// use so every served EndDevice advertises its LogEventList (IEEECORE-084).
+// use so every served EndDevice advertises its LogEventList.
 //
 // THE GATE IS THE MOUNT GATE. It decorates exactly when Stores.LogEvents is
 // non-nil, which is the same condition registerNewFunctionSetRoutes uses to
@@ -541,18 +538,18 @@ func registerEndDeviceRoutes(mux routeRegistrar, stores *Stores, authPolicy Auth
 		edevIndexes = memory.NewEndDeviceIndex()
 	}
 
-	// IEEECORE-083: every EndDevice route reads and writes through the
-	// registration-bound store, so the EndDevice and its Registration are
-	// one act on the write side and one derivation on the read side. Every
-	// route below takes edevs, not stores.EndDevices: a route left on the
-	// undecorated store would be the one that reintroduces the drift.
+	// Every EndDevice route reads and writes through the registration-bound
+	// store, so the EndDevice and its Registration are one act on the write
+	// side and one derivation on the read side. Every route below takes
+	// edevs, not stores.EndDevices: a route left on the undecorated store
+	// would be the one that reintroduces the drift.
 	//
-	// IEEECORE-084 layers the LogEventList advertisement on top of that, and
-	// the order matters only in that both derivations must survive: the
-	// LogEvent decorator wraps the registration-bound store, so a read passes
-	// through the registration derivation first and the LogEventListLink
-	// derivation second, and a device carries both links or neither of them
-	// according to its own gate.
+	// The LogEventList advertisement layers on top of that, and the order
+	// matters only in that both derivations must survive: the LogEvent
+	// decorator wraps the registration-bound store, so a read passes through
+	// the registration derivation first and the LogEventListLink derivation
+	// second, and a device carries both links or neither of them according
+	// to its own gate.
 	edevs := logEventLinkedEndDevices(registrationBoundEndDevices(stores), stores)
 
 	mux.HandleFunc("GET /edev", corelisthandler.ListHandler[sep2.EndDevice, sep2.EndDeviceList](
@@ -589,7 +586,7 @@ func registerMirrorRoutes(mux routeRegistrar, stores *Stores, authPolicy AuthPol
 		return
 	}
 	// MirrorMeterReadings has no gate of its own: it is mounted on the
-	// strength of MirrorUsagePoints (IEEECORE-112, see miswired.go).
+	// strength of MirrorUsagePoints (see miswired.go).
 	mirrorMeterReadings := requireScoped(stores.MirrorMeterReadings, "MirrorMeterReadings")
 	// LFDIProvider extracts the device LFDI from the request context via the
 	// injected AuthPolicy.Identity. Keeps internal/auth out of core (the same
@@ -625,8 +622,8 @@ func registerMirrorRoutes(mux routeRegistrar, stores *Stores, authPolicy AuthPol
 		stores.MirrorUsagePoints, mirrorMeterReadings, lfdiProvider,
 	))
 
-	// The two Mandatory methods on the MirrorUsagePoint instance
-	// (IEEECORE-066). PUT is sep_wadl.xml:2303 and DELETE is
+	// The two Mandatory methods on the MirrorUsagePoint instance.
+	// PUT is sep_wadl.xml:2303 and DELETE is
 	// sep_wadl.xml:2323, both wx:mode="M", and neither was mounted: a client
 	// following the Location header POST /mup returns, with a method the
 	// standard requires a server to implement, got a 405 from the server that
@@ -642,9 +639,9 @@ func registerMirrorRoutes(mux routeRegistrar, stores *Stores, authPolicy AuthPol
 	//
 	// Reachability through the bridge and server-go ACLs is NOT addressed here.
 	// Both wrappers classify /mup as read-and-create and return 405 before the
-	// mux, so these two methods stay dark in those deployments until
-	// IEEECORE-070 removes the wrapper tables. Editing those tables from here
-	// is the cross-repo lockstep drift that card exists to abolish.
+	// mux, so these two methods stay dark in those deployments until the
+	// wrapper tables are removed upstream. Editing those tables from here is
+	// the cross-repo lockstep drift to avoid.
 	mux.HandleFunc("PUT /mup/{id}", coremetering.HandlePutMirrorUsagePoint(
 		stores.MirrorUsagePoints, lfdiProvider, postRateProvider,
 	))
@@ -662,7 +659,7 @@ func registerDERRoutes(mux routeRegistrar, stores *Stores) {
 	// mounted on the strength of it and has no gate of its own. requireScoped
 	// and requireResource are what make that a stated contract rather than an
 	// accident: a member left unwired is logged once here and refuses at
-	// request time, instead of being dereferenced as a nil (IEEECORE-112).
+	// request time, instead of being dereferenced as a nil.
 	// See miswired.go for why the routes stay mounted.
 	derCapabilities := requireScoped(stores.DERCapabilities, "DERCapabilities")
 	derSettings := requireScoped(stores.DERSettings, "DERSettings")
@@ -699,7 +696,7 @@ func registerDERRoutes(mux routeRegistrar, stores *Stores) {
 		stores.DERs, "id", coreder.DERListBuilder(derLinks), 900,
 	))
 
-	// The DER instance itself (IEEECORE-052). Every DERList member carries this
+	// The DER instance itself. Every DERList member carries this
 	// href as its own, and before this route existed following it produced a 404
 	// from the server that had just advertised it. HEAD comes free: a ServeMux
 	// pattern registered for GET matches HEAD as well.
@@ -710,7 +707,7 @@ func registerDERRoutes(mux routeRegistrar, stores *Stores) {
 	// cannot drift into different scope derivations, the same reason the four
 	// sub-resources above are registered as pairs against one handler.
 	//
-	// DELETE (mode O, deferred to IEEECORE-058) and POST (mode E) fall through
+	// DELETE (mode O, not yet implemented) and POST (mode E) fall through
 	// to a 405 carrying an Allow header derived from itemMethods, which section
 	// 4.3 c) 4) requires and an unmounted path could not produce: it would 404.
 	derInstance := scopedResourceHandler[sep2.DER](
@@ -738,7 +735,7 @@ func registerDERRoutes(mux routeRegistrar, stores *Stores) {
 	))
 
 	// A DERProgram's own href, so the FSA-to-DERProgramList-to-member link
-	// walk CSIP v2.0 s5.2.3.1 requires actually resolves (IEEECORE-082).
+	// walk CSIP v2.0 s5.2.3.1 requires actually resolves.
 	// Scoped by device {id} only, matching the list route above (and the
 	// DERProgram store's own scoping): {fsaId} is part of the mounted path
 	// shape, not a filter on which programs are visible under it. Read-only:
@@ -767,7 +764,7 @@ func registerDERRoutes(mux routeRegistrar, stores *Stores) {
 	// the DOWN path writes controls through the store, never over HTTP.
 	//
 	// Stamped with the response request on the way out, exactly as the list
-	// route stamps its members (IEEECORE-067). The adapter drops the request
+	// route stamps its members. The adapter drops the request
 	// because the stamp does not depend on it: replyTo names one server-owned
 	// URI and responseRequired is a constant, unlike the DER instance stamp
 	// above, which derives links from path values.
@@ -791,8 +788,8 @@ func registerDERRoutes(mux routeRegistrar, stores *Stores) {
 // parentParam.
 //
 // parentParam is passed rather than hardcoded to "id" for the reason argued at
-// [scopedResourceHandler], and this helper is where that defect actually shipped
-// (IEEECORE-059). The parent wildcard is not called {id} on every mounted shape:
+// [scopedResourceHandler], and this helper is where that defect actually
+// shipped. The parent wildcard is not called {id} on every mounted shape:
 // the metering family names it {uptId} and the messaging family {msgId}.
 // r.PathValue on a wildcard the pattern does not declare returns "" rather than
 // failing, so a hardcoded "id" scoped every lookup on those two shapes under the
@@ -844,7 +841,7 @@ func scopedListHandlerDeep[T store.Copier[T], L any](
 // who supplies another device's {id} directly is not rejected by this
 // function at all; store scoping and caller ownership are different
 // properties, and this function implements only the former. Ownership
-// enforcement is IEEECORE-028's cross-cutting fix, not yet present here.
+// enforcement is a cross-cutting fix not yet present here.
 // Do not read the absence of a panic or a wrong result from this function as
 // evidence that unauthorized cross-device reads are blocked.
 func deepScopeKey(r *http.Request) string {
@@ -870,7 +867,7 @@ func deepScopeKey(r *http.Request) string {
 // stamp, when non-nil, completes a resource for the wire before it is served,
 // and takes the same shape as [scopedResourceHandler]'s so the two mounts are
 // read the same way. It exists here so a resource kind whose LIST is stamped on
-// the way out (DERControl's replyTo and responseRequired, IEEECORE-067) is
+// the way out (DERControl's replyTo and responseRequired) is
 // stamped identically on its own href: the two routes serve the same resource,
 // and a field present on one and absent on the other is a conformance trap,
 // which TestSingleDERControlBytesMatchListMember exists to catch.
@@ -961,8 +958,8 @@ func (m itemMethods) allow() string {
 // resource would be unreachable under its own parent and reachable under every
 // other one. That is a silent wrong-scope defect rather than a visible error,
 // and naming the parameter at the mount is what prevents it. The sibling list
-// helper [scopedListHandler] carried exactly that defect and now takes the same
-// argument for the same reason (IEEECORE-059).
+// helper [scopedListHandler] carried exactly that defect and now takes the
+// same argument for the same reason.
 //
 // It mirrors [scopedResourceHandlerDeep] one scope level up and keeps that
 // function's contract on the non-happy paths, whose reasoning is argued there
@@ -992,9 +989,9 @@ func (m itemMethods) allow() string {
 // record to the parent path it was stored under; it does not bind the CALLER to
 // that parent. A caller who supplies another device's parent id directly is not
 // rejected here at all, so with DELETE mounted any authenticated caller that can
-// name a path can remove the record under it. Ownership enforcement is
-// IEEECORE-031's cross-cutting sweep, retargeted to server-go by ADR-002, and it
-// is not present in this package. Do not read a passing scope test as evidence
+// name a path can remove the record under it. Ownership enforcement is a
+// cross-cutting sweep, retargeted to server-go by ADR-002, and it is not
+// present in this package. Do not read a passing scope test as evidence
 // that unauthorized cross-device writes are blocked.
 func scopedResourceHandler[T store.Copier[T]](
 	scopedStore store.ScopedStore[T],
@@ -1077,7 +1074,7 @@ func registerMeteringRoutes(mux routeRegistrar, stores *Stores) {
 		return
 	}
 	// None of these three has a gate of its own: all are mounted on the
-	// strength of UsagePoints (IEEECORE-112, see miswired.go).
+	// strength of UsagePoints (see miswired.go).
 	meterReadings := requireScoped(stores.MeterReadings, "MeterReadings")
 	readings := requireScoped(stores.Readings, "Readings")
 	readingTypes := requireResource(stores.ReadingTypes, "ReadingTypes")
@@ -1130,7 +1127,7 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 		))
 	}
 	if !store.IsAbsent(stores.LogEvents) {
-		// The LogEvent function set at its WADL address (IEEECORE-084).
+		// The LogEvent function set at its WADL address.
 		//
 		// These four routes used to be two, mounted at /edev/{id}/log with no
 		// instance route at all, while the WADL declares the list at
@@ -1155,8 +1152,8 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 		//
 		// DELETE on the instance is a WRITE with no ownership binding; see the
 		// caveat on scopedResourceHandler. It is mounted because the WADL
-		// declares it Mandatory, and the gap is carried on IEEECORE-031 rather
-		// than papered over by leaving a Mandatory method unserved.
+		// declares it Mandatory; the ownership gap is a tracked follow-up
+		// rather than papered over by leaving a Mandatory method unserved.
 		mux.HandleFunc("GET /edev/{id}/lel", scopedListHandler[sep2.LogEvent, sep2.LogEventList](
 			stores.LogEvents, "id", corelogevent.BuildLogEventList, 900,
 		))
@@ -1174,7 +1171,7 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 
 	if !store.IsAbsent(stores.MessagingPrograms) {
 		// TextMessages has no gate of its own: it is mounted on the strength
-		// of MessagingPrograms (IEEECORE-112, see miswired.go).
+		// of MessagingPrograms (see miswired.go).
 		textMessages := requireScoped(stores.TextMessages, "TextMessages")
 
 		mux.HandleFunc("GET /msg", corelisthandler.ListHandler[sep2.MessagingProgram, sep2.MessagingProgramList](
@@ -1186,7 +1183,7 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 		))
 		mux.HandleFunc("POST /msg/{msgId}/tm", coremessaging.HandlePostTextMessage(textMessages))
 
-		// The TextMessage instance (IEEECORE-081). The POST above returns this
+		// The TextMessage instance. The POST above returns this
 		// href in a Location header and nothing served it, so a client that
 		// followed the URI the server had just handed it got a 404.
 		//
@@ -1206,7 +1203,7 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 	if !store.IsAbsent(stores.FlowReservationRequests) {
 		// FlowReservationResponses has no gate of its own: it is mounted on
 		// the strength of FlowReservationRequests, and one POST writes both
-		// halves (IEEECORE-112, see miswired.go).
+		// halves (see miswired.go).
 		flowReservationResponses := requireScoped(stores.FlowReservationResponses, "FlowReservationResponses")
 
 		mux.HandleFunc("GET /edev/{id}/frq", scopedListHandler[sep2.FlowReservationRequest, sep2.FlowReservationRequestList](
@@ -1219,7 +1216,7 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 			flowReservationResponses, "id", coreflowrsv.BuildFlowReservationResponseList, 900,
 		))
 
-		// The two FlowReservation instances (IEEECORE-081). One POST mints both
+		// The two FlowReservation instances. One POST mints both
 		// hrefs: the Location header for the request it just created, and the
 		// FlowReservationResponse href the client polls for the server's
 		// decision. Neither was served, so a client that made a reservation
@@ -1233,9 +1230,9 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 		// Read-only here, deliberately. PUT on FlowReservationRequest is mode M
 		// (sep_wadl.xml:3963) and is NOT mounted: it is a write surface, and a
 		// write with no ownership binding lets any authenticated device rewrite
-		// another device's reservation. Ownership is IEEECORE-031's sweep, and
-		// the missing Mandatory PUT is carried as a finding rather than mounted
-		// dark here.
+		// another device's reservation. Ownership is a separate cross-cutting
+		// sweep, and the missing Mandatory PUT is carried as a finding rather
+		// than mounted dark here.
 		frqInstance := scopedResourceHandler[sep2.FlowReservationRequest](
 			stores.FlowReservationRequests, "id", "frqId", itemMethods{}, nil)
 		mux.HandleFunc("GET /edev/{id}/frq/{frqId}", frqInstance)
@@ -1248,13 +1245,13 @@ func registerNewFunctionSetRoutes(mux routeRegistrar, stores *Stores) {
 	if !store.IsAbsent(stores.ResponseSets) {
 		// Responses has no gate of its own: it is mounted on the strength of
 		// ResponseSets, and every DERControl this server emits carries a
-		// replyTo into it (IEEECORE-112, see miswired.go).
+		// replyTo into it (see miswired.go).
 		responses := requireScoped(stores.Responses, "Responses")
 
 		// Seed the default ResponseSet before the routes that serve it.
 		//
 		// Every DERControl this server emits carries a replyTo pointing into
-		// this set (IEEECORE-067), so an unseeded set would leave that href
+		// this set, so an unseeded set would leave that href
 		// dangling: the POST route would answer, but GET /rsps would list
 		// nothing and GET /rsps/{id} would 404, and a client cannot tell an
 		// empty channel from a server that invented one. Seeding is
