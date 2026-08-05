@@ -182,7 +182,8 @@ func TestPropSFDIChecksumLaw(t *testing.T) {
 	})
 }
 
-// TestPropSFDIValidatorRejectsMalformed is a property test (plan-4).
+// TestPropSFDIValidatorRejectsMalformed is a property test (plan-4,
+// GRIDAPPSD/ieee-2030_5-server-go#214).
 //
 // Property: for any string that is not exactly 12 ASCII decimal digits,
 // ValidateSFDI must return false. Three classes of malformed input are tested:

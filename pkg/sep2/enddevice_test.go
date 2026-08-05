@@ -203,9 +203,10 @@ func TestEndDeviceSubscriptionListLink_OmittedWhenNil(t *testing.T) {
 	}
 }
 
-// Copy() must deep-copy the SubscriptionListLink field so downstream
-// mutation doesn't leak into the original (matches the pattern for the
-// other *Link / *ListLink fields).
+// Copy() must deep-copy the SubscriptionListLink field
+// (GRIDAPPSD/ieee-2030_5-server-go#180) so downstream mutation doesn't
+// leak into the original (matches the pattern for the other *Link /
+// *ListLink fields).
 func TestEndDeviceCopy_SubscriptionListLink(t *testing.T) {
 	original := sep2.EndDevice{
 		SFDI:                 "123",

@@ -145,7 +145,8 @@ func TestPropLimitZeroSpecEdge(t *testing.T) {
 	})
 }
 
-// TestPropDefaulting is a property test (plan-4).
+// TestPropDefaulting is a property test (plan-4,
+// GRIDAPPSD/ieee-2030_5-server-go#220).
 //
 // Property B (defaulting): for any url.Values that contains no "s", "l", or
 // "a" key, ParseQuery returns the documented defaults exactly:
@@ -184,7 +185,8 @@ func TestPropDefaulting(t *testing.T) {
 	})
 }
 
-// TestPropInvalidInputInvariance is a property test (plan-4).
+// TestPropInvalidInputInvariance is a property test (plan-4,
+// GRIDAPPSD/ieee-2030_5-server-go#220).
 //
 // Property C (invalid-input invariance): for any non-numeric or out-of-range
 // value for "s" or "l", ParseQuery falls back to defaults: never panics,

@@ -281,8 +281,13 @@ func MintableHrefs() []MintableHref {
 // and DELETE. The old shape is gone from the registry only because the POST
 // handler stamps the declared address instead of the undeclared one; the
 // reachability the entry recorded as missing is present. The two entries
-// that remain are each tracked separately: an entry with no owner is a
-// suppression rather than a ratchet.
+// that remain still need real fixes, and core has no public issue
+// tracker to anchor a per-entry owner tag to. What keeps this set a
+// ratchet rather than a bare suppression is not an owner tag but the
+// non-empty, specific reason every entry carries:
+// TestKnownUnroutedHrefs_EntriesAreDeclaredAndReasoned in hrefs_test.go
+// rejects an empty one, and a real reason names the defect precisely
+// enough that a reader can tell the entry apart from a shrug.
 var knownUnroutedHrefs = map[string]string{
 	"GET /edev/{}/sub/{}": "POST /edev/{id}/sub returns this Location but only DELETE is routed, so a client re-reading its own subscription gets 405. The path IS mounted, so this is a method gap rather than a dead link",
 	"GET /mup/{}/mr/{}":   "POST /mup/{id}/mr and POST /mup/{id} both return this Location and nothing serves it",

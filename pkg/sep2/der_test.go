@@ -308,7 +308,8 @@ func TestDERControlBaseOmitEmpty(t *testing.T) {
 
 // TestDefaultDERControlSetGradWRoundTrip exercises the
 // IEEE 2030.5 section 10.11 device-default ramp-rate fields setGradW and
-// setSoftGradW for XML round-trip plus Copy() independence.
+// setSoftGradW (GRIDAPPSD/ieee-2030_5-server-go#140) for XML round-trip
+// plus Copy() independence.
 func TestDefaultDERControlSetGradWRoundTrip(t *testing.T) {
 	grad := uint16(1000)    // 10%/s in hundredths of percent per second
 	softGrad := uint16(500) // 5%/s
