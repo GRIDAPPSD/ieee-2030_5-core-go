@@ -1,5 +1,7 @@
-// Package srverr is the one place in the server where a request is answered
-// with a 500, so that every 500 carries a server-side record of why.
+// Package srverr is where every 500 a sep2srv handler raises is answered,
+// so that every handler-raised 500 carries a server-side record of why. The
+// encoding layer (pkg/sep2/encoding) has its own 500 path for an XML encode
+// failure, and that path does not carry this package's log prefix.
 //
 // # The operational problem this exists for
 //
@@ -38,10 +40,12 @@
 // property of the route rather than of any one request.
 //
 // This costs something real and it is worth stating rather than glossing:
-// the log no longer says WHICH resource id failed. That is the trade the
-// error itself is expected to cover, since a store implementation that
+// the log usually does not say WHICH resource id failed. That is the trade
+// the error itself is expected to cover, since a store implementation that
 // cannot describe its own failure without the caller's identifiers has a
-// reporting problem of its own.
+// reporting problem of its own. One exception: the EndDevice
+// Registration-lookup error names the device's own Href, so that route's
+// log line does say which resource failed.
 package srverr
 
 import (

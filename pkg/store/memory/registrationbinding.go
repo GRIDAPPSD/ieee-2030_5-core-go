@@ -389,10 +389,12 @@ func (s *RegisteredEndDeviceStore) linkFor(ctx context.Context, id string) (*sep
 //
 // A key that cannot be recovered strips the link and returns no error: the
 // device's Href does not follow the "/edev/{key}" addressing invariant, so
-// there is no key to ask the Registration store about, and "no Registration
-// record can exist under a key that does not exist" is a fact this method
-// can assert on its own. That case is logged, since it means an EndDevice
-// was stored off the addressing scheme the rest of the package depends on.
+// there is no key to ask the Registration store about. That silence is not
+// a verified fact: Registrations are keyed by the store key, not the Href,
+// so a Registration could still exist under the device's real key; this
+// method has no way to ask. That case is logged, since it means an
+// EndDevice was stored off the addressing scheme the rest of the package
+// depends on.
 //
 // A key that IS recovered but whose Registration lookup fails is a
 // different case (IEEECORE-107) and is NOT silenced: whether that device
