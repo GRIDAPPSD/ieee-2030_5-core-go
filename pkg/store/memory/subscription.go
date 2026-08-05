@@ -14,7 +14,7 @@ import (
 // If a persistence path is configured (see NewSubscriptionStoreWithPersistence),
 // successful Create / Delete operations flush a fresh JSON snapshot to disk
 // via atomic rename. The default zero-value store has no persistence path
-// and behaves exactly like the pre-IEEE-077 in-memory store.
+// and behaves exactly like the original pure in-memory store.
 type SubscriptionStore struct {
 	*Store[sep2.Subscription]
 	idxMu         sync.RWMutex
@@ -30,7 +30,7 @@ type SubscriptionStore struct {
 }
 
 // NewSubscriptionStore creates an in-memory SubscriptionStore with no
-// persistence (the historical pre-IEEE-077 behavior; pure RAM).
+// persistence (the original behavior; pure RAM).
 func NewSubscriptionStore() *SubscriptionStore {
 	return &SubscriptionStore{
 		Store:         NewStore[sep2.Subscription](),
@@ -62,7 +62,7 @@ func (s *SubscriptionStore) Delete(ctx context.Context, id string) error {
 // ListByResource returns all subscriptions for a given resource href,
 // paired with their storage IDs. The Manager threads each record's ID
 // through to its notification worker so that a 4xx response from the
-// receiver can be cleaned up via Delete (IEEE-080, CSIP V1.2 ERR-002).
+// receiver can be cleaned up via Delete (CSIP V1.2 ERR-002).
 func (s *SubscriptionStore) ListByResource(_ context.Context, resourceHref string) ([]SubscriptionRecord, error) {
 	s.idxMu.RLock()
 	ids := make([]string, len(s.resourceIndex[resourceHref]))

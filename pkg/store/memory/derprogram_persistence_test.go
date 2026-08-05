@@ -12,8 +12,8 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// IEEE-097: DERProgram persistence. IEEE-096 FSA records reference
-// program hrefs (e.g. "/edev/1/fsa/A/derp/1"). For those hrefs to resolve
+// DERProgram persistence. FSA records reference program hrefs (e.g.
+// "/edev/1/fsa/A/derp/1"). For those hrefs to resolve
 // after a restart, the DERProgramStore has to survive too.
 //
 // DERPrograms live in a ScopedStore[*Store[sep2.DERProgram]] keyed by

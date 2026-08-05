@@ -26,7 +26,7 @@ const notificationClientTimeout = 30 * time.Second
 // SubscriptionLister provides lookup of subscriptions by resource href.
 // The returned records pair each subscription with its storage ID so the
 // Manager can identify a specific subscription when calling Delete on a
-// receiver-terminated subscription (IEEE-080, CSIP V1.2 ERR-002).
+// receiver-terminated subscription (CSIP V1.2 ERR-002).
 type SubscriptionLister interface {
 	ListByResource(ctx context.Context, resourceHref string) ([]memory.SubscriptionRecord, error)
 }
@@ -48,7 +48,7 @@ var errDeleteAfter4xx = errors.New("subscription deleted: receiver returned 4xx"
 // ErrQueueFull is returned by NotifyRemoved when the worker pool's
 // bounded queue cannot accept another task. Callers (e.g.
 // HandleDeleteSubscription) treat this as best-effort: a full queue is
-// logged but does not change the DELETE response — the spec doesn't
+// logged but does not change the DELETE response: the spec doesn't
 // require the final Notification, so dropping it is acceptable.
 var ErrQueueFull = errors.New("notification queue full")
 
@@ -129,7 +129,7 @@ func (m *Manager) Start(ctx context.Context) {
 // observing, so the subscriber can correlate locally.
 //
 // Unlike Notify(href, status), which fans out to every subscription
-// matching the resource, NotifyRemoved targets a single subscription —
+// matching the resource, NotifyRemoved targets a single subscription:
 // the one being deleted. Callers must hand the subscription record they
 // have *before* the store-level Delete; once Delete returns, the
 // subscription is gone and the ListByResource lookup that Notify uses
@@ -141,7 +141,7 @@ func (m *Manager) Start(ctx context.Context) {
 // recoverable from the caller's perspective: the spec does not require
 // the final Notification, so the deletion proceeds either way.
 //
-// IEEE-100 / CSIP V1.2 §11.6.
+// Per CSIP V1.2 section 11.6.
 func (m *Manager) NotifyRemoved(_ context.Context, sub sep2.Subscription) error {
 	if sub.NotificationURI == "" {
 		return fmt.Errorf("notify removed for %q: %w", sub.Href, ErrInvalidNotificationURI)
@@ -176,7 +176,7 @@ func (m *Manager) NotifyRemoved(_ context.Context, sub sep2.Subscription) error 
 }
 
 // Notify looks up all subscriptions for the given resource and enqueues
-// notification tasks for each subscriber. Non-blocking — drops if queue full.
+// notification tasks for each subscriber. Non-blocking: drops if queue full.
 func (m *Manager) Notify(ctx context.Context, resourceHref string, status uint8) {
 	records, err := m.store.ListByResource(ctx, resourceHref)
 	if err != nil {
@@ -245,7 +245,7 @@ func (m *Manager) worker(ctx context.Context) {
 // On a 4xx response, deliver dispatches Delete on the store's
 // SubscriptionWriter capability (if implemented) and returns
 // errDeleteAfter4xx so the worker can log the termination at the
-// appropriate level. 5xx responses are left in place — that's transient
+// appropriate level. 5xx responses are left in place: that's transient
 // receiver failure, not a subscription-level signal (CSIP V1.2 ERR-002).
 func (m *Manager) deliver(ctx context.Context, task notificationTask) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, task.notificationURI, bytes.NewReader(task.payload))
@@ -262,7 +262,7 @@ func (m *Manager) deliver(ctx context.Context, task notificationTask) error {
 
 	if resp.StatusCode >= 400 && resp.StatusCode < 500 {
 		// Receiver has terminated the subscription. Best-effort delete;
-		// a failed delete is logged but does not change the return — the
+		// a failed delete is logged but does not change the return: the
 		// caller still needs to know this was a 4xx outcome.
 		if writer, ok := m.store.(SubscriptionWriter); ok && task.subscriptionID != "" {
 			if delErr := writer.Delete(ctx, task.subscriptionID); delErr != nil {

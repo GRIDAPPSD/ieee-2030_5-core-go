@@ -31,9 +31,9 @@ type EndDevice struct {
 	FunctionSetAssignmentsListLink *ListLink `xml:"FunctionSetAssignmentsListLink,omitempty"`
 	RegistrationLink               *Link     `xml:"RegistrationLink,omitempty"`
 	// SubscriptionListLink is the per-EndDevice subscription list, per
-	// IEEE 2030.5 §10.5.5 / CSIP V1.2 CORE-018 step 1. Servers that support
-	// subscription/notification advertise this link so an inverter can POST
-	// a Subscription resource to it (IEEE-050); servers that don't simply
+	// IEEE 2030.5 section 10.5.5 / CSIP V1.2 CORE-018 step 1. Servers that
+	// support subscription/notification advertise this link so an inverter
+	// can POST a Subscription resource to it; servers that don't simply
 	// omit it (and any POST to a non-advertised path returns 405, which the
 	// inverter handles as polling-only fallback). omitempty preserves
 	// backward XML compatibility, existing EndDevice payloads without this

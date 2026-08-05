@@ -19,8 +19,8 @@ import (
 	septls "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls"
 )
 
-// TestLoadClientCAs covers the multi-root ClientCA loader the IEEE-068
-// Enphase runtime profile depends on. Each subtest is isolated under
+// TestLoadClientCAs covers the multi-root ClientCA loader the Enphase
+// runtime profile depends on. Each subtest is isolated under
 // t.TempDir so concurrent runs cannot collide on disk.
 func TestLoadClientCAs(t *testing.T) {
 	t.Parallel()
@@ -199,7 +199,7 @@ func writeSelfSignedCA(t *testing.T, dir, label string) string {
 
 // assertPoolContains decodes the named CA subject and checks that the
 // pool's Subjects() set contains it. Uses crypto/x509's exposed Subjects
-// accessor — preferred to peeking at internal state.
+// accessor, preferred to peeking at internal state.
 func assertPoolContains(t *testing.T, pool *x509.CertPool, cn string) {
 	t.Helper()
 	for _, raw := range pool.Subjects() { //nolint:staticcheck // SA1019: stable across Go 1.21+ for our use

@@ -133,7 +133,7 @@ func TestFormatSFDIRoundTrip(t *testing.T) {
 	}
 }
 
-// TestPropSFDIChecksumLaw is a property test (plan-4, IEEE-116).
+// TestPropSFDIChecksumLaw is a property test (plan-4).
 //
 // Property: for any device certificate, SFDI(cert) always produces a valid
 // SFDI string — i.e. ValidateSFDI(SFDI(cert)) == true for all inputs.
@@ -181,7 +181,7 @@ func TestPropSFDIChecksumLaw(t *testing.T) {
 	})
 }
 
-// TestPropSFDIValidatorRejectsMalformed is a property test (plan-4, IEEE-116).
+// TestPropSFDIValidatorRejectsMalformed is a property test (plan-4).
 //
 // Property: for any string that is not exactly 12 ASCII decimal digits,
 // ValidateSFDI must return false. Three classes of malformed input are tested:

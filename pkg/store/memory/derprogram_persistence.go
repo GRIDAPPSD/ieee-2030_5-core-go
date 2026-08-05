@@ -13,7 +13,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 )
 
-// IEEE-097: DERProgramStore persistence.
+// DERProgramStore persistence.
 //
 // DERPrograms are addressed as (parent, id) pairs: a parent is a device key and
 // each parent holds its own programs. The persistence wrapper flattens those

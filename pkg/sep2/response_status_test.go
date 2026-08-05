@@ -1,14 +1,14 @@
 // Package sep2_test pins the ResponseStatus* named constants to their
-// IEEE 2030.5-2023 §10.10 Table 31 wire values.
+// IEEE 2030.5-2023 section 10.10 Table 31 wire values.
 //
-// IEEE-044a renumbered the constants because the pre-existing values
-// were off-by-one against Table 31 (EventReceived was 0 instead of 1,
+// The constants were renumbered because the pre-existing values were
+// off-by-one against Table 31 (EventReceived was 0 instead of 1,
 // EventCancelled was 5 instead of 6). The CSIP server-side test
 // `test/csip/core_022_responses_test.go` had to use raw uint8 literals
-// 1/2/3/6 to bypass the wrong constants. After IEEE-044a the constants
-// match the wire values and that test uses the named constants.
+// 1/2/3/6 to bypass the wrong constants. Now the constants match the wire
+// values and that test uses the named constants.
 //
-// This test exists to prevent a future regression — if anyone changes
+// This test exists to prevent a future regression: if anyone changes
 // a constant's value, this test fails with a clear pointer back to
 // Table 31. Wire values are NORMATIVE and breaking them silently
 // corrupts every Response POST on the network.

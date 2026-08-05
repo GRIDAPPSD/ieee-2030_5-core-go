@@ -8,12 +8,12 @@
 // The companion file time.go (no tag predicate) declares the nowFunc
 // package var defaulted to time.Now; this file's init() swaps it to a
 // closure that adds the atomic offset. With the tag off, this file is
-// not compiled and nowFunc remains the unmodified time.Now reference --
-// the production binary is bit-identical to one without IEEE-025 wired.
+// not compiled and nowFunc remains the unmodified time.Now reference: the
+// production binary is bit-identical to one without this hook wired.
 //
 // The offset is stored as nanoseconds in an atomic.Int64 so the time
 // mutation surface and any read path through HandleTime can race-safely
-// contend. IEEE-025.
+// contend.
 
 package sep2time
 

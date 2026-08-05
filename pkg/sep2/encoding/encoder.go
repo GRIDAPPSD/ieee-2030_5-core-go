@@ -1,7 +1,7 @@
 package encoding
 
 // Encoder abstracts encoding for IEEE 2030.5 payloads.
-// XML is the only supported encoding (EXI was removed in IEEE-002).
+// XML is the only supported encoding (EXI support was removed).
 type Encoder interface {
 	ContentType() string
 	Marshal(v any) ([]byte, error)

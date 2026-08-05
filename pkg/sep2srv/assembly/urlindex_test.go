@@ -17,7 +17,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// URL-index addressing (IEEECORE-URLINDEX).
+// URL-index addressing.
 //
 // Resource URLs address an EndDevice by an opaque, server-chosen index
 // ("/edev/3/rg") rather than by the certificate-derived LFDI. These tests

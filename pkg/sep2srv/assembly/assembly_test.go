@@ -877,7 +877,7 @@ func TestAssembly_PostMirrorUsagePointReading_ViaLocationHeader(t *testing.T) {
 	postResp.Body.Close()
 
 	if postResp.StatusCode == http.StatusMethodNotAllowed {
-		t.Fatalf("POST %s returned 405: server's own Location header rejected (IEEECORE-MUPPOST regression); body=%s", loc, postBody)
+		t.Fatalf("POST %s returned 405: server's own Location header rejected; body=%s", loc, postBody)
 	}
 	if postResp.StatusCode != http.StatusCreated {
 		t.Fatalf("POST %s status = %d, want 201; body=%s", loc, postResp.StatusCode, postBody)

@@ -12,10 +12,8 @@
 // subscriptionIDOverride and subscriptionRefuseCreate package vars
 // defaulted to nil; this file's init() swaps them to closures over the
 // canceled-id set. With the tag off this file is not compiled and both
-// vars stay nil — the production binary's create path is a single
+// vars stay nil: the production binary's create path is a single
 // nil-compare on each.
-//
-// IEEE-079.
 
 package subscription
 

@@ -13,7 +13,6 @@ import (
 // time.Now() call. The sibling file time_test_hook.go (built only with
 // the csip_test_hooks build tag) reassigns nowFunc at init() to add a
 // test-controlled offset, enabling CSIP V1.2 CORE-006 (TM_TIME_ADJUSTED).
-// See IEEE-024 / IEEE-025.
 var nowFunc = time.Now
 
 // TimeParams holds the time-resource configuration values supplied by the

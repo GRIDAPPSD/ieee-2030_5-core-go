@@ -11,7 +11,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// IEEE-096: AdminFSAStore tests.
+// AdminFSAStore tests.
 //
 // The store keeps three things: the FSA struct itself, the set of attached
 // DERProgram hrefs, and the set of assigned device ids. Deletion is gated

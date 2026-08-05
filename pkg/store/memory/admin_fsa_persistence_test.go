@@ -13,9 +13,9 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// IEEE-097: AdminFSAStore persistence — pins both the FSA record AND the
-// denormalized program-attachments and device-assignments. IEEE-096 keeps
-// links next to the FSA itself; persistence has to round-trip both.
+// AdminFSAStore persistence: pins both the FSA record AND the
+// denormalized program-attachments and device-assignments. Links live
+// next to the FSA itself; persistence has to round-trip both.
 
 func newPersistedAdminFSAStore(t *testing.T) (*memory.AdminFSAStore, string) {
 	t.Helper()

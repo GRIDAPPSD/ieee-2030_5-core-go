@@ -12,8 +12,8 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// IEEE-097: EndDeviceStore persistence — pin the same contract IEEE-077
-// introduced for SubscriptionStore. Each test creates a fresh store with
+// EndDeviceStore persistence: pin the same contract SubscriptionStore
+// already has. Each test creates a fresh store with
 // the persistence path wired to a file inside t.TempDir(), exercises the
 // mutation, and verifies a fresh store rehydrated from disk sees the same
 // state.
@@ -52,10 +52,10 @@ func TestEndDevicePersistence_EmptyPathIsInMemory(t *testing.T) {
 
 func TestEndDevicePersistence_ColdBootMissingFile(t *testing.T) {
 	t.Parallel()
-	// Pointing at a path that does not exist must NOT error — that is
+	// Pointing at a path that does not exist must NOT error: that is
 	// the normal first-boot shape.
 	missing := filepath.Join(t.TempDir(), "subdir", "enddevices.json")
-	// Parent dir doesn't exist yet — cold-boot reads do not create it.
+	// Parent dir doesn't exist yet: cold-boot reads do not create it.
 	_, err := memory.NewEndDeviceStoreWithPersistence(missing)
 	if err != nil {
 		t.Fatalf("cold boot must tolerate missing file: %v", err)

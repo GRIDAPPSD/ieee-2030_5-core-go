@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-// IEEE-097: shared persistence machinery for admin-mutated stores.
+// Shared persistence machinery for admin-mutated stores.
 //
 // Every persistent store wrapper writes a single JSON document of the shape
 //
@@ -49,8 +49,8 @@ type snapshotEnvelope struct {
 }
 
 // readSnapshotEnvelope loads a snapshot envelope from disk. A missing file
-// is treated as cold boot — returns (nil, nil). An empty file is treated
-// as "no records" — returns an envelope with empty records. A corrupt file
+// is treated as cold boot: returns (nil, nil). An empty file is treated
+// as "no records": returns an envelope with empty records. A corrupt file
 // returns a descriptive error and leaves the caller to decide.
 //
 // readSnapshotEnvelope validates the version and returns the raw records
@@ -102,8 +102,8 @@ func writeSnapshotEnvelope(path string, records any) error {
 	if err != nil {
 		return fmt.Errorf("marshal envelope: %w", err)
 	}
-	// writeFileAtomic lives in subscription_persistence.go (IEEE-077). It
-	// is package-scoped and shared across all persistent stores in this
+	// writeFileAtomic lives in subscription_persistence.go. It is
+	// package-scoped and shared across all persistent stores in this
 	// package; we deliberately keep a single implementation here so the
 	// atomic-rename / parent-fsync contract has one home to test against.
 	return writeFileAtomic(path, payload)

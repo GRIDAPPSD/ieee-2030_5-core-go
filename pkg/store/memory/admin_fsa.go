@@ -10,9 +10,9 @@ import (
 )
 
 // AdminFSAStore is the management-plane store for FunctionSetAssignments
-// created via the admin API (IEEE-096). It is distinct from the per-device
+// created via the admin API. It is distinct from the per-device
 // scoped FSA store (`ScopedStore[FunctionSetAssignments]`) which is the
-// spec-facing surface — an admin FSA is a template that the operator can
+// spec-facing surface: an admin FSA is a template that the operator can
 // attach programs to and then assign to one or more devices.
 //
 // Concurrency: every operation is safe for concurrent use. Reads return
@@ -20,7 +20,7 @@ import (
 //
 // Per the Pike rule the link bookkeeping (programs attached, devices
 // assigned) lives next to the FSA itself rather than as scattered state
-// across handlers — one source of truth, one lock domain.
+// across handlers: one source of truth, one lock domain.
 type AdminFSAStore struct {
 	mu           sync.RWMutex
 	fsas         map[string]sep2.FunctionSetAssignments
@@ -28,8 +28,8 @@ type AdminFSAStore struct {
 	programLinks map[string][]string // fsaID -> sorted program hrefs
 	deviceLinks  map[string][]string // fsaID -> sorted device ids
 
-	// IEEE-097: durable persistence. Empty persistPath = pure in-memory
-	// (the historical AdminFSAStore behavior). When set, every mutation
+	// Durable persistence. Empty persistPath = pure in-memory (the
+	// historical AdminFSAStore behavior). When set, every mutation
 	// flushes a snapshot under persistMu. Held separately from mu so the
 	// disk syscall does not block readers/writers on the in-memory state.
 	persistMu   sync.Mutex
@@ -56,8 +56,8 @@ func (s *AdminFSAStore) Create(_ context.Context, id string, fsa sep2.FunctionSe
 	idx, _ := slices.BinarySearch(s.keys, id)
 	s.keys = slices.Insert(s.keys, idx, id)
 	s.mu.Unlock()
-	// IEEE-097: persist outside the lock so disk I/O does not block
-	// concurrent readers on s.mu.
+	// Persist outside the lock so disk I/O does not block concurrent
+	// readers on s.mu.
 	return s.persist()
 }
 
@@ -86,7 +86,7 @@ func (s *AdminFSAStore) List(_ context.Context) []sep2.FunctionSetAssignments {
 }
 
 // Delete removes an FSA. ErrNotFound if absent. ErrInUse if the FSA still
-// has programs attached or devices assigned — the caller must detach/unlink
+// has programs attached or devices assigned: the caller must detach/unlink
 // first; the store does NOT silently cascade.
 func (s *AdminFSAStore) Delete(_ context.Context, id string) error {
 	s.mu.Lock()
@@ -126,7 +126,7 @@ func (s *AdminFSAStore) AttachProgram(_ context.Context, fsaID, programHref stri
 }
 
 // DetachProgram unlinks a DERProgram href from an FSA. ErrNotFound if the
-// FSA is absent OR the program is not attached — the caller does not need
+// FSA is absent OR the program is not attached: the caller does not need
 // to distinguish (operator UX: "the link is gone either way").
 func (s *AdminFSAStore) DetachProgram(_ context.Context, fsaID, programHref string) error {
 	s.mu.Lock()
@@ -203,7 +203,7 @@ func (s *AdminFSAStore) Devices(_ context.Context, fsaID string) []string {
 }
 
 // FSAsForDevice returns sorted FSA ids assigned to the given device.
-// Walked once under a read lock — small N, no need for a reverse index yet.
+// Walked once under a read lock: small N, no need for a reverse index yet.
 func (s *AdminFSAStore) FSAsForDevice(_ context.Context, deviceID string) []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

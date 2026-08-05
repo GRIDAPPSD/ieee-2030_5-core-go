@@ -12,9 +12,9 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// IEEE-097: RegistrationStore persistence pins the same contract as the
+// RegistrationStore persistence pins the same contract as the
 // EndDeviceStore wrapper. The underlying Store[sep2.Registration] keeps
-// its existing interface — RegistrationStore is a thin wrapper that adds
+// its existing interface: RegistrationStore is a thin wrapper that adds
 // on-disk snapshots without changing how the rest of the server interacts
 // with it.
 

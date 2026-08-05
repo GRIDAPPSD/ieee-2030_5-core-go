@@ -12,7 +12,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 )
 
-// IEEE-097: durable RegistrationStore persistence.
+// Durable RegistrationStore persistence.
 //
 // RegistrationStore adds on-disk snapshots to a Registration collection: every
 // mutation that succeeds against the collection is followed by a whole-file

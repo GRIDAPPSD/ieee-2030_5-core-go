@@ -81,7 +81,7 @@ func TestToListOptions(t *testing.T) {
 	}
 }
 
-// TestPropLimitClamp is a property test (plan-4, IEEE-117).
+// TestPropLimitClamp is a property test (plan-4).
 //
 // Property A (clamp): for any numeric value of the "l" query parameter,
 // ParseQuery returns Params.Limit in [0, MaxLimit]. Never above 255, never
@@ -144,7 +144,7 @@ func TestPropLimitZeroSpecEdge(t *testing.T) {
 	})
 }
 
-// TestPropDefaulting is a property test (plan-4, IEEE-117).
+// TestPropDefaulting is a property test (plan-4).
 //
 // Property B (defaulting): for any url.Values that contains no "s", "l", or
 // "a" key, ParseQuery returns the documented defaults exactly:
@@ -183,7 +183,7 @@ func TestPropDefaulting(t *testing.T) {
 	})
 }
 
-// TestPropInvalidInputInvariance is a property test (plan-4, IEEE-117).
+// TestPropInvalidInputInvariance is a property test (plan-4).
 //
 // Property C (invalid-input invariance): for any non-numeric or out-of-range
 // value for "s" or "l", ParseQuery falls back to defaults — never panics,

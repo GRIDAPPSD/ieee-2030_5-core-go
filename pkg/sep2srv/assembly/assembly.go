@@ -219,9 +219,9 @@ type Stores struct {
 	// FSA store
 	FSAs store.ScopedStore[sep2.FunctionSetAssignments]
 
-	// IEEE-096: admin FSA management plane (operator-authored templates,
-	// program links, device assignments). Distinct from FSAs above which is
-	// the spec-facing scoped surface.
+	// AdminFSAs is the admin FSA management plane (operator-authored
+	// templates, program links, device assignments). Distinct from FSAs
+	// above which is the spec-facing scoped surface.
 	AdminFSAs *memory.AdminFSAStore
 
 	// Subscription store
@@ -307,7 +307,7 @@ type AuthPolicy struct {
 	Identity func(ctx context.Context) (lfdi, sfdi string, ok bool)
 
 	// SFDIPrefix derives the EndDevice id prefix from an SFDI, replacing
-	// auth.ExtractSFDIPrefix (IEEE-014 short-SFDI guard). Injected so the
+	// auth.ExtractSFDIPrefix (the short-SFDI guard). Injected so the
 	// guard policy stays server-owned.
 	//
 	// If nil, BuildProtocolRouter substitutes a stub that always returns an
@@ -560,7 +560,7 @@ func registerEndDeviceRoutes(mux routeRegistrar, stores *Stores, authPolicy Auth
 	mux.HandleFunc("PUT /edev/{id}", coreedev.HandleUpdateEndDevice(edevs))
 	mux.HandleFunc("DELETE /edev/{id}", coreedev.HandleDeleteEndDevice(edevs, notifier))
 
-	// IEEE-101: Registration GET handler at /edev/{id}/rg.
+	// Registration GET handler at /edev/{id}/rg.
 	if !store.IsAbsent(stores.Registrations) {
 		mux.HandleFunc("GET /edev/{id}/rg", corereg.HandleGetRegistration(edevs, stores.Registrations, authPolicy.Identity))
 	}

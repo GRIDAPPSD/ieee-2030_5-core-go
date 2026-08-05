@@ -151,9 +151,9 @@ func TestEndDeviceCopy(t *testing.T) {
 	}
 }
 
-// IEEE-050: SubscriptionListLink must round-trip when present and be
-// omitted when absent (omitempty). Backward XML compatibility for servers
-// that don't advertise subscription support.
+// SubscriptionListLink must round-trip when present and be omitted when
+// absent (omitempty). Backward XML compatibility for servers that don't
+// advertise subscription support.
 func TestEndDeviceSubscriptionListLink_RoundTrip(t *testing.T) {
 	original := sep2.EndDevice{
 		SubscribableResource: sep2.SubscribableResource{
@@ -202,9 +202,9 @@ func TestEndDeviceSubscriptionListLink_OmittedWhenNil(t *testing.T) {
 	}
 }
 
-// IEEE-050: Copy() must deep-copy the new SubscriptionListLink field so
-// downstream mutation doesn't leak into the original (matches the pattern
-// for the other *Link / *ListLink fields).
+// Copy() must deep-copy the SubscriptionListLink field so downstream
+// mutation doesn't leak into the original (matches the pattern for the
+// other *Link / *ListLink fields).
 func TestEndDeviceCopy_SubscriptionListLink(t *testing.T) {
 	original := sep2.EndDevice{
 		SFDI:                 "123",

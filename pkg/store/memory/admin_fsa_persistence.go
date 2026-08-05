@@ -8,11 +8,11 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 )
 
-// IEEE-097: durable AdminFSAStore persistence.
+// Durable AdminFSAStore persistence.
 //
 // Records carry the FSA itself plus the denormalized program-attachments
-// and device-assignments (IEEE-096 keeps those next to the FSA — one
-// source of truth). Persisting them together means a restart restores the
+// and device-assignments (kept next to the FSA: one source of truth).
+// Persisting them together means a restart restores the
 // entire admin-authored topology in a single pass, with no risk of
 // orphaning attachments when the FSA load order differs from the link
 // load order.
@@ -26,7 +26,7 @@ type adminFSARecord struct {
 }
 
 // NewAdminFSAStoreWithPersistence builds an AdminFSAStore wired to a JSON
-// snapshot file. Empty path = pure in-memory (the pre-IEEE-097 behavior).
+// snapshot file. Empty path = pure in-memory (the original behavior).
 func NewAdminFSAStoreWithPersistence(path string) (*AdminFSAStore, error) {
 	store := NewAdminFSAStore()
 	if path == "" {

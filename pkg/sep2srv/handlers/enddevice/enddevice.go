@@ -41,14 +41,14 @@ type ResourceNotifier interface {
 type IdentityFunc func(ctx context.Context) (lfdi, sfdi string, ok bool)
 
 // SFDIPrefixFunc derives the EndDevice id prefix from an SFDI string.
-// Replaces auth.ExtractSFDIPrefix (IEEE-014 short-SFDI guard). The server
+// Replaces auth.ExtractSFDIPrefix (the short-SFDI guard). The server
 // wires auth.ExtractSFDIPrefix; tests supply a trivial truncation.
 //
 // Its RETURN VALUE is no longer used to address the device: resource URLs
 // now carry the opaque index allocated by EndDeviceIndexer (see below). It
-// is still called, and its error still rejects the registration, because the
-// IEEE-014 guard is a validity check on the SFDI itself and dropping the
-// call would silently drop that check along with the addressing change.
+// is still called, and its error still rejects the registration, because
+// the guard is a validity check on the SFDI itself and dropping the call
+// would silently drop that check along with the addressing change.
 type SFDIPrefixFunc func(sfdi string) (string, error)
 
 // EndDeviceIndexer allocates the opaque, server-chosen index that identifies
@@ -112,9 +112,8 @@ func HandleEndDevice(s store.EndDeviceStore) http.HandlerFunc {
 // HandleCreateEndDevice returns a handler for POST /edev.
 //
 // It creates a new EndDevice, setting identity from the injected
-// IdentityFunc, validating the SFDI through SFDIPrefixFunc (IEEE-014
-// short-SFDI guard), and addressing the device by the opaque index allocated
-// from idx.
+// IdentityFunc, validating the SFDI through SFDIPrefixFunc (the short-SFDI
+// guard), and addressing the device by the opaque index allocated from idx.
 //
 // Identity and addressing are separate concerns here and must stay separate.
 // The stored EndDevice keeps the certificate-derived LFDI and SFDI, which is
@@ -206,7 +205,7 @@ func HandleCreateEndDevice(s store.EndDeviceStore, idx EndDeviceIndexer, identit
 			return
 		}
 
-		// IEEE-014 guard: reject a malformed or too-short SFDI before the
+		// Short-SFDI guard: reject a malformed or too-short SFDI before the
 		// device is admitted. The returned prefix is intentionally discarded;
 		// it used to be the device id, and addressing now comes from idx.
 		if _, err := sfdiPrefix(sfdi); err != nil {

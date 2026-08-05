@@ -2,8 +2,8 @@
 // `responseRequired`, which IEEE 2030.5 section 10.1.3 (Event rules) and the
 // XSD `RespondableResource` declare as ATTRIBUTES (sep.xsd:5435, sep.xsd:5440).
 //
-// These tests gate the IEEE-044 hook-wiring work: the OnTransition hook
-// reads `ReplyTo` off a decoded DERControl to drive `(*SEP2Client).
+// These tests gate the OnTransition hook-wiring work: the hook reads
+// `ReplyTo` off a decoded DERControl to drive `(*SEP2Client).
 // PostResponse`, and reads the `ResponseRequired` bitmap to decide
 // which transition statuses warrant a Response POST.
 //
@@ -32,8 +32,8 @@ import (
 // TestEventReplyToRoundTrip asserts that a DERControl marshalled with
 // ReplyTo set survives an unmarshal-marshal-unmarshal cycle without
 // losing or mutating the URI. Both relative ("/edev/1/rsps/1/rsp")
-// and absolute ("https://example/rsp") forms are exercised : the
-// IEEE-044 hook resolves both via SEP2Client.resolveServerURL.
+// and absolute ("https://example/rsp") forms are exercised: the
+// OnTransition hook resolves both via SEP2Client.resolveServerURL.
 func TestEventReplyToRoundTrip(t *testing.T) {
 	t.Parallel()
 
@@ -89,7 +89,7 @@ func TestEventReplyToRoundTrip(t *testing.T) {
 // TestEventResponseRequiredRoundTrip asserts the HexBinary8 bitmap
 // (Table 32 : bits select which transition statuses require a
 // Response POST) round-trips through xml.Marshal/Unmarshal. The
-// IEEE-044 hook ANDs this mask against the transition status to
+// OnTransition hook ANDs this mask against the transition status to
 // decide whether to call PostResponse.
 func TestEventResponseRequiredRoundTrip(t *testing.T) {
 	t.Parallel()
@@ -226,8 +226,8 @@ func TestEventElementOrder(t *testing.T) {
 }
 
 // TestDERControlCopyResponseRequiredDeepCopy asserts that DERControl.Copy
-// produces an independent ResponseRequired pointer : mutating the copy
-// must not change the original. The IEEE-044 hook may stash a copy of
+// produces an independent ResponseRequired pointer: mutating the copy
+// must not change the original. The OnTransition hook may stash a copy of
 // the active DERControl and mutate the bitmap during retry-policy
 // evaluation; without deep-copy, the canonical event in the store
 // would silently change.

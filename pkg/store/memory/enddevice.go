@@ -30,7 +30,7 @@ func (s *EndDeviceStore) Create(ctx context.Context, id string, device sep2.EndD
 		return err
 	}
 	s.indexDevice(id, device)
-	// IEEE-097: snapshot to disk if persistence is configured. No-op for
+	// Snapshot to disk if persistence is configured. No-op for
 	// in-memory stores so back-compat is automatic.
 	return s.persistEndDeviceSnapshot()
 }
