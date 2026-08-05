@@ -9,9 +9,10 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// IEEE-099: SubscriptionStore must surface subscriptions scoped to the
-// EndDevice they were POSTed under. Before this ticket landed, the
-// secondary deviceIndex existed but was never populated, so
+// SubscriptionStore must surface subscriptions scoped to the EndDevice
+// they were POSTed under (GRIDAPPSD/ieee-2030_5-server-go#168). This
+// used to be broken: the secondary
+// deviceIndex existed but was never populated, so
 // ListByDeviceWithIDs (and ListByDevice) returned empty regardless of
 // state. The handler at GET /edev/{id}/sub was therefore wired to the
 // underlying union store and leaked subscriptions across EndDevices.
@@ -39,7 +40,7 @@ func TestListByDeviceWithIDs_ScopesByEndDevice(t *testing.T) {
 	store := memory.NewSubscriptionStore()
 
 	// Two EndDevices each get two subscriptions. The store must surface
-	// exactly the subscriptions owned by the queried EndDevice — no
+	// exactly the subscriptions owned by the queried EndDevice: no
 	// cross-EndDevice leakage.
 	mustCreate := func(id, edevID, resource string) {
 		t.Helper()
@@ -121,8 +122,8 @@ func TestListByDeviceWithIDs_AfterDelete(t *testing.T) {
 	}
 }
 
-// RestoreForTesting must rebuild the deviceIndex from the snapshot — the
-// persistence reload path (LoadFromFile → RestoreForTesting) goes through
+// RestoreForTesting must rebuild the deviceIndex from the snapshot: the
+// persistence reload path (LoadFromFile -> RestoreForTesting) goes through
 // here, so a broken rebuild would silently zero out the per-EndDevice
 // view after a server restart.
 func TestListByDeviceWithIDs_AfterRestore(t *testing.T) {
@@ -172,7 +173,7 @@ func TestListByDeviceWithIDs_AfterRestore(t *testing.T) {
 // ListByDevice is the legacy []Subscription accessor (no ID). The handler
 // uses ListByDeviceWithIDs to keep the storage ID for paging, but the
 // bare-Subscription view is still exported. Pin it here so it does not
-// regress to the pre-IEEE-099 always-empty behavior.
+// regress to the old always-empty behavior.
 func TestListByDevice_ReturnsScopedSubscriptions(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -209,7 +210,7 @@ func TestListByDevice_ReturnsScopedSubscriptions(t *testing.T) {
 
 // Subscriptions whose Href does not resolve to an /edev/{id}/... prefix
 // are not indexed by EndDevice. They remain reachable via the primary
-// Store but absent from the per-EndDevice view — this matches the
+// Store but absent from the per-EndDevice view: this matches the
 // handler contract (GET /edev/{id}/sub returns only edev-scoped entries).
 func TestListByDeviceWithIDs_IgnoresNonEdevHrefs(t *testing.T) {
 	t.Parallel()

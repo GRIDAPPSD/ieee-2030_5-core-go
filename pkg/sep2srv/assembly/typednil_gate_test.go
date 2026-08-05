@@ -11,8 +11,8 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// A store handle holding a NIL POINTER must read as "function set not wired"
-// (IEEECORE-085).
+// A store handle holding a NIL POINTER must read as "function set not
+// wired".
 //
 // This is the one behaviour change interface-typing the store handles could
 // have made and did make, before the mount gates were rewritten to ask

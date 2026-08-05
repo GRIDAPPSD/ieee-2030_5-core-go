@@ -24,8 +24,8 @@ import (
 // It is not a real secret and exists only so tests can assert that the value
 // the policy supplied is the value served. Its digits sum to 20, so it also
 // happens to satisfy the 2018 section 6.3.5 check-digit rule; core neither
-// generates nor validates pIN values (IEEECORE-050, IEEECORE-073), so that
-// property is a fixture nicety rather than anything this package enforces.
+// generates nor validates pIN values, so that property is a fixture nicety
+// rather than anything this package enforces.
 const testFixturePIN uint32 = 123455
 
 // testRegistrationPolicy provisions testFixturePIN for every device, which
@@ -182,8 +182,8 @@ func TestAssembly_DCAPWired(t *testing.T) {
 // be present". That second, presence assertion is deliberately left
 // unencoded: it is enablement-policy-dependent (a server MAY legitimately
 // decline a function set, per section 4.3 modes), and that policy is a
-// separate, config-driven design (IEEECORE-064 follow-up, in design by
-// Noor as of 2026-08-03). Extending this test for that design means adding
+// separate, config-driven design (in design as of 2026-08-03). Extending
+// this test for that design means adding
 // a "wantPresent bool" (or an enablement predicate) alongside wantEl on
 // each case, so a declined function set asserts absence and an enabled one
 // asserts both presence and correct root element, from the SAME table:
@@ -249,7 +249,7 @@ func rootElementName(t *testing.T, body []byte) string {
 // DeviceCapability can carry, that a present link resolves to a resource
 // whose XML root element matches what the link name promises
 // (data-invariants Rule 1: assert the actual field/element, not just 200).
-// This is the check that catches IEEECORE-064: a status-code sweep of every
+// This is the check that catches a defect where a status-code sweep of every
 // linked resource stayed green while DERProgramListLink pointed at "/dc"
 // and served a DERCurveList instead of a DERProgramList.
 func TestAssembly_DeviceCapabilityLinkContract(t *testing.T) {
@@ -302,13 +302,12 @@ func TestAssembly_DeviceCapabilityLinkContract(t *testing.T) {
 		}
 	}
 
-	// IEEECORE-064 regression: DERProgramListLink must be omitted, not
-	// pointed at /dc (which serves DERCurveList, a different resource
-	// type). Core has no top-level DERProgramList resource: DERProgram is
-	// served only nested under FunctionSetAssignments
-	// (GET /edev/{id}/fsa/{fsaId}/derp).
+	// Regression guard: DERProgramListLink must be omitted, not pointed at
+	// /dc (which serves DERCurveList, a different resource type). Core has
+	// no top-level DERProgramList resource: DERProgram is served only
+	// nested under FunctionSetAssignments (GET /edev/{id}/fsa/{fsaId}/derp).
 	if dc.DERProgramListLink != nil {
-		t.Errorf("dc.DERProgramListLink = %+v, want nil (section 4.4: omit links to function sets with no top-level resource); IEEECORE-064", dc.DERProgramListLink)
+		t.Errorf("dc.DERProgramListLink = %+v, want nil (section 4.4: omit links to function sets with no top-level resource)", dc.DERProgramListLink)
 	}
 }
 
@@ -610,10 +609,10 @@ func TestAssembly_ScopedListRoutesMounted(t *testing.T) {
 
 // TestAssembly_DERProgramMemberHrefResolves walks the FSA-to-DERProgramList
 // discovery chain per CSIP v2.0 s5.2.3.1: GET the FSA-scoped DERProgramList,
-// take a member's own href, then GET that href. IEEECORE-082: a
-// DERProgramList member must advertise an href that resolves against a
-// mounted route, since that link walk is the only path a conforming client
-// has to the control surface.
+// take a member's own href, then GET that href. A DERProgramList member
+// must advertise an href that resolves against a mounted route, since that
+// link walk is the only path a conforming client has to the control
+// surface.
 func TestAssembly_DERProgramMemberHrefResolves(t *testing.T) {
 	t.Parallel()
 
@@ -670,11 +669,11 @@ func TestAssembly_DERProgramMemberHrefResolves(t *testing.T) {
 }
 
 // TestAssembly_DERProgramMemberStaysReadOnly pins the method set of the
-// DERProgram member route (IEEECORE-082) against the handler it is mounted on.
+// DERProgram member route against the handler it is mounted on.
 //
-// That handler now takes its method set as a value rather than hardcoding one
-// (IEEECORE-052), so "read-only" stopped being a property of the function and
-// became a property of the call site. An empty itemMethods at the call site must
+// That handler takes its method set as a value rather than hardcoding one, so
+// "read-only" is a property of the call site rather than of the function.
+// An empty itemMethods at the call site must
 // therefore serve exactly what the hardcoded string served before: GET and HEAD,
 // and an Allow header naming only those. Widening a read-only resource's method
 // set is precisely the change that would otherwise ship dark, because a client
@@ -878,7 +877,7 @@ func TestAssembly_PostMirrorUsagePointReading_ViaLocationHeader(t *testing.T) {
 	postResp.Body.Close()
 
 	if postResp.StatusCode == http.StatusMethodNotAllowed {
-		t.Fatalf("POST %s returned 405: server's own Location header rejected (IEEECORE-MUPPOST regression); body=%s", loc, postBody)
+		t.Fatalf("POST %s returned 405: server's own Location header rejected; body=%s", loc, postBody)
 	}
 	if postResp.StatusCode != http.StatusCreated {
 		t.Fatalf("POST %s status = %d, want 201; body=%s", loc, postResp.StatusCode, postBody)
@@ -1022,8 +1021,8 @@ func TestAssembly_MirrorOwnershipIsWiredOnEveryMupRoute(t *testing.T) {
 		t.Errorf("GET denial body leaks content: %s", getBody)
 	}
 
-	// The two Mandatory instance methods IEEECORE-066 mounted are covered here
-	// for the same reason the GET and the two POSTs are: this test is about
+	// The two Mandatory instance methods are covered here for the same
+	// reason the GET and the two POSTs are: this test is about
 	// WIRING, and a route added without its lfdiProvider argument is exactly the
 	// regression that would leave rule (e) present in the handler package and
 	// absent from the server. The PUT carries a body that would take a different
@@ -1289,7 +1288,7 @@ func TestAssembly_PatternListNonEmpty(t *testing.T) {
 // its own because it also compiles for method-compatible distinct interfaces.
 // The reflect.TypeOf assertion is the runtime proof: pointer-to-interface
 // types are equal only when the two names denote exactly the same type (a
-// true alias), not merely compatible method sets. (IEEECORE-002)
+// true alias), not merely compatible method sets.
 func TestResourceNotifierAliasIdentity(t *testing.T) {
 	t.Parallel()
 	var _ assembly.ResourceNotifier = (coreedev.ResourceNotifier)(nil)

@@ -110,11 +110,12 @@ func TestDERProgramMarshal(t *testing.T) {
 	}
 }
 
-// TestDERControlBaseModeFieldsRoundTrip exercises the IEEE-092 mode
-// fields (LVRT/HVRT/LFRT/HFRT curve refs, opModVoltWatt, opModFreqWatt)
-// for XML marshal → unmarshal fidelity. Each subtest seeds exactly one
-// field so a regression in the per-field tag or omit-if-nil behavior
-// trips loudly. Curve-ref values are arbitrary non-zero int32s.
+// TestDERControlBaseModeFieldsRoundTrip exercises the mode fields
+// (LVRT/HVRT/LFRT/HFRT curve refs, opModVoltWatt, opModFreqWatt) added by
+// GRIDAPPSD/ieee-2030_5-server-go#140, for XML marshal -> unmarshal
+// fidelity. Each subtest seeds exactly one field so a regression in the
+// per-field tag or omit-if-nil behavior trips loudly. Curve-ref values are
+// arbitrary non-zero int32s.
 func TestDERControlBaseModeFieldsRoundTrip(t *testing.T) {
 	type modeField struct {
 		name    string
@@ -283,7 +284,7 @@ func TestDERControlBaseModeFieldsRoundTrip(t *testing.T) {
 }
 
 // TestDERControlBaseOmitEmpty proves that an all-nil DERControlBase
-// marshals without any opMod*/setMod* child elements — guards against
+// marshals without any opMod*/setMod* child elements: guards against
 // a future zero-value field leaking into the wire form.
 func TestDERControlBaseOmitEmpty(t *testing.T) {
 	ctrl := sep2.DERControl{DERControlBase: &sep2.DERControlBase{}}
@@ -305,9 +306,10 @@ func TestDERControlBaseOmitEmpty(t *testing.T) {
 	}
 }
 
-// TestDefaultDERControlSetGradWRoundTrip exercises the IEEE-092
-// IEEE 2030.5 §10.11 device-default ramp-rate fields setGradW and
-// setSoftGradW for XML round-trip plus Copy() independence.
+// TestDefaultDERControlSetGradWRoundTrip exercises the
+// IEEE 2030.5 section 10.11 device-default ramp-rate fields setGradW and
+// setSoftGradW (GRIDAPPSD/ieee-2030_5-server-go#140) for XML round-trip
+// plus Copy() independence.
 func TestDefaultDERControlSetGradWRoundTrip(t *testing.T) {
 	grad := uint16(1000)    // 10%/s in hundredths of percent per second
 	softGrad := uint16(500) // 5%/s

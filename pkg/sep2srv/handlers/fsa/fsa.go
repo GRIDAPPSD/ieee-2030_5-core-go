@@ -1,6 +1,6 @@
 // Package fsa provides IEEE 2030.5 FunctionSetAssignments resource handlers.
 // Ported verbatim from the reference server's internal/handler/fsa.go
-// (no auth touch points; import paths rewritten to core). IEEECORE-001.
+// (no auth touch points; import paths rewritten to core).
 package fsa
 
 import (
@@ -65,9 +65,9 @@ func HandleFSA(fsaStore store.ScopedStore[sep2.FunctionSetAssignments]) http.Han
 //
 // This handler serves the admin-surface create route and is intended to be
 // wired by the consuming server on its own admin mux, NOT by
-// assembly.BuildProtocolRouter, consistent with the IEEECORE-001
-// read/protocol export scope. The export is deliberate: consumers mount it
-// on their own admin auth chain.
+// assembly.BuildProtocolRouter, consistent with this package's read/protocol
+// export scope. The export is deliberate: consumers mount it on their own
+// admin auth chain.
 func HandleCreateFSA(fsaStore store.ScopedStore[sep2.FunctionSetAssignments]) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Admin API uses JSON, but FSA creation can be simple

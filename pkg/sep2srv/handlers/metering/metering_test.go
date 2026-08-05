@@ -477,7 +477,7 @@ func TestHandlePostMirrorMeterReading_NotFoundParent(t *testing.T) {
 	}
 }
 
-// --- POST /mup/{id} (WADL-mandated Location-follow route; IEEECORE-MUPPOST) ---
+// --- POST /mup/{id} (WADL-mandated Location-follow route) ---
 
 // TestHandlePostMirrorMeterReading_ViaLocationHeader reproduces the exact
 // sequence IEEE 2030.5-2018 section 10.11.3 rule (d) describes and the EPRI
@@ -526,7 +526,7 @@ func TestHandlePostMirrorMeterReading_ViaLocationHeader(t *testing.T) {
 	mux.ServeHTTP(postW, postReq)
 
 	if postW.Code == http.StatusMethodNotAllowed {
-		t.Fatalf("POST %s returned 405: the server's own Location header is not accepted (IEEECORE-MUPPOST regression)", loc)
+		t.Fatalf("POST %s returned 405: the server's own Location header is not accepted", loc)
 	}
 	if postW.Code != http.StatusCreated {
 		t.Fatalf("POST %s status = %d, want 201, body: %s", loc, postW.Code, postW.Body.String())
@@ -1188,7 +1188,7 @@ func TestHandleMirrorUsagePoint_OwnerServedWithRuleC(t *testing.T) {
 	}
 }
 
-// --- Per-owner MirrorUsagePoint identity (IEEECORE-MUPKEY) ---
+// --- Per-owner MirrorUsagePoint identity ---
 
 // Two distinct certificates, both POSTing the same client mRID. Observed in
 // the field: nine devices with nine certificates POSTed three distinct mRIDs
@@ -1489,7 +1489,7 @@ func TestHandleCreateMirrorUsagePoint_CollisionKeepsACLIntact(t *testing.T) {
 // length, and hostile characters. A client-supplied mRID must never be able to
 // size or shape the URI we hand back. An absent mRID is covered separately by
 // TestHandleCreateMirrorUsagePoint_NoMRID_Rejected: it is refused outright
-// (see IEEECORE-MUPKEY fix 1) rather than reaching this create path at all.
+// rather than reaching this create path at all.
 func TestHandleCreateMirrorUsagePoint_LocationIsBounded(t *testing.T) {
 	t.Parallel()
 

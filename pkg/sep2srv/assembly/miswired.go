@@ -8,8 +8,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 )
 
-// Mis-wired store handles: what happens when a family arrives half-wired
-// (IEEECORE-112).
+// Mis-wired store handles: what happens when a family arrives half-wired.
 //
 // # The gates are per family, and the fix is not to make them per field
 //
@@ -32,12 +31,12 @@ import (
 // every FSA it serves, handlers/metering stamps MeterReadingListLink on every
 // UsagePoint, handlers/response stamps ResponseListLink on every ResponseSet,
 // and MintableHrefs in hrefs.go names each of those minters as the SOURCE of
-// the route in question. Unmounting the route while its minter keeps minting is
-// advertised-but-unrouted, which is IEEECORE-065 and IEEECORE-081 all over
-// again. Making per-field gating safe would mean threading a link policy into
-// five handler packages so each minter could be silenced with its route, which
-// is a far wider change than the defect warrants and one that must be designed
-// rather than slipped in.
+// the route in question. Unmounting the route while its minter keeps minting
+// is advertised-but-unrouted, the same defect class this package's mintable-
+// href assertion exists to abolish. Making per-field gating safe would mean
+// threading a link policy into five handler packages so each minter could
+// be silenced with its route, which is a far wider change than the defect
+// warrants and one that must be designed rather than slipped in.
 //
 // So the doctrine is stated honestly instead: THE GATE IS PER FAMILY, the
 // anchor field is the whole family's gate, and every other handle in a wired
@@ -57,7 +56,7 @@ import (
 // fleet, that the resource is absent, which a mis-wired server has not
 // established and is not entitled to assert. This is the same "absent is not
 // the same as failed" rule the store error contract states at every method, and
-// the same reasoning IEEECORE-086 applied across the route surface.
+// the same reasoning applied elsewhere across the route surface.
 //
 // The refusal is deliberately NOT a panic at BuildProtocolRouter either.
 // Constructors that take one required collaborator panic, and should: the

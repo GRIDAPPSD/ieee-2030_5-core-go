@@ -47,8 +47,8 @@ const specCorrectDERStatusPUT = `<DERStatus xmlns="urn:ieee:std:2030.5:ns">
   </storageModeStatus>
 </DERStatus>`
 
-// TestDERStatusPUTAcceptsSpecCorrectStateOfChargeStatus is the regression test
-// for IEEECORE-055. It asserts the server accepts the spec-correct body AND
+// TestDERStatusPUTAcceptsSpecCorrectStateOfChargeStatus is a regression
+// test. It asserts the server accepts the spec-correct body AND
 // that the parsed values survive the round trip, per the data-invariants rule:
 // a 204 that stored a zeroed or dropped state of charge would be a silent
 // corruption, not a fix.

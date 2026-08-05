@@ -1,7 +1,7 @@
 // Package registration provides the IEEE 2030.5 Registration resource handler
 // for GET /edev/{id}/rg. Ported from the reference server's
 // internal/handler/registration.go; the auth.GetIdentity call is replaced by
-// the injected IdentityFunc seam (IEEECORE-001 design section 4).
+// the injected IdentityFunc seam.
 package registration
 
 import (
@@ -24,9 +24,9 @@ type IdentityFunc func(ctx context.Context) (lfdi, sfdi string, ok bool)
 // HandleGetRegistration returns a handler for GET /edev/{id}/rg.
 //
 // Spec reference: IEEE 2030.5 section 10.6.4 (Registration resource shape)
-// and CSIP V1.2 BASIC-004. The write path lives in the server's admin surface
-// (IEEE-095) and persists Registration records into the same RegistrationStore
-// this handler reads from.
+// and CSIP V1.2 BASIC-004. The write path lives in the server's admin
+// surface (GRIDAPPSD/ieee-2030_5-server-go#159) and persists Registration
+// records into the same RegistrationStore this handler reads from.
 //
 // Authorization: the requesting client's TLS-derived LFDI (attached by the
 // identity middleware) must equal the EndDevice's stored LFDI. Other devices

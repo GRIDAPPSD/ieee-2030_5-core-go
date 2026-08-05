@@ -13,14 +13,14 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 )
 
-// IEEE-097: DERProgramStore persistence.
+// DERProgramStore persistence (GRIDAPPSD/ieee-2030_5-server-go#165).
 //
 // DERPrograms are addressed as (parent, id) pairs: a parent is a device key and
 // each parent holds its own programs. The persistence wrapper flattens those
 // tuples into a single snapshot; rehydration walks the snapshot and re-Creates
 // each tuple, which rebuilds the same scoped layout.
 //
-// # It holds the collection, it does not embed it (IEEECORE-085)
+// # It holds the collection, it does not embed it
 //
 // This wrapper used to embed *ScopedStore[sep2.DERProgram], promoting Get,
 // List, Count, HasParent and Parents while shadowing Create and Delete. Two
@@ -233,8 +233,8 @@ func (s *DERProgramStore) Create(ctx context.Context, parentID, id string, progr
 // re-expressed against the contract: Update was promoted off the embedded store
 // and never reached the persistence path, so an updated program reverted to its
 // pre-update form on restart. Preserved verbatim here rather than corrected,
-// because IEEECORE-085 is a type-level conversion and changing what is written
-// to disk is a behaviour change. Reported as a finding on that card.
+// because this fix is a type-level conversion and changing what is written
+// to disk is a behaviour change. Reported separately as a finding.
 func (s *DERProgramStore) Update(ctx context.Context, parentID, id string, program sep2.DERProgram) error {
 	return s.inner.Update(ctx, parentID, id, program)
 }

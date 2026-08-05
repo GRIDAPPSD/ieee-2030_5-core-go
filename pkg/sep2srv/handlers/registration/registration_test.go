@@ -1,4 +1,4 @@
-// Tests for the Registration handler (IEEECORE-001).
+// Tests for the Registration handler.
 // Ported from the reference server's internal/handler/registration_test.go,
 // adapted to the injected IdentityFunc seam: instead of auth.GetIdentity the
 // tests wire a closure that returns a fixed identity.

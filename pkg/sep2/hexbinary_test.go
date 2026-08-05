@@ -36,8 +36,9 @@ func hexBinaryElementText(t *testing.T, body, name string) string {
 // hexBinaryAttrText reads a hexBinary field served in ATTRIBUTE position, and
 // additionally fails if the same name also appears as a child element. The
 // second check is the one with teeth: a field the schema declares as an
-// attribute but the Go type models as an element is IEEECORE-103, and it made
-// the EPRI reference client abandon the whole DERControlList parse.
+// attribute but the Go type models as an element is a real defect class, and
+// it once made the EPRI reference client abandon the whole DERControlList
+// parse.
 func hexBinaryAttrText(t *testing.T, body, name string) string {
 	t.Helper()
 	if strings.Contains(body, "<"+name+">") {
@@ -156,11 +157,11 @@ func hexBinaryFieldCases() []hexBinaryDoc {
 		},
 		{
 			// ATTRIBUTE position: sep.xsd:5440 declares responseRequired as
-			// an xs:attribute on RespondableResource. This row read the
-			// ELEMENT position until IEEECORE-103, which is why it stayed
-			// green while the served bytes were unparseable to the EPRI
-			// reference client: it was asserting the hex text of a field
-			// that should never have been an element in the first place.
+			// an xs:attribute on RespondableResource. This row used to read
+			// the ELEMENT position, which is why it stayed green while the
+			// served bytes were unparseable to the EPRI reference client: it
+			// was asserting the hex text of a field that should never have
+			// been an element in the first place.
 			name: "DERControl.responseRequired", elem: "responseRequired", value: 3, want: "03", attr: true,
 			marshal: func() (any, error) {
 				mask := sep2.HexBinary8(3)
@@ -453,8 +454,8 @@ func TestHexBinaryFieldsRoundTripFromWire(t *testing.T) {
 	// responseRequired arrives in ATTRIBUTE position (sep.xsd:5440), so the
 	// inbound path exercises UnmarshalXMLAttr rather than UnmarshalXML. The
 	// document below is the spec-conformant form a conforming peer sends;
-	// before IEEECORE-103 this subtest fed the element form, so it was
-	// asserting that we could read back our own non-conformant output.
+	// this subtest used to feed the element form, so it was asserting that
+	// we could read back our own non-conformant output.
 	t.Run("DERControl.responseRequired", func(t *testing.T) {
 		t.Parallel()
 		var got sep2.DERControl

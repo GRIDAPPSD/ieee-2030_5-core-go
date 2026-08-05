@@ -8,7 +8,8 @@ certs/
 
 # CSIP conformance fixtures. The SunSpec V1.2 test PKI is gitignored
 # per workspace policy and provisioned out of band (see
-# test/csip/README.md). Topology YAMLs (IEEE-057) ARE checked in.
+# test/csip/README.md). Topology YAMLs ARE checked in
+# (GRIDAPPSD/ieee-2030_5-server-go#52).
 test/csip/fixtures/*
 !test/csip/fixtures/.gitkeep
 !test/csip/fixtures/*.yaml
@@ -61,6 +62,7 @@ tmp/
 *.tmp
 
 # rapid (property-based testing) failure-repro files.
-# IEEE-116: failures reproduce from the seed logged in test output, not
-# from committed files. See plan-4-property-based-testing/plan.md.
+# Failures reproduce from the seed logged in test output, not
+# from committed files (GRIDAPPSD/ieee-2030_5-server-go#214). See
+# plan-4-property-based-testing/plan.md.
 testdata/rapid/

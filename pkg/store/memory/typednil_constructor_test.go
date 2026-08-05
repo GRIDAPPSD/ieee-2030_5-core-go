@@ -9,7 +9,7 @@ import (
 )
 
 // The binding constructors must reject a TYPED nil, not merely a nil interface
-// literal (IEEECORE-112).
+// literal.
 //
 // Both constructors exist to turn a mis-wiring into a loud failure at assembly
 // time rather than a silent 500 at request time, and both guarded their
@@ -21,8 +21,8 @@ import (
 // and the mis-wired store surfaced instead as a nil dereference on the first
 // request.
 //
-// This is the same fault IEEECORE-085 closed at the mount gates with
-// [store.IsAbsent]. It survived here because these are constructor arguments
+// This is the same fault closed at the mount gates with [store.IsAbsent].
+// It survived here because these are constructor arguments
 // rather than Stores fields, and nothing swept the constructors.
 //
 // The assertions pin BOTH halves: store.IsAbsent must agree the handle is

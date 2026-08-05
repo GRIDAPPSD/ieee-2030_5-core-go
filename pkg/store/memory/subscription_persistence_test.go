@@ -11,13 +11,14 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// IEEE-077: durable subscription persistence — these tests pin the spec's
-// minimum contract for the Path B JSON-file backend:
+// Durable subscription persistence (GRIDAPPSD/ieee-2030_5-server-go#224):
+// these tests pin the minimum contract for the Path B JSON-file backend:
 //   1. Create writes a recoverable snapshot to the configured path.
 //   2. Delete updates the on-disk snapshot.
 //   3. LoadFromFile rehydrates a fresh store from disk (cold start).
 //   4. Snapshot/restore parity: after a write/load cycle the in-memory
-//      view matches the SnapshotForTesting() shape from IEEE-022.
+//      view matches the SnapshotForTesting() shape from Path A
+//      (GRIDAPPSD/ieee-2030_5-server-go#25).
 //   5. Crash-shape: a half-written temp file does not corrupt the live
 //      snapshot (atomic-rename).
 //   6. Concurrency: parallel Create/Delete/Get is race-clean and the
@@ -70,7 +71,7 @@ func TestPersistence_DeleteUpdatesSnapshotOnDisk(t *testing.T) {
 		t.Fatalf("Delete(subA): %v", err)
 	}
 
-	// Rehydrate a fresh store from disk — only subB must survive.
+	// Rehydrate a fresh store from disk: only subB must survive.
 	revived := memory.NewSubscriptionStore()
 	if err := revived.LoadFromFile(path); err != nil {
 		t.Fatalf("LoadFromFile: %v", err)
@@ -90,7 +91,7 @@ func TestPersistence_DeleteUpdatesSnapshotOnDisk(t *testing.T) {
 func TestPersistence_LoadFromFile_EmptyPath_IsNoOp(t *testing.T) {
 	t.Parallel()
 	store := memory.NewSubscriptionStore()
-	// A path that does not exist must NOT error — it means "cold boot,
+	// A path that does not exist must NOT error: it means "cold boot,
 	// nothing to restore." The server uses this on startup.
 	missing := filepath.Join(t.TempDir(), "does-not-exist.json")
 	if err := store.LoadFromFile(missing); err != nil {
@@ -176,7 +177,7 @@ func TestPersistence_RoundTripMatchesSnapshotForTesting(t *testing.T) {
 
 // TestPersistence_LoadRebuildsSecondaryIndexes proves that LoadFromFile
 // not only writes data back into the primary store but also rebuilds the
-// resource and device indexes — i.e. the loaded state is fully
+// resource and device indexes: i.e. the loaded state is fully
 // equivalent to a freshly-Created state (parity with RestoreForTesting).
 func TestPersistence_LoadRebuildsSecondaryIndexes(t *testing.T) {
 	t.Parallel()
@@ -212,7 +213,7 @@ func TestPersistence_LoadRebuildsSecondaryIndexes(t *testing.T) {
 // TestPersistence_AtomicWrite_NoCorruptionOnStaleTemp simulates the
 // "crash mid-write" shape: a stale .tmp file from a prior crashed write
 // is left in the directory. The next successful Create must replace the
-// committed file via atomic rename — the stale .tmp must NOT poison the
+// committed file via atomic rename: the stale .tmp must NOT poison the
 // load path.
 func TestPersistence_AtomicWrite_NoCorruptionOnStaleTemp(t *testing.T) {
 	t.Parallel()
@@ -246,7 +247,7 @@ func TestPersistence_AtomicWrite_NoCorruptionOnStaleTemp(t *testing.T) {
 
 // TestPersistence_ConcurrentCreatesAreRaceClean exercises N parallel
 // Create / Delete / Get goroutines against the persisted store. We
-// don't care about exact final cardinality — only that the operations
+// don't care about exact final cardinality: only that the operations
 // are race-clean (run under -race) and the persisted file is valid
 // JSON at the end.
 func TestPersistence_ConcurrentCreatesAreRaceClean(t *testing.T) {
@@ -312,7 +313,7 @@ func TestPersistence_ConcurrentCreatesAreRaceClean(t *testing.T) {
 }
 
 // TestPersistence_DeleteNotFoundDoesNotWriteSnapshot pins the contract
-// that a no-op Delete (id missing) must NOT trigger a write — otherwise
+// that a no-op Delete (id missing) must NOT trigger a write: otherwise
 // every spurious DELETE request becomes a disk syscall.
 func TestPersistence_DeleteNotFoundDoesNotWriteSnapshot(t *testing.T) {
 	t.Parallel()
@@ -328,7 +329,7 @@ func TestPersistence_DeleteNotFoundDoesNotWriteSnapshot(t *testing.T) {
 		t.Fatalf("stat path: %v", err)
 	}
 
-	// Delete a non-existent ID — should return ErrNotFound and NOT
+	// Delete a non-existent ID: should return ErrNotFound and NOT
 	// rewrite the file. We don't compare mtime (filesystem resolution
 	// can be coarse); instead we assert the file is byte-identical.
 	beforeBytes, err := os.ReadFile(path)

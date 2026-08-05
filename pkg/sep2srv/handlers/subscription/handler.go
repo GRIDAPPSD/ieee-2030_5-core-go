@@ -52,15 +52,16 @@ func BuildSubscriptionList(href string, result store.ListResult[sep2.Subscriptio
 // HandleListSubscriptionsByDevice returns a handler for GET /edev/{id}/sub
 // that scopes the response to subscriptions owned by EndDevice {id}.
 //
-// Per IEEE 2030.5 §10.6.3 and CSIP V1.2 §10.1 the subscription list under
-// an EndDevice contains only that EndDevice's subscriptions. IEEE-099
-// fixed an earlier wiring that piped the route through the underlying
-// union Store, which leaked subscriptions across EndDevices and forced
-// AGG-001 to a presence-only assertion as a workaround.
+// Per IEEE 2030.5 section 10.6.3 and CSIP V1.2 section 10.1 the
+// subscription list under an EndDevice contains only that EndDevice's
+// subscriptions. This route used to pipe through the underlying union
+// Store, which leaked subscriptions across EndDevices and forced AGG-001
+// to a presence-only assertion as a workaround; that leak is fixed
+// (GRIDAPPSD/ieee-2030_5-server-go#168).
 //
-// Paging (s/l/a) follows the same spec-§4.6.2 contract as the generic
-// list handler. The store returns the full per-EndDevice slice; we
-// page it here so callers don't pay for filtering at the storage layer.
+// Paging (s/l/a) follows the same spec-section-4.6.2 contract as the
+// generic list handler. The store returns the full per-EndDevice slice;
+// we page it here so callers don't pay for filtering at the storage layer.
 func HandleListSubscriptionsByDevice(subStore *memory.SubscriptionStore, pollRate uint32) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -83,7 +84,7 @@ func HandleListSubscriptionsByDevice(subStore *memory.SubscriptionStore, pollRat
 	}
 }
 
-// pageSubscriptionRecords applies spec §4.6.2 paging (s/l/a) to a
+// pageSubscriptionRecords applies spec section 4.6.2 paging (s/l/a) to a
 // per-EndDevice slice of subscription records. The All field carries
 // the per-EndDevice total so clients can compute the next-page offset
 // without seeing the cross-EndDevice union.
@@ -189,8 +190,9 @@ func HandleCreateSubscription(subStore *memory.SubscriptionStore) http.HandlerFu
 //
 // On a successful delete, the handler dispatches a final "Removed"
 // Notification (Status=3) to the deleted subscription's notification
-// receiver via the supplied notifyRemoved callback — IEEE-100 / CSIP V1.2
-// §11.6 strengthening. The notify call is best-effort: the spec does
+// receiver via the supplied notifyRemoved callback, per CSIP V1.2 section
+// 11.6 strengthening (GRIDAPPSD/ieee-2030_5-server-go#169). The notify
+// call is best-effort: the spec does
 // not require the final Notification, so a queue-full, marshal, or
 // transport error is logged but does not change the 204 response.
 //
@@ -211,7 +213,7 @@ func HandleDeleteSubscription(subStore *memory.SubscriptionStore, notifyRemoved 
 		subID := r.PathValue("subId")
 
 		// Look up the subscription record before Delete so we can hand
-		// the pre-delete value to the notifier — once Delete returns,
+		// the pre-delete value to the notifier: once Delete returns,
 		// the record is gone from the store. ErrNotFound here is the
 		// "DELETE on unknown ID" path; surface 404 immediately and skip
 		// the notify (no subscriber existed).
@@ -234,10 +236,10 @@ func HandleDeleteSubscription(subStore *memory.SubscriptionStore, notifyRemoved 
 			return
 		}
 
-		// Best-effort final Removed Notification (IEEE-100). A nil
-		// notifyRemoved or an error from it is logged but does not change
-		// the 204 — the spec doesn't require this and the subscription has
-		// already been deleted from authoritative state.
+		// Best-effort final Removed Notification. A nil notifyRemoved or an
+		// error from it is logged but does not change the 204: the spec
+		// doesn't require this and the subscription has already been
+		// deleted from authoritative state.
 		if notifyRemoved != nil {
 			if err := notifyRemoved(r.Context(), sub); err != nil {
 				log.Printf("subscription: notify removed for %q to %q: %v",

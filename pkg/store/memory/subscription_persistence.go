@@ -8,11 +8,13 @@ import (
 	"path/filepath"
 )
 
-// IEEE-077 — Path B durable subscription persistence.
+// Path B: durable subscription persistence
+// (GRIDAPPSD/ieee-2030_5-server-go#224).
 //
-// IEEE-022 shipped Path A: a test-only SnapshotForTesting / RestoreForTesting
-// pair that lets the CSIP harness simulate a server power-reset entirely in
-// memory. Path A is sufficient for the harness; it is NOT sufficient for any
+// Path A (GRIDAPPSD/ieee-2030_5-server-go#25) is a test-only
+// SnapshotForTesting / RestoreForTesting pair that lets the CSIP harness
+// simulate a server power-reset entirely in memory.
+// Path A is sufficient for the harness; it is NOT sufficient for any
 // deployment claim that "subscriptions survive a real power loss."
 //
 // This file ships Path B: when a path is configured the SubscriptionStore
@@ -31,7 +33,7 @@ import (
 //	  ]
 //	}
 //
-// The record element re-uses SubscriptionRecord from IEEE-022 — same wire
+// The record element re-uses SubscriptionRecord from Path A: same wire
 // shape we already snapshot/restore through.
 
 // persistenceVersion is the current on-disk schema version. Bump on a
@@ -47,13 +49,13 @@ type persistedSnapshot struct {
 
 // NewSubscriptionStoreWithPersistence builds a SubscriptionStore wired to a
 // JSON file on disk. If the file already exists it is loaded; missing file
-// = cold boot (no error). Any decode error is fatal — callers must decide
+// = cold boot (no error). Any decode error is fatal: callers must decide
 // whether to rebuild the file or fail.
 //
 // All subsequent Create / Delete operations flush a fresh snapshot to the
 // same path under an atomic-rename. Reads remain pure in-memory.
 //
-// Pass an empty path to mean "in-memory only" — equivalent to
+// Pass an empty path to mean "in-memory only": equivalent to
 // NewSubscriptionStore. We still return a non-nil store in that case.
 func NewSubscriptionStoreWithPersistence(path string) (*SubscriptionStore, error) {
 	store := NewSubscriptionStore()
@@ -71,7 +73,7 @@ func NewSubscriptionStoreWithPersistence(path string) (*SubscriptionStore, error
 // file is treated as cold boot (no error, no state change). A corrupt or
 // version-unknown file returns an error and leaves the store untouched.
 //
-// LoadFromFile does NOT configure on-going persistence — call it once at
+// LoadFromFile does NOT configure on-going persistence: call it once at
 // startup; future writes go to whatever persistPath the store was built
 // with (or nowhere, if the store is pure in-memory).
 func (s *SubscriptionStore) LoadFromFile(path string) error {
@@ -81,7 +83,7 @@ func (s *SubscriptionStore) LoadFromFile(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			// Cold boot — no prior snapshot. This is normal on first run.
+			// Cold boot: no prior snapshot. This is normal on first run.
 			return nil
 		}
 		return fmt.Errorf("read %q: %w", path, err)
@@ -101,7 +103,7 @@ func (s *SubscriptionStore) LoadFromFile(path string) error {
 	}
 
 	// Replace the in-memory state via the same restore path the test
-	// hook uses — gives us secondary-index rebuilds for free.
+	// hook uses: gives us secondary-index rebuilds for free.
 	s.RestoreForTesting(snap.Records)
 	return nil
 }
@@ -151,7 +153,7 @@ func writeFileAtomic(path string, payload []byte) error {
 	tmp := path + ".tmp"
 
 	// O_TRUNC so a stale .tmp from a prior crashed write is overwritten,
-	// not appended to. 0o600 — subscription state is operator-sensitive
+	// not appended to. 0o600: subscription state is operator-sensitive
 	// (notification URIs, device hrefs).
 	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
@@ -180,7 +182,7 @@ func writeFileAtomic(path string, payload []byte) error {
 	}
 
 	// Directory fsync: ensures the rename is durable on POSIX
-	// filesystems. Errors here are non-fatal — the data is already
+	// filesystems. Errors here are non-fatal: the data is already
 	// on disk via the file fsync; this just hardens the directory
 	// entry. We swallow ENOTSUP / EISDIR-on-Windows quietly.
 	if d, err := os.Open(dir); err == nil {

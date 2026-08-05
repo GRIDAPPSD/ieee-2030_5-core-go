@@ -15,10 +15,11 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// IEEE-100 / CSIP V1.2 §11.6 — final Removed-Notification on subscription
-// delete. The Manager exposes NotifyRemoved as a per-subscriber dispatch
+// Per CSIP V1.2 section 11.6 (GRIDAPPSD/ieee-2030_5-server-go#169): final
+// Removed-Notification on subscription delete. The Manager exposes
+// NotifyRemoved as a per-subscriber dispatch
 // (the existing Notify(href) broadcasts by SubscribedResource, which would
-// hit every co-tenant subscriber on the same resource — wrong semantics
+// hit every co-tenant subscriber on the same resource: wrong semantics
 // for "this one subscription was deleted").
 
 // TestManagerNotifyRemovedPostsToSubscriber verifies that NotifyRemoved
@@ -97,12 +98,12 @@ func TestManagerNotifyRemovedPostsToSubscriber(t *testing.T) {
 // TestManagerNotifyRemovedQueueFullReturnsError verifies that a full
 // queue causes NotifyRemoved to return a non-nil error rather than block.
 // The caller (HandleDeleteSubscription) treats this as best-effort and
-// logs without failing the DELETE — see handler tests.
+// logs without failing the DELETE: see handler tests.
 func TestManagerNotifyRemovedQueueFullReturnsError(t *testing.T) {
 	t.Parallel()
 
-	// No worker started → queue cannot drain → second enqueue (queue
-	// size 1) must report full.
+	// No worker started, so the queue cannot drain, so the second enqueue
+	// (queue size 1) must report full.
 	mgr := subscription.NewManager(&staticLister{}, 0, 1)
 	// Intentionally do NOT call Start. Queue size 1; fill it once, then
 	// the next enqueue must return ErrQueueFull-ish error.
@@ -141,7 +142,7 @@ func TestManagerNotifyRemovedInvalidURI(t *testing.T) {
 			Resource: sep2.Resource{Href: "/edev/1/sub/1"},
 		},
 		SubscribedResource: "/edev/1",
-		NotificationURI:    "", // invalid — no transport target
+		NotificationURI:    "", // invalid: no transport target
 	}
 
 	if err := mgr.NotifyRemoved(ctx, sub); err == nil {

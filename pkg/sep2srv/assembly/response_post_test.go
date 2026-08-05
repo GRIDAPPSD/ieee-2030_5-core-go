@@ -15,7 +15,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 )
 
-// The Mandatory Response POST, end to end (IEEECORE-067).
+// The Mandatory Response POST, end to end.
 //
 // Two defects sat on this one path and each hid the other. We emitted
 // DERControls carrying neither replyTo nor responseRequired, and the EPRI
@@ -58,11 +58,12 @@ func readBody(t *testing.T, resp *http.Response) []byte {
 // the wire.
 //
 // Both fields are ATTRIBUTES (sep.xsd:5435, sep.xsd:5440). The stamping
-// behaviour this test covers is unchanged by IEEECORE-103; only the wire form
-// the assertions look for moved, because the element form they previously
-// searched for is the defect IEEECORE-103 fixed. Asserting bytes is what let
-// this test be updated meaningfully at all: a round-trip assertion would have
-// stayed green across the fix and told us nothing.
+// behaviour this test covers is unchanged by the element-versus-attribute
+// fix; only the wire form the assertions look for moved, because the
+// element form they previously searched for is the defect that fix closed.
+// Asserting bytes is what let this test be updated meaningfully at all: a
+// round-trip assertion would have stayed green across the fix and told us
+// nothing.
 func TestServedDERControlRequestsAResponse(t *testing.T) {
 	t.Parallel()
 
@@ -95,7 +96,7 @@ func TestServedDERControlRequestsAResponse(t *testing.T) {
 		}
 		// The element form is what made the client abort the whole
 		// DERControlList parse, taking the dera/dercap/derg PUTs and the
-		// telemetry up-leg down with it (IEEECORE-103).
+		// telemetry up-leg down with it.
 		for _, forbidden := range []string{"<replyTo>", "<responseRequired>"} {
 			if strings.Contains(body, forbidden) {
 				t.Errorf("GET %s served %s as a child element; the schema declares it as an attribute and a conforming client fails the parse:\n%s",
@@ -142,7 +143,7 @@ func TestServedDERControlKeepsAnExplicitResponsePolicy(t *testing.T) {
 	// drops only the field type's own zero value, which for a pointer is nil,
 	// so "explicitly none" still reaches the wire while "unset" still does
 	// not. That distinction is the whole point of the pointer and is the
-	// IEEECORE-067 semantic this assertion guards.
+	// semantic this assertion guards.
 	if !strings.Contains(body, ` responseRequired="00"`) {
 		t.Errorf("server overwrote an explicit responseRequired=00 (deliberately no response):\n%s", body)
 	}

@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// Mintable-href routing assertion (IEEECORE-065).
+// Mintable-href routing assertion.
 //
 // # The defect class
 //
@@ -34,7 +34,7 @@ import (
 // staying in core. It is here today only because the router is here today. Do
 // not grow dependencies on it from the client half of core: see pkg/store's
 // package documentation for the same note about the store contract, and the
-// bridge/core boundary analysis (IEEECORE-068) for the sequencing.
+// bridge/core boundary analysis for the sequencing.
 //
 // # Boot-time, and why not only test-time
 //
@@ -185,25 +185,25 @@ func MintableHrefs() []MintableHref {
 
 		// EndDevice and its immediate children.
 		{"/edev/{}", http.MethodGet, "handlers/enddevice.HandleCreateEndDevice", "the Location header a client follows after POST /edev, and the self href of every EndDevice in the list"},
-		// The source moved in IEEECORE-083. This href used to be minted
-		// unconditionally by the POST handler while nothing ever wrote the
-		// Registration behind it, which this registry could not detect:
-		// the probe asks whether the href resolves to a mounted route, and
-		// "/edev/{}/rg" always did. It is now minted by the store binding
-		// that writes the record, so the link and the record appear
-		// together. That is the population half of the class, and it is
-		// outside what this registry can prove.
+		// The source of this href moved. It used to be minted unconditionally
+		// by the POST handler while nothing ever wrote the Registration
+		// behind it, which this registry could not detect: the probe asks
+		// whether the href resolves to a mounted route, and "/edev/{}/rg"
+		// always did. It is now minted by the store binding that writes the
+		// record, so the link and the record appear together. That is the
+		// population half of the class, and it is outside what this
+		// registry can prove.
 		{"/edev/{}/rg", http.MethodGet, "memory.RegisteredEndDeviceStore RegistrationLink", "a client reads its own Registration to confirm the server accepted it"},
 		{"/edev/{}/fsa", http.MethodGet, "handlers/enddevice.buildEndDevice FunctionSetAssignmentsListLink", "the path from an EndDevice to its DERPrograms"},
 		{"/edev/{}/fsa/{}", http.MethodGet, "handlers/fsa.HandleFSA", "a single FunctionSetAssignments"},
 		{"/edev/{}/fsa/{}/derp", http.MethodGet, "handlers/fsa.HandleFSA DERProgramListLink", "the DERProgram list under an FSA"},
-		{"/edev/{}/fsa/{}/derp/{}", http.MethodGet, "handlers/der.DERProgramHref", "a single DERProgram member's self href (IEEECORE-082)"},
-		// The source moved in IEEECORE-084, for the same reason the
-		// Registration link moved in IEEECORE-083: the link is minted by the
-		// store binding that decides whether the function set is served, not
-		// by a handler that stamps it unconditionally. Before that card
-		// nothing in the tree assigned LogEventListLink at all, so the list
-		// was served at an address no client could learn.
+		{"/edev/{}/fsa/{}/derp/{}", http.MethodGet, "handlers/der.DERProgramHref", "a single DERProgram member's self href"},
+		// The source of this href moved too, for the same reason as the
+		// Registration link above: it is minted by the store binding that
+		// decides whether the function set is served, not by a handler that
+		// stamps it unconditionally. Before that, nothing in the tree
+		// assigned LogEventListLink at all, so the list was served at an
+		// address no client could learn.
 		{"/edev/{}/lel", http.MethodGet, "memory.LogEventLinkedEndDeviceStore LogEventListLink", "CSIP V1.2 BASIC-027 step 2 has the client find LogEventListLink on its EndDevice and read the list behind it"},
 		{"/edev/{}/lel", http.MethodPost, "memory.LogEventLinkedEndDeviceStore LogEventListLink", "a device reports an alarm by POSTing a LogEvent to the list its EndDevice advertises (sep_wadl.xml:1385, mode M)"},
 		{"/edev/{}/cfg", http.MethodGet, "handlers/configuration.HandleConfiguration", "Configuration self href"},
@@ -235,7 +235,7 @@ func MintableHrefs() []MintableHref {
 		// The Response function set. The POST entry is not a follow of a
 		// Location header like the block above: it is the follow of an EVENT's
 		// replyTo, which handlers/der.StampResponseRequest puts on every
-		// DERControl this server serves (IEEECORE-067). A replyTo that does
+		// DERControl this server serves. A replyTo that does
 		// not accept a POST is the same defect one function set over: the
 		// client would have been told to acknowledge an event at a URI that
 		// refuses the acknowledgement.
@@ -264,33 +264,38 @@ func MintableHrefs() []MintableHref {
 // [AssertMintableHrefs] therefore tolerates. The set is explicit rather than a
 // count, so shrinking it is a visible diff and growing it is a deliberate act
 // someone has to justify in review. Keys are "METHOD SHAPE", matching
-// [MintableHref.key]; values say what the defect is and which card owns it.
+// [MintableHref.key]; values say what the defect is.
 //
 // Removing an entry is the fix landing. TestKnownUnroutedHrefs_RatchetIsExact
 // fails if an entry here starts routing, so the set cannot quietly stop
 // shrinking, and it fails if a shape stops routing without being added here.
-// IEEECORE-081 removed three entries by mounting their routes: GET
-// /edev/{}/frq/{}, GET /edev/{}/frp/{} and GET /msg/{}/tm/{}.
+// Mounting their routes removed three entries: GET /edev/{}/frq/{}, GET
+// /edev/{}/frp/{} and GET /msg/{}/tm/{}.
 //
-// IEEECORE-084 removed the fourth, GET /edev/{}/log/{}. That one is worth being
-// precise about, because an entry can leave this set for two very different
-// reasons and only one of them is a fix. It did NOT leave because its mint site
-// vanished and took the shape with it: the resource the Location named is now
+// A fourth removal, GET /edev/{}/log/{}, is worth being precise about,
+// because an entry can leave this set for two very different reasons and
+// only one of them is a fix. It did NOT leave because its mint site vanished
+// and took the shape with it: the resource the Location named is now
 // SERVED, at /edev/{}/lel/{}, which is the address the WADL declares
-// (sep_wadl.xml:1404) and which the registry above now carries for both GET and
-// DELETE. The old shape is gone from the registry only because the POST handler
-// stamps the declared address instead of the undeclared one; the reachability
-// the entry recorded as missing is present. The two entries that remain are held
-// by other cards, and each says which, because an entry with no owner is a
-// suppression rather than a ratchet.
+// (sep_wadl.xml:1404) and which the registry above now carries for both GET
+// and DELETE. The old shape is gone from the registry only because the POST
+// handler stamps the declared address instead of the undeclared one; the
+// reachability the entry recorded as missing is present. The two entries
+// that remain still need real fixes, and core has no public issue
+// tracker to anchor a per-entry owner tag to. What keeps this set a
+// ratchet rather than a bare suppression is not an owner tag but the
+// non-empty, specific reason every entry carries:
+// TestKnownUnroutedHrefs_EntriesAreDeclaredAndReasoned in hrefs_test.go
+// rejects an empty one, and a real reason names the defect precisely
+// enough that a reader can tell the entry apart from a shrug.
 var knownUnroutedHrefs = map[string]string{
-	"GET /edev/{}/sub/{}": "IEEECORE-070: POST /edev/{id}/sub returns this Location but only DELETE is routed, so a client re-reading its own subscription gets 405. The path IS mounted, so this is a method gap rather than a dead link, and it belongs with the card that mounts every WADL-declared method",
-	"GET /mup/{}/mr/{}":   "IEEECORE-065: POST /mup/{id}/mr and POST /mup/{id} both return this Location and nothing serves it",
+	"GET /edev/{}/sub/{}": "POST /edev/{id}/sub returns this Location but only DELETE is routed, so a client re-reading its own subscription gets 405. The path IS mounted, so this is a method gap rather than a dead link",
+	"GET /mup/{}/mr/{}":   "POST /mup/{id}/mr and POST /mup/{id} both return this Location and nothing serves it",
 }
 
 // KnownUnroutedHrefs returns a copy of the ratchet set: the mintable hrefs that
 // are known not to resolve and that [AssertMintableHrefs] tolerates, keyed
-// "METHOD SHAPE" and valued with the defect and the card that owns it.
+// "METHOD SHAPE" and valued with the defect.
 //
 // It is exported so a consumer can log the gaps it is shipping with rather than
 // having to read this file, and so the tests that enforce the ratchet do not

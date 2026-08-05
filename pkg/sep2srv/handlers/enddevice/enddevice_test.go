@@ -1,4 +1,4 @@
-// Tests for the EndDevice handler family (IEEECORE-001).
+// Tests for the EndDevice handler family.
 // Ported from the reference server's internal/handler/edev_test.go and
 // edev_delete_test.go, adapted to the injected IdentityFunc/SFDIPrefixFunc
 // seam: tests pass closures directly rather than injecting auth context values.
@@ -251,14 +251,14 @@ func TestHandleCreateEndDevicePanicsOnNilIndexer(t *testing.T) {
 	_ = coreedev.HandleCreateEndDevice(s, nil, identityOK(testLFDI, testSFDI), sfdiFirst8)
 }
 
-// TestHandleCreateEndDevicePanicsOnTypedNilIndexer is IEEECORE-107's fix to
-// the same guard: a nil *memory.EndDeviceIndex passed as the EndDeviceIndexer
-// interface parameter is NOT equal to the untyped nil literal the previous
-// test covers, because the interface value's type half is set. A plain
-// `idx == nil` comparison let exactly this shape through, which is the
-// caller the constructor's own doc comment says the guard exists for: "any
-// other caller of this exported constructor that passes nil directly."
-// store.IsAbsent (IEEECORE-112) is what closes that gap.
+// TestHandleCreateEndDevicePanicsOnTypedNilIndexer covers the same guard for
+// a different shape: a nil *memory.EndDeviceIndex passed as the
+// EndDeviceIndexer interface parameter is NOT equal to the untyped nil
+// literal the previous test covers, because the interface value's type half
+// is set. A plain `idx == nil` comparison let exactly this shape through,
+// which is the caller the constructor's own doc comment says the guard
+// exists for: "any other caller of this exported constructor that passes
+// nil directly." store.IsAbsent is what closes that gap.
 func TestHandleCreateEndDevicePanicsOnTypedNilIndexer(t *testing.T) {
 	t.Parallel()
 
@@ -690,7 +690,7 @@ func (f notifierFunc) Notify(ctx context.Context, resourceHref string, status ui
 	f(ctx, resourceHref, status)
 }
 
-// ----- POST /edev when the identity lookup cannot complete (IEEECORE-086) -----
+// ----- POST /edev when the identity lookup cannot complete -----
 
 // lookupFailingEndDevices is an EndDeviceStore whose identity lookups fail
 // while every other operation succeeds.

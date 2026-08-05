@@ -43,7 +43,7 @@ func (s *Store[T]) Get(_ context.Context, id string) (T, error) {
 // It is a package-level function rather than inline in List because
 // [ScopedStore.List] must apply the SAME refusals to a parent it does not know.
 // That path used to reach here by materializing an empty bucket and listing it,
-// which is the allocation IEEECORE-111 removed; sharing the check is what keeps
+// an allocation that was later removed; sharing the check is what keeps
 // removing the allocation from also removing the validation. A copy would drift,
 // and the drift would show up as a malformed request being answered with an
 // empty collection for unknown parents only.

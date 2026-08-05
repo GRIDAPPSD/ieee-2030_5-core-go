@@ -39,7 +39,7 @@ func TestHandlePostLogEvent_Created(t *testing.T) {
 	// only address the server ever gives a client for the event it just
 	// created, and it has to be the WADL one (/edev/{id1}/lel/{id2},
 	// sep_wadl.xml:1404); a non-empty header pointing at an undeclared path is
-	// the defect IEEECORE-084 closed, not evidence against it.
+	// the defect this route closes, not evidence against it.
 	loc := w.Header().Get("Location")
 	if !strings.HasPrefix(loc, "/edev/dev1/lel/") || loc == "/edev/dev1/lel/" {
 		t.Errorf("Location = %q, want an id under /edev/dev1/lel/", loc)

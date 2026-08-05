@@ -14,9 +14,9 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// IEEE-099: GET /edev/{id}/sub must return only subscriptions scoped to
-// EndDevice {id}. Before this ticket landed, the handler was wired to
-// the underlying union Store and returned the union across all
+// GET /edev/{id}/sub must return only subscriptions scoped to EndDevice
+// {id} (GRIDAPPSD/ieee-2030_5-server-go#168). The handler used to be
+// wired to the underlying union Store and returned the union across all
 // EndDevices.
 
 func seedSub(t *testing.T, store *memory.SubscriptionStore, id, edevID, resource string) {
@@ -93,7 +93,7 @@ func TestHandleListSubscriptionsByDevice_Paging(t *testing.T) {
 	for _, id := range []string{"a1", "a2", "a3"} {
 		seedSub(t, store, id, "1", "/edev/1")
 	}
-	// Foreign edev — must not appear in /edev/1/sub regardless of paging.
+	// Foreign edev: must not appear in /edev/1/sub regardless of paging.
 	seedSub(t, store, "b1", "2", "/edev/2")
 
 	mux := http.NewServeMux()
@@ -116,7 +116,7 @@ func TestHandleListSubscriptionsByDevice_Paging(t *testing.T) {
 	}
 }
 
-// Per-edev count regression — pin the eventual AGG-001 assertion.
+// Per-edev count regression: pin the eventual AGG-001 assertion.
 func TestHandleListSubscriptionsByDevice_NoCrossEdevLeak(t *testing.T) {
 	t.Parallel()
 	store := memory.NewSubscriptionStore()

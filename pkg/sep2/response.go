@@ -274,13 +274,14 @@ func rootElementName(data []byte) (xml.Name, error) {
 // ("Response types by function set"). The 2018 revision called this
 // table number 27; the contents (wire values) are unchanged.
 //
-// Wire values are NORMATIVE : they appear in the `<status>` element of a
+// Wire values are NORMATIVE: they appear in the `<status>` element of a
 // `Response` POST and are interpreted by the server-side handler. The
-// pre-IEEE-044a values in this enum were off-by-one against Table 31
-// (EventReceived was 0 instead of 1, EventCancelled was 5 instead of 6),
-// which forced the CSIP test `test/csip/core_022_responses_test.go` to
-// emit raw uint8 literals 1/2/3/6 to bypass the wrong constants. The
-// values below are the wire-correct Table 31 assignments.
+// values in this enum used to be off-by-one against Table 31 (EventReceived
+// was 0 instead of 1, EventCancelled was 5 instead of 6, fixed by
+// GRIDAPPSD/ieee-2030_5-server-go#109), which forced the
+// CSIP test `test/csip/core_022_responses_test.go` to emit raw uint8
+// literals 1/2/3/6 to bypass the wrong constants. The values below are the
+// wire-correct Table 31 assignments.
 const (
 	// ResponseStatusEventReserved (0): Reserved per Table 31. Not a
 	// valid wire value; included for completeness so callers do not

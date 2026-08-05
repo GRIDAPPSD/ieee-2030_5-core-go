@@ -11,8 +11,8 @@ import (
 // DeviceCapability is the mandatory entry point for IEEE 2030.5 servers.
 // Element order matches XSD (FunctionSetAssignmentsBase first, then extensions).
 //
-// DERProgramListLink is deliberately omitted (IEEECORE-064). It previously
-// pointed at "/dc", but "/dc" is the global DERCurve list (GET /dc in
+// DERProgramListLink is deliberately omitted. It previously pointed at
+// "/dc", but "/dc" is the global DERCurve list (GET /dc in
 // assembly.go registerDERRoutes, serving DERCurveList): a client following
 // the advertised DERProgramListLink got a DERCurveList back, a bare
 // violation of IEEE 2030.5-2018 section 4.4 on the resource every client

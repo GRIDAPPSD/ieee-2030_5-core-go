@@ -13,10 +13,10 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// IEEE-100 / CSIP V1.2 §11.6 — DELETE /edev/{id}/sub/{subId} fires a
-// final Removed Notification at the just-deleted subscriber before the
-// 204 is returned. Spec doesn't require it; correct behavior unblocks
-// MAINT-006 strengthening.
+// Per CSIP V1.2 section 11.6 (GRIDAPPSD/ieee-2030_5-server-go#169):
+// DELETE /edev/{id}/sub/{subId} fires a final Removed Notification at
+// the just-deleted subscriber before the 204 is returned. Spec doesn't
+// require it; correct behavior unblocks MAINT-006 strengthening.
 
 // recordingNotifier is the test double for the notifyRemoved callback.
 // It records every call so the test can assert which subscription was notified.
@@ -103,7 +103,7 @@ func TestHandleDeleteSubscription_NotifiesBeforeDelete(t *testing.T) {
 
 // TestHandleDeleteSubscription_NotifyFailureDoesNotFailDelete verifies
 // that a notifyRemoved callback returning an error does NOT change the
-// 204 status — the final Notification is best-effort per the IEEE-100 design.
+// 204 status: the final Notification is best-effort by design.
 func TestHandleDeleteSubscription_NotifyFailureDoesNotFailDelete(t *testing.T) {
 	t.Parallel()
 

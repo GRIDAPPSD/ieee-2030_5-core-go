@@ -12,7 +12,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// A wired family with an unwired member must REFUSE, not panic (IEEECORE-112).
+// A wired family with an unwired member must REFUSE, not panic.
 //
 // The mount gates read one field per FAMILY, not one field per route: fifteen
 // handles have no gate of their own and are mounted on the strength of a

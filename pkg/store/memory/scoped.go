@@ -29,8 +29,8 @@ func NewScopedStore[T store.Copier[T]]() *ScopedStore[T] {
 // concrete type, and it materializes a parent bucket, which no durable backend
 // can implement sensibly and which lets an arbitrary path segment allocate.
 //
-// Nothing on the read half of this type calls it any more (IEEECORE-111): Get,
-// List, Count and Delete take [ScopedStore.parentStore], which looks a parent up
+// Nothing on the read half of this type calls it any more: Get, List, Count
+// and Delete take [ScopedStore.parentStore], which looks a parent up
 // without establishing one, and Create is the single caller left, where
 // establishing the parent is the point. Reaching for ForParent from a read path
 // reintroduces client-driven unbounded growth, because every parent id on the
@@ -62,8 +62,8 @@ func (s *ScopedStore[T]) ForParent(parentID string) *Store[T] {
 // parentStore returns the Store for parentID WITHOUT creating one, and reports
 // whether it exists.
 //
-// This is the read half's counterpart to ForParent, and the difference is the
-// whole of IEEECORE-111: the parent id reaching every scoped route is a path
+// This is the read half's counterpart to ForParent, and the difference
+// matters entirely: the parent id reaching every scoped route is a path
 // segment the client chose, so a read that creates on miss is an allocation
 // primitive an authenticated client can drive without bound, storing nothing
 // any later request can retrieve.
@@ -86,10 +86,10 @@ func (s *ScopedStore[T]) parentStore(parentID string) (*Store[T], bool) {
 // this is a query that can fail, can report that failure instead of returning
 // a bare false that a caller would read as "absent".
 //
-// Since IEEECORE-111 no read materializes a bucket, so this reports what was
-// WRITTEN. A parent still lingers after its last resource is deleted, though, so
-// callers must not infer emptiness from a true: the store.ScopedReader contract
-// leaves that implementation-defined and Count is the question to ask.
+// No read materializes a bucket, so this reports what was WRITTEN. A parent
+// still lingers after its last resource is deleted, though, so callers must
+// not infer emptiness from a true: the store.ScopedReader contract leaves
+// that implementation-defined and Count is the question to ask.
 func (s *ScopedStore[T]) HasParent(_ context.Context, parentID string) (bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -101,9 +101,9 @@ func (s *ScopedStore[T]) HasParent(_ context.Context, parentID string) (bool, er
 //
 // The result may include parents that hold no resources, per the
 // store.ScopedReader contract, which requires only that every parent holding at
-// least one resource appears. Since IEEECORE-111 those can only come from a
-// write: a parent emptied by Delete, or one established by ForParent, and no
-// longer one that a read invented.
+// least one resource appears. Those can only come from a write: a parent
+// emptied by Delete, or one established by ForParent, and no longer one
+// that a read invented.
 func (s *ScopedStore[T]) Parents(_ context.Context) ([]string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

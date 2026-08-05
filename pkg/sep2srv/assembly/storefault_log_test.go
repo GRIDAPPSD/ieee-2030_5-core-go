@@ -15,16 +15,15 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/storetest"
 )
 
-// Every 500 on a store failure carries a log line naming its route
-// (IEEECORE-086 item 5).
+// Every 500 on a store failure carries a log line naming its route.
 //
 // The status assertion in storefault_route_test.go proves the CLIENT is told
 // the truth. This proves the OPERATOR is. They are different failures with
 // different costs: a wrong status misleads one client about one resource,
 // whereas an unlogged 500 leaves nobody able to say what broke at all.
 //
-// The shape of the outage this is written for: with a durable backend
-// (IEEECORE-075) a store that stops answering produces 500s across the whole
+// The shape of the outage this is written for: with a durable backend a
+// store that stops answering produces 500s across the whole
 // surface at once, and every one of them carries the same three-word body. The
 // only thing that separates "the backend is down" from "one client is
 // provoking errors on one route" is the server-side log, and only if every

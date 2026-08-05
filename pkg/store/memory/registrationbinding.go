@@ -12,7 +12,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store"
 )
 
-// IEEECORE-083: the EndDevice and its Registration are one act.
+// The EndDevice and its Registration are one act.
 //
 // Before this file, RegistrationLink was stamped on every EndDevice by the
 // POST /edev handler while nothing ever wrote a Registration record, so
@@ -21,9 +21,9 @@ import (
 // obtains its pIN, so an EndDevice advertising a Registration it does not
 // have breaks the mechanism a client uses to register at all.
 //
-// Note this is a DIFFERENT defect shape from IEEECORE-065 and IEEECORE-081,
-// which were mint-a-Location-at-an-unrouted-path. This one is
-// route-mounted-resource-absent, and assembly.AssertMintableHrefs does NOT
+// Note this is a DIFFERENT defect shape from a mint-a-Location-at-an-
+// unrouted-path bug. This one is route-mounted-resource-absent, and
+// assembly.AssertMintableHrefs does NOT
 // catch it, because the href does resolve to a registered pattern. That
 // bounds what the assertion buys: it closes the routing half of the class
 // and leaves the population half open. RegisteredEndDeviceStore closes the
@@ -58,10 +58,10 @@ const DefaultRegistrationPollRate uint32 = 900
 // what any pIN is. A pIN is a shared secret precisely BECAUSE the SFDI and
 // LFDI are derived from public certificate material that any TLS peer can
 // recompute (2018 section 6.3.5), so a pIN derived from device identity
-// would validate nothing. Generation and operator provisioning are
-// IEEECORE-050; the range and check-digit validator is IEEECORE-073. Neither
-// has landed at the time of writing, so this binding neither generates nor
-// validates: it transports whatever the embedder supplies.
+// would validate nothing. Generation and operator provisioning, and the
+// range and check-digit validator, are both future work. Neither has landed
+// at the time of writing, so this binding neither generates nor validates:
+// it transports whatever the embedder supplies.
 //
 // Implementations MUST NOT log the value they return, and callers MUST NOT
 // place it in an error message; see RegistrationPolicy.
@@ -167,15 +167,15 @@ var _ store.EndDeviceStore = (*RegisteredEndDeviceStore)(nil)
 // server is assembled, is loud; failing at request time inside net/http's
 // per-request recover would turn a mis-wired server into a silent 500.
 //
-// Both guards ask [store.IsAbsent] rather than comparing against nil
-// (IEEECORE-112). These parameters are interfaces, and an interface holding a
-// nil concrete pointer is not equal to nil, so a plain comparison accepted the
-// one shape a mis-wired consumer actually produces: the zero value of the
-// concrete store it would otherwise have constructed. The diagnostic this
-// function exists to give was withheld from precisely the caller who needed
-// it, and the mis-wiring surfaced as a nil dereference on the first request
-// instead. It is the same fault IEEECORE-085 closed at the mount gates; read
-// [store.IsAbsent] before writing a new guard here as a nil comparison.
+// Both guards ask [store.IsAbsent] rather than comparing against nil. These
+// parameters are interfaces, and an interface holding a nil concrete pointer
+// is not equal to nil, so a plain comparison accepted the one shape a
+// mis-wired consumer actually produces: the zero value of the concrete store
+// it would otherwise have constructed. The diagnostic this function exists
+// to give was withheld from precisely the caller who needed it, and the
+// mis-wiring surfaced as a nil dereference on the first request instead.
+// It is the same fault closed at the mount gates; read [store.IsAbsent]
+// before writing a new guard here as a nil comparison.
 func NewRegisteredEndDeviceStore(devs store.EndDeviceStore, regs store.ResourceStore[sep2.Registration], policy RegistrationPolicy) *RegisteredEndDeviceStore {
 	if store.IsAbsent(devs) {
 		panic("memory: NewRegisteredEndDeviceStore: devs (EndDeviceStore) must not be nil")
@@ -303,8 +303,8 @@ func (s *RegisteredEndDeviceStore) GetByLFDI(ctx context.Context, lfdi string) (
 
 // List returns a page of EndDevices, each link-derived.
 //
-// IEEECORE-107: a Registration lookup that fails while deriving one item's
-// link is reported, not swallowed. A list that cannot be truthfully
+// A Registration lookup that fails while deriving one item's link is
+// reported, not swallowed. A list that cannot be truthfully
 // constructed must not be served as though it were: the caller (ultimately
 // listhandler.ListHandler, which already routes a non-nil error here
 // through srverr.Internal) answers 5xx rather than a 200 whose entries
@@ -397,7 +397,7 @@ func (s *RegisteredEndDeviceStore) linkFor(ctx context.Context, id string) (*sep
 // depends on.
 //
 // A key that IS recovered but whose Registration lookup fails is a
-// different case (IEEECORE-107) and is NOT silenced: whether that device
+// different case and is NOT silenced: whether that device
 // has a Registration is genuinely unknown, and reporting it as absent would
 // tell a client the same thing 2018 section 4.4 p.19 reserves for a
 // function set that truly is not implemented. The error is returned so

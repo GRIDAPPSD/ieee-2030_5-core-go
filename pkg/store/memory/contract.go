@@ -9,8 +9,8 @@ import (
 // contract. Without these, the interfaces in pkg/store would be aspirational:
 // nothing would fail to build if an implementation drifted off them.
 //
-// A BUILD failure is the point, not a test failure. Since IEEECORE-085 every
-// store handle on assembly.Stores and every handler constructor is declared as
+// A BUILD failure is the point, not a test failure. Every store handle on
+// assembly.Stores and every handler constructor is declared as
 // one of these interfaces, so a method added to or changed on the contract has
 // to be answered here before anything downstream compiles. A test could report
 // the same fact, but only after a build that already succeeded, and only if
@@ -72,8 +72,8 @@ var (
 
 // Wrappers and decorators. Each delegates to another implementation rather than
 // being one, so each needs its own assertion: satisfying the contract is not
-// inherited from what a type wraps, and since IEEECORE-085 neither persistence
-// wrapper relies on embedding to promote the methods that prove it.
+// inherited from what a type wraps, and neither persistence wrapper relies
+// on embedding to promote the methods that prove it.
 var (
 	_ store.ResourceStore[sep2.Registration] = (*RegistrationStore)(nil)
 	_ store.ScopedStore[sep2.DERProgram]     = (*DERProgramStore)(nil)

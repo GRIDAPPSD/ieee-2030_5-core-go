@@ -1,4 +1,4 @@
-// Tests for the FSA handler family (IEEECORE-001).
+// Tests for the FSA handler family.
 // No auth seam: FSA handlers are auth-clean (they rely on the auth middleware
 // upstream, so unit tests exercise path-routing and store behaviour directly).
 package fsa_test

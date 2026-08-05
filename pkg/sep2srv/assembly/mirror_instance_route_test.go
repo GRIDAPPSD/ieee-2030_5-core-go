@@ -12,15 +12,15 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/assembly"
 )
 
-// PUT and DELETE on the MirrorUsagePoint instance, mounted by IEEECORE-066.
+// PUT and DELETE on the MirrorUsagePoint instance.
 //
 // These drive the router BuildProtocolRouter returns, with no wrapper ACL in
-// the path, which is the boundary of that card. Reachability through the bridge
-// and server-go wrappers is NOT proven here and is not proven anywhere: both
-// classify /mup as read-and-create and answer 405 before the mux, so in those
-// deployments these two Mandatory methods remain dark until IEEECORE-070 removes
-// the wrapper tables. That verdict is BLOCKED, not passing, and mounting the
-// routes in core does not change it.
+// the path, which is the boundary of what is tested here. Reachability
+// through the bridge and server-go wrappers is NOT proven here and is not
+// proven anywhere: both classify /mup as read-and-create and answer 405
+// before the mux, so in those deployments these two Mandatory methods remain
+// dark until the wrapper tables are removed upstream. That verdict is
+// BLOCKED, not passing, and mounting the routes in core does not change it.
 
 // mupInstanceRouter builds a bare-core router over fresh stores and returns it
 // with the stores, so a test can assert what the request actually did to the

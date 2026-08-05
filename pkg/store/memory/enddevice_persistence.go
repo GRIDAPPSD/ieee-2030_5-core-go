@@ -9,12 +9,12 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 )
 
-// IEEE-097: durable EndDeviceStore persistence.
+// Durable EndDeviceStore persistence (GRIDAPPSD/ieee-2030_5-server-go#165).
 //
 // Wraps the existing in-memory EndDeviceStore with on-disk JSON snapshots
 // using the shared envelope/atomic-write machinery in persistence.go. The
 // underlying *EndDeviceStore stays unchanged so every existing test path
-// that builds a NewEndDeviceStore() keeps the same in-memory semantics —
+// that builds a NewEndDeviceStore() keeps the same in-memory semantics:
 // persistence is composed via a constructor wrapper, not an interface
 // change (Pike rule: don't widen public surface to add a feature).
 
@@ -29,7 +29,8 @@ type endDeviceRecord struct {
 // persistentEndDeviceWrapper is internal bookkeeping attached to an
 // EndDeviceStore when a persistence path is configured. We keep it out of
 // the base struct so the zero-value EndDeviceStore stays exactly the same
-// shape pre-IEEE-097 (no extra fields shipped on every in-memory user).
+// shape it had before persistence existed (no extra fields shipped on
+// every in-memory user).
 type persistentEndDeviceWrapper struct {
 	mu   sync.Mutex
 	path string
@@ -44,8 +45,8 @@ var (
 )
 
 // NewEndDeviceStoreWithPersistence builds an EndDeviceStore wired to a
-// JSON file on disk. An empty path means "in-memory only" — equivalent to
-// NewEndDeviceStore — and returns a non-nil store.
+// JSON file on disk. An empty path means "in-memory only": equivalent to
+// NewEndDeviceStore, and returns a non-nil store.
 //
 // If the file exists it is loaded; a missing file is cold boot (no
 // error). Corrupt or unknown-version files return an error and the caller

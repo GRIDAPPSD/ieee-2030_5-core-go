@@ -198,8 +198,7 @@ func (s *Schema) validateNode(n *node, typeName, path string, isRoot bool) Probl
 // wrong, so the gate treats schemaVer on the root as tolerated rather than
 // unknown. Nothing else is in this set: an unrelated unknown attribute on
 // the root is still a defect, and schemaVer anywhere other than the root is
-// still unknown too (see checkAttributes' isRoot parameter). See
-// IEEECORE-078.
+// still unknown too (see checkAttributes' isRoot parameter).
 var rootTolerated = map[string]bool{
 	"schemaVer": true,
 }

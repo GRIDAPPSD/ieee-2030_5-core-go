@@ -11,7 +11,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/store/memory"
 )
 
-// The declared method set on scopedResourceHandler (IEEECORE-052).
+// The declared method set on scopedResourceHandler.
 //
 // # Why these assertions are at the handler and not only at the route
 //
@@ -29,8 +29,8 @@ import (
 //     it is tested here, directly, against the unexported handler.
 //
 // The equivalence this file exists to pin: an empty itemMethods must behave
-// exactly as the hardcoded "GET, HEAD" the read-only handler carried before the
-// method set became declarative (IEEECORE-082's DERProgram member route).
+// exactly as the hardcoded "GET, HEAD" the read-only handler carried before
+// the method set became declarative (the DERProgram member route).
 
 func TestItemMethodsAllow(t *testing.T) {
 	t.Parallel()

@@ -27,7 +27,7 @@ func TestVerifyRejectsMalformedHardwareModuleSANInner(t *testing.T) {
 	caCert, caKey := genCA(t)
 
 	// Build a SAN whose otherName has the right outer OID but garbage inner
-	// bytes — i.e. NOT a valid HardwareModuleName SEQUENCE.
+	// bytes: i.e. NOT a valid HardwareModuleName SEQUENCE.
 	sanExt := mustBuildMalformedHMNSAN(t)
 
 	deviceCert := genDeviceCertWithSANExt(t, caCert, caKey, sanExt)
@@ -132,7 +132,7 @@ func mustBuildMalformedHMNSAN(t *testing.T) pkix.Extension {
 			Class:      asn1.ClassContextSpecific,
 			Tag:        0,
 			IsCompound: true,
-			// Garbage inside the [0] EXPLICIT wrapper — definitely not a
+			// Garbage inside the [0] EXPLICIT wrapper: definitely not a
 			// valid HardwareModuleName SEQUENCE.
 			Bytes: []byte{0xFF, 0xFF, 0xFF, 0xFF},
 		},
@@ -168,7 +168,7 @@ func TestVerifyAcceptsCompliantDeviceCert(t *testing.T) {
 
 	deviceCertPEM, _, err := sep2cert.GenerateDeviceCert(caCert, caKey, sep2cert.DeviceCertOptions{
 		DeviceType:  sep2cert.DeviceTypeGeneric,
-		HWSerialNum: "VERIFY-OK-001",
+		HWSerialNum: "VERIFY-COMPLIANT-SERIAL-1",
 	})
 	if err != nil {
 		t.Fatalf("GenerateDeviceCert: %v", err)
@@ -224,7 +224,7 @@ func TestVerifyRejectsSANWithWrongOtherNameOID(t *testing.T) {
 // TestVerifyRejectsAdditionalUnknownCriticalExtension proves clearKnownCriticalSAN
 // is selective: a cert with a valid HardwareModuleName SAN PLUS some other
 // unknown critical extension still gets rejected, because only the SAN OID is
-// removed from UnhandledCriticalExtensions. (Dutch M1 / Leon row 3 — the
+// removed from UnhandledCriticalExtensions. (Dutch M1 / Leon row 3: the
 // fail-closed proof.)
 func TestVerifyRejectsAdditionalUnknownCriticalExtension(t *testing.T) {
 	caCert, caKey := genCA(t)
@@ -356,7 +356,7 @@ func TestVerifyRejectsExpiredCert(t *testing.T) {
 }
 
 // TestVerifyRejectsExtKeyUsageMismatch confirms KeyUsages: ExtKeyUsageClientAuth
-// is enforced — a cert without ClientAuth fails verification. (Leon: fail-closed
+// is enforced: a cert without ClientAuth fails verification. (Leon: fail-closed
 // paths.)
 func TestVerifyRejectsExtKeyUsageMismatch(t *testing.T) {
 	caCert, caKey := genCA(t)
@@ -460,7 +460,7 @@ func TestVerifyRejectsSANWithCorruptOuterSequence(t *testing.T) {
 	sanExt := pkix.Extension{
 		Id:       sep2cert.OIDSubjectAltName,
 		Critical: true,
-		// Garbage — not a valid SEQUENCE; the outer asn1.Unmarshal in
+		// Garbage: not a valid SEQUENCE; the outer asn1.Unmarshal in
 		// ExtractHardwareModuleName must fail and the SAN OID must remain
 		// listed as unhandled critical even if the cert somehow parses.
 		Value: []byte{0xFF, 0xFF, 0xFF, 0xFF},
@@ -526,7 +526,7 @@ const (
 // mustBuildMultiOtherNameSAN assembles a SAN extension whose GeneralNames
 // SEQUENCE contains the given otherName entries in order. Each entry's inner
 // [0] EXPLICIT value is either a valid HardwareModuleName SEQUENCE, garbage,
-// or arbitrary opaque bytes — selected by InnerKind.
+// or arbitrary opaque bytes: selected by InnerKind.
 func mustBuildMultiOtherNameSAN(t *testing.T, specs []otherNameSpec) pkix.Extension {
 	t.Helper()
 
@@ -601,7 +601,7 @@ func mustBuildMultiOtherNameSAN(t *testing.T, specs []otherNameSpec) pkix.Extens
 // unhandled critical extension to trip. This matches the docstring on
 // VerifyPeerCertWithHardwareModuleSAN (see PR #18 M1 doc clarification);
 // enforcing the SAN's presence is intentionally a separate concern, handled
-// at cert generation time. (Leon row 5 — empirical accept confirmed.)
+// at cert generation time. (Leon row 5: empirical accept confirmed.)
 func TestVerifyAcceptsCertWithoutSAN(t *testing.T) {
 	caCert, caKey := genCA(t)
 

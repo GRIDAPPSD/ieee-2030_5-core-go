@@ -16,7 +16,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/assembly"
 )
 
-// Registry completeness (IEEECORE-065).
+// Registry completeness.
 //
 // assembly.MintableHrefs is a declared registry, and a declared registry has
 // one failure mode that matters: somebody adds a handler, mints an href, and

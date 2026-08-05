@@ -1,4 +1,4 @@
-// Tests for the DER handler family (IEEECORE-001).
+// Tests for the DER handler family.
 // Ported from the reference server's internal/handler/der_test.go; no auth
 // seam changes needed since DER handlers are auth-clean.
 package der_test
@@ -267,9 +267,9 @@ func TestBuildDERProgramList(t *testing.T) {
 }
 
 // TestDERProgramHref asserts the canonical builder emits the FSA-nested
-// shape core actually mounts a DERProgram under (IEEECORE-082): dropping the
-// {fsaId} segment reproduced the exact defect found independently by Devi's
-// WADL sweep and Frank's boot-fixture testing.
+// shape core actually mounts a DERProgram under: dropping the {fsaId}
+// segment reproduced the exact defect found independently by Devi's WADL
+// sweep and Frank's boot-fixture testing.
 func TestDERProgramHref(t *testing.T) {
 	t.Parallel()
 

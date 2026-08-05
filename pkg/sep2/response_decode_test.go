@@ -8,8 +8,8 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 )
 
-// The Response POST body is polymorphic, and that is the whole of
-// IEEECORE-067's second defect.
+// The Response POST body is polymorphic, and that is the whole of a real
+// defect that once shipped here.
 //
 // sep.xsd declares Response (sep.xsd:502-532) plus five types that extend it:
 // DERControlResponse (:440-447), FlowReservationResponseResponse (:448-454),

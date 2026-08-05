@@ -12,10 +12,9 @@
 // client-and-server surface, and callers should not treat it as such.
 //
 // The relocation is sequenced with the layering split, not with this contract.
-// See the bridge/core boundary analysis (architecture decision IEEECORE-068)
-// for the reasoning. Until the split lands, keep external dependencies on this
-// package at zero so that the move stays a move rather than a breaking API
-// change for three downstream modules.
+// See the bridge/core boundary analysis for the reasoning. Until the split
+// lands, keep external dependencies on this package at zero so that the move
+// stays a move rather than a breaking API change for three downstream modules.
 //
 // # The contract
 //
@@ -40,7 +39,7 @@
 // materializes one on demand. Create-on-read is not implementable on a durable
 // backend and turns a GET for an arbitrary path segment into an allocation.
 // It remains available on the in-memory type, but nothing on its read half
-// calls it any more (IEEECORE-111): the reads there go through a lookup that
+// calls it any more: the reads there go through a lookup that
 // creates nothing, so the contract's reading of an unknown parent, ErrNotFound
 // from Get, an empty page from List, zero from Count, is now what the in-memory
 // implementation does rather than what it emulates by allocating.

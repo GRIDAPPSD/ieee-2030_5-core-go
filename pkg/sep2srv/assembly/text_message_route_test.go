@@ -12,7 +12,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2srv/assembly"
 )
 
-// The TextMessage instance route (IEEECORE-081).
+// The TextMessage instance route.
 //
 // POST /msg/{msgId}/tm hands back a Location at /msg/{msgId}/tm/{tmId}
 // (handlers/messaging.HandlePostTextMessage) and nothing served it. The WADL
@@ -24,7 +24,7 @@ import (
 // /msg/{id1}/txt/{id2} and /msg/{id1}/txt for the list, while this server
 // serves both under /tm. Hrefs are server-assigned, so the projection is not
 // wrong on its own, but it is the same shape as the LogEvent /log versus /lel
-// divergence that IEEECORE-084 is fixing. Renaming would move the mounted list
+// divergence fixed elsewhere. Renaming would move the mounted list
 // and POST routes too, which is a separate decision from closing the dead link,
 // so it is reported as a finding and the instance is mounted where the list
 // already lives.
@@ -111,7 +111,7 @@ func TestTextMessage_LocationHeaderResolves(t *testing.T) {
 		t.Errorf("priority = %d, want 1", got.Priority)
 	}
 	if got.CreationTime == 0 {
-		t.Error("creationTime = 0: a served event with no creation instant cannot be ordered against another (IEEECORE-018)")
+		t.Error("creationTime = 0: a served event with no creation instant cannot be ordered against another")
 	}
 }
 

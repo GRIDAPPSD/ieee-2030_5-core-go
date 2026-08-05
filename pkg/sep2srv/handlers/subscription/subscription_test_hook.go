@@ -1,7 +1,8 @@
 //go:build csip_test_hooks
 
 // Build-tag-gated subscription-cancel tombstone for the CSIP V1.2
-// conformance harness (MAINT-006). Maintains a small set of canceled
+// conformance harness (MAINT-006, GRIDAPPSD/ieee-2030_5-server-go#126).
+// Maintains a small set of canceled
 // subscription IDs and an X-CSIP-Test-Subscription-ID header parser so
 // the harness can drive the production POST /edev/{id}/sub handler with
 // a deterministic ID and assert that a re-create on a canceled ID is
@@ -12,10 +13,8 @@
 // subscriptionIDOverride and subscriptionRefuseCreate package vars
 // defaulted to nil; this file's init() swaps them to closures over the
 // canceled-id set. With the tag off this file is not compiled and both
-// vars stay nil — the production binary's create path is a single
+// vars stay nil: the production binary's create path is a single
 // nil-compare on each.
-//
-// IEEE-079.
 
 package subscription
 
