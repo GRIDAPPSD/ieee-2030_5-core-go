@@ -6,9 +6,6 @@
 [![Release v0.7.0](https://img.shields.io/badge/release-v0.7.0-blue)](https://github.com/GRIDAPPSD/ieee-2030_5-core-go/releases/latest)
 [![License](https://img.shields.io/badge/license-Battelle%20BSD-blue)](LICENSE)
 
-This repo is private: the workflow badges above render for viewers with
-repository access and show nothing for anonymous visitors.
-
 Shared Go library for the IEEE 2030.5 (SEP2) server and client implementations
 at PNNL. Both the reference server (`ieee-2030_5-server`) and the client
 simulator (`ieee-2030_5-client`) import this module.
