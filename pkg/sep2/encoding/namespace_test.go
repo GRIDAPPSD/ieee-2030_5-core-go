@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -253,6 +254,71 @@ func TestNamespaceMiddleware2013NoExplicitWriteHeader(t *testing.T) {
 	}
 	if strings.Contains(body, "urn:ieee:std:2030.5:ns") {
 		t.Errorf("buffered 2013 response should NOT contain the 2018 namespace")
+	}
+}
+
+func TestNamespaceMiddleware2013ExactBytesAndContentLength(t *testing.T) {
+	// The 2013 namespace is one byte shorter than the 2018 one, so a
+	// Content-Length computed before rewriting (rather than after) is
+	// wrong by exactly the bytes the rewrite removed, and a real client
+	// reading by that header would see a truncated body.
+	body := `<Time xmlns="urn:ieee:std:2030.5:ns"><currentTime>1000</currentTime></Time>`
+	want := strings.ReplaceAll(body, sep2.Namespace, sep2.Namespace2013)
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := w.Write([]byte(body)); err != nil {
+			t.Errorf("inner Write: %v", err)
+		}
+	})
+
+	wrapped := encoding.NamespaceMiddleware(inner)
+	req := httptest.NewRequest("GET", "/tm", nil)
+	req.Header.Set("Accept", "application/sep+xml; level=-S0")
+	w := httptest.NewRecorder()
+	wrapped.ServeHTTP(w, req)
+
+	if got := w.Body.String(); got != want {
+		t.Errorf("body = %q, want %q", got, want)
+	}
+	if got := w.Header().Get("Content-Length"); got != strconv.Itoa(len(want)) {
+		t.Errorf("Content-Length = %q, want %q", got, strconv.Itoa(len(want)))
+	}
+}
+
+func TestNamespaceMiddleware2013MultipleOccurrencesExactBytes(t *testing.T) {
+	// List resources declare the namespace once per item, so a Replace
+	// bounded to the first occurrence (rather than ReplaceAll) leaves
+	// every occurrence after the first still carrying the 2018 namespace.
+	body := `<EndDeviceList xmlns="urn:ieee:std:2030.5:ns">` +
+		`<EndDevice xmlns="urn:ieee:std:2030.5:ns"><sFDI>111</sFDI></EndDevice>` +
+		`<EndDevice xmlns="urn:ieee:std:2030.5:ns"><sFDI>222</sFDI></EndDevice>` +
+		`</EndDeviceList>`
+	want := strings.ReplaceAll(body, sep2.Namespace, sep2.Namespace2013)
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := w.Write([]byte(body)); err != nil {
+			t.Errorf("inner Write: %v", err)
+		}
+	})
+
+	wrapped := encoding.NamespaceMiddleware(inner)
+	req := httptest.NewRequest("GET", "/edev", nil)
+	req.Header.Set("Accept", "application/sep+xml; level=-S0")
+	w := httptest.NewRecorder()
+	wrapped.ServeHTTP(w, req)
+
+	got := w.Body.Bytes()
+	if string(got) != want {
+		t.Errorf("body = %q, want %q", got, want)
+	}
+	if n := bytes.Count(got, []byte(sep2.Namespace)); n != 0 {
+		t.Errorf("2018 namespace still present %d time(s), want 0", n)
+	}
+	if n := bytes.Count(got, []byte(sep2.Namespace2013)); n != 3 {
+		t.Errorf("2013 namespace present %d time(s), want 3", n)
+	}
+	if gotLen := w.Header().Get("Content-Length"); gotLen != strconv.Itoa(len(want)) {
+		t.Errorf("Content-Length = %q, want %q", gotLen, strconv.Itoa(len(want)))
 	}
 }
 
