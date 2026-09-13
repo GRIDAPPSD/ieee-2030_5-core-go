@@ -49,7 +49,7 @@ func NewCCMServerConfigWithExtraCAs(certFile, keyFile, caFile string, extraCAFil
 	return &gotls.Config{
 		Certificates: []gotls.Certificate{cert},
 		ClientCAs:    caPool,
-		// IEEE 2030.5 §6.11 / CSIP §6.2 device certs carry a critical
+		// IEEE 2030.5 section 6.11 / CSIP section 6.2 device certs carry a critical
 		// HardwareModuleName SAN that stdlib x509 leaves in
 		// UnhandledCriticalExtensions, which would cause RequireAndVerify
 		// to fail closed at handshake. RequireAnyClientCert is intentional,
@@ -62,7 +62,7 @@ func NewCCMServerConfigWithExtraCAs(certFile, keyFile, caFile string, extraCAFil
 		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
 			return VerifyPeerCertWithHardwareModuleSAN(rawCerts, caPool)
 		},
-		// MinVersion stays at the IEEE 2030.5 §6.7 spec floor (TLS 1.2),
+		// MinVersion stays at the IEEE 2030.5 section 6.7 spec floor (TLS 1.2),
 		// so a spec-strict CCM-8 client still negotiates exactly as
 		// before. MaxVersion is raised to 1.3 to accept clients that
 		// offer only TLS 1.3 (observed with the EPRI reference client).
