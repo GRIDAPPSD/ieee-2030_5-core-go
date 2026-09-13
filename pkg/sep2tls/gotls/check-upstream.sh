@@ -282,11 +282,16 @@ diff_shared_files() {
       missing_from_fork+=("$f")
       continue
     fi
+    # The dot in "github.com" is escaped so the pattern matches only the
+    # literal module path, not any single-character stand-in (for example
+    # "github_com"): unescaped, a spoofed import naming a stub package
+    # under a lookalike path would be silently rewritten to the same
+    # normalized upstream import, hiding the substitution from the diff.
     if ! sed -e 's/^package gotls$/package tls/' \
-      -e 's#github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/fipstls#crypto/internal/boring/fipstls#' \
-      -e 's#github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/boring#crypto/internal/boring#' \
-      -e 's#github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/cpu#internal/cpu#' \
-      -e 's#github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/godebug#internal/godebug#' \
+      -e 's#github\.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/fipstls#crypto/internal/boring/fipstls#' \
+      -e 's#github\.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/boring#crypto/internal/boring#' \
+      -e 's#github\.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/cpu#internal/cpu#' \
+      -e 's#github\.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/godebug#internal/godebug#' \
       "$FORK_DIR/$f" >"$norm/$f"; then
       echo "error: could not normalize $f for comparison (sed failed)" >&2
       exit 2

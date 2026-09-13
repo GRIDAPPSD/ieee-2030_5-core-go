@@ -140,6 +140,14 @@ run_check() {
   [[ "$output" != *"internal:"* ]]
 }
 
+@test "a spoofed stub import using github_com instead of github.com is not silently normalized away" {
+  sed -i 's#github\.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/fipstls#github_com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/fipstls#' \
+    "$FORK_DIR/boring.go"
+  run run_check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"boring.go"* ]]
+}
+
 @test "an edited fork-only file exits 1 via the manifest check" {
   sed -i 's/keyLen: 16,/keyLen: 32,/' "$FORK_DIR/cipher_suites_ccm.go"
   run run_check
