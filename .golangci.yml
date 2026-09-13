@@ -23,5 +23,5 @@ linters:
         - -QF1008  # remove embedded field from selector (explicit is safer)
   exclusions:
     paths:
-      - internal/tls/gotls
-      - internal/tls/ccm
+      - pkg/sep2tls/gotls
+      - pkg/sep2tls/ccm
