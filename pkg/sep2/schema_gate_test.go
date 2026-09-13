@@ -832,7 +832,7 @@ func TestSchemaGateCatchesOversizedIntegerWidth(t *testing.T) {
 // mismatch inside a child element such as DERControlBase is asserted both ways.
 func TestSchemaGateControlIntegerPins(t *testing.T) {
 	const curveRef = "the schema types this element DERCurveLink, a link carrying an href; " +
-		"the Go field is an int32 curve ref by design (see the DERControlBase doc comment)"
+		"the Go field is an int32 curve ref by design (see the DERControlBase doc comment) (#153)"
 	type pin struct{ line, reason string }
 	cases := []struct {
 		typeName string
@@ -844,9 +844,9 @@ func TestSchemaGateControlIntegerPins(t *testing.T) {
 			v:        sep2.DERControl{},
 			pins: []pin{
 				{"integer-unresolved DERControl.DERControlBase.OpModFixedVar.Multiplier",
-					"the schema types opModFixedVar FixedVar, which declares refType and value but no multiplier; the Go field reuses ReactivePower"},
+					"the schema types opModFixedVar FixedVar, which declares refType and value but no multiplier; the Go field reuses ReactivePower (#153)"},
 				{"integer-unresolved DERControl.DERControlBase.OpModFreqDroop",
-					"the schema types this element FreqDroopType, a complex type of droop parameters; the Go field is a single uint16"},
+					"the schema types this element FreqDroopType, a complex type of droop parameters; the Go field is a single uint16 (#153)"},
 				{"integer-unresolved DERControl.DERControlBase.OpModFreqWatt", curveRef},
 				{"integer-unresolved DERControl.DERControlBase.OpModHFRTMustTrip", curveRef},
 				{"integer-unresolved DERControl.DERControlBase.OpModHVRTMomentaryCessation", curveRef},
