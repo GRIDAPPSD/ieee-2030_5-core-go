@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"time"
 
 	gotls "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls"
 )
@@ -123,4 +124,66 @@ func CCMIdentityMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// ccmHandshakeTimeout bounds the per-connection handshake WrapCCMListener
+// runs, so a peer that opens the TCP connection and never speaks TLS cannot
+// leak one goroutine per attempt.
+const ccmHandshakeTimeout = 10 * time.Second
+
+// WrapCCMListener wraps a gotls listener so a handshake failure is logged
+// the way net/http logs one for *tls.Conn (net/http's own "TLS handshake
+// error" case in its Serve dispatch). That case never fires for *gotls.Conn:
+// it is a different concrete type, so net/http leaves the handshake to run
+// lazily on the connection's first Read, and a failure there reaches no log
+// line. Pass logf as (*http.Server).ErrorLog.Printf, or log.Printf when
+// ErrorLog is nil, and serve the returned listener in place of inner.
+func WrapCCMListener(inner net.Listener, logf func(format string, args ...any)) net.Listener {
+	l := &ccmLoggingListener{Listener: inner, logf: logf, ready: make(chan ccmAcceptResult)}
+	go l.acceptLoop()
+	return l
+}
+
+type ccmLoggingListener struct {
+	net.Listener
+	logf  func(format string, args ...any)
+	ready chan ccmAcceptResult
+}
+
+type ccmAcceptResult struct {
+	conn net.Conn
+	err  error
+}
+
+func (l *ccmLoggingListener) acceptLoop() {
+	for {
+		c, err := l.Listener.Accept()
+		if err != nil {
+			l.ready <- ccmAcceptResult{err: err}
+			return
+		}
+		go l.handshake(c)
+	}
+}
+
+func (l *ccmLoggingListener) handshake(c net.Conn) {
+	gc, ok := c.(*gotls.Conn)
+	if !ok {
+		l.ready <- ccmAcceptResult{conn: c}
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), ccmHandshakeTimeout)
+	defer cancel()
+	if err := gc.HandshakeContext(ctx); err != nil {
+		l.logf("http: TLS handshake error from %s: %v", c.RemoteAddr(), err)
+		_ = c.Close()
+		return
+	}
+	l.ready <- ccmAcceptResult{conn: gc}
+}
+
+func (l *ccmLoggingListener) Accept() (net.Conn, error) {
+	r := <-l.ready
+	return r.conn, r.err
 }
