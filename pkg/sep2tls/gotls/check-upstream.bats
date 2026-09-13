@@ -266,7 +266,7 @@ GITEOF
   [ "$status" -eq 0 ]
 }
 
-@test "a patched file reports drift once upstream moves past its recorded base hash" {
+@test "a patched file reports drift once its recorded upstream hash no longer matches the pin" {
   local fork_hash
   fork_hash="$(sha256sum "$FORK_DIR/handshake_server.go" | cut -d' ' -f1)"
   printf 'patched\thandshake_server.go\t%s\tdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef\ttest: pretend deliberate patch\n' \

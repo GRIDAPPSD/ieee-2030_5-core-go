@@ -10,11 +10,13 @@
 #     check-upstream.sh, at the time the patch was recorded; "-" for
 #     fork-only entries, which have no upstream file to compare. For a
 #     "patched" entry this is what lets the check keep watching the
-#     upstream side after the fork has deliberately diverged: if
-#     upstream's copy no longer hashes to this value, upstream changed
-#     since the patch was recorded (a security fix, say) and the run
-#     reports drift so the patch gets re-reviewed against the new
-#     content.
+#     upstream side after the fork has deliberately diverged: if the
+#     pinned upstream's copy no longer hashes to this value,
+#     UPSTREAM_TAG moved past what this entry was recorded against, and
+#     the run reports drift so the patch gets re-reviewed against the
+#     new pin. A crypto/tls security release published while the pin
+#     stays put is not caught this way; see UPSTREAM.md's manual
+#     procedure.
 #   note: why the file exists or diverges (free text, no tabs)
 #
 # To add or update a fork-only entry after changing its file:

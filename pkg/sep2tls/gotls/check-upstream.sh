@@ -26,9 +26,12 @@
 #     1  drift: a shared file differs from upstream with no recorded
 #        patch, a manifest entry's hash no longer matches the file's
 #        content, an expected shared file is missing, the recorded
-#        upstream_sha256 of a patched file no longer matches upstream (an
-#        upstream change landed on a file this fork has diverged from),
-#        or a manifest line is malformed (missing a required field). A
+#        upstream_sha256 of a patched file no longer matches the pinned
+#        upstream copy (UPSTREAM_TAG moved without this manifest entry
+#        being re-verified; a crypto/tls security release published
+#        while the pin stays put is not caught this way, see
+#        UPSTREAM.md), or a manifest line is malformed (missing a
+#        required field). A
 #        malformed line is reported under this same bit because fixing it
 #        takes the same action as fixing a hash mismatch: edit the
 #        manifest.
