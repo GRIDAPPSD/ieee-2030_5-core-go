@@ -275,6 +275,51 @@ func TestCCMCapNegotiatesTLS12WithCCM8ForDualVersionClient(t *testing.T) {
 	}
 }
 
+// TestCCM8PreferredOverGCM is core-go #136 criterion 1: a TLS 1.2 client
+// offering both CCM-8 and the ECDHE-ECDSA AES-128-GCM suite negotiates
+// CCM-8. RED at 406baef: cipher_suites_ccm.go appended CCM-8 to the end of
+// the preference order, so pickCipherSuite reached GCM first.
+func TestCCM8PreferredOverGCM(t *testing.T) {
+	files := newCCMTestFiles(t)
+	cfg := newCCMServerConfig(t, files)
+	addr, shutdown := startCCMTestListener(t, cfg, nil)
+	defer shutdown()
+
+	suites := []uint16{gotls.TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8, 0xC02B}
+	conn, err := dialCCM(t, addr, files, gotls.VersionTLS12, gotls.VersionTLS12, suites, true)
+	if err != nil {
+		t.Fatalf("dial offering CCM-8 and GCM failed: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	state := conn.ConnectionState()
+	if state.CipherSuite != gotls.TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8 {
+		t.Errorf("cipher suite = 0x%04x, want CCM-8 (0x%04x): IEEE 2030.5-2018 clause 6.7 makes it mandatory", state.CipherSuite, gotls.TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8)
+	}
+}
+
+// TestGCMOnlyClientStillNegotiatesGCM is core-go #136 criterion 3: a client
+// offering only the GCM suite still negotiates it against the CCM
+// configuration. Not RED: unaffected by the preference-order fix, since
+// order only matters when more than one mutually offered suite exists.
+func TestGCMOnlyClientStillNegotiatesGCM(t *testing.T) {
+	files := newCCMTestFiles(t)
+	cfg := newCCMServerConfig(t, files)
+	addr, shutdown := startCCMTestListener(t, cfg, nil)
+	defer shutdown()
+
+	conn, err := dialCCM(t, addr, files, gotls.VersionTLS12, gotls.VersionTLS12, []uint16{0xC02B}, true)
+	if err != nil {
+		t.Fatalf("GCM-only client dial failed: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	state := conn.ConnectionState()
+	if state.CipherSuite != 0xC02B {
+		t.Errorf("cipher suite = 0x%04x, want GCM (0xC02B)", state.CipherSuite)
+	}
+}
+
 // TestCCMCapNoDowngradeSentinel is core-go #125 amended criterion 3.3 (CCM
 // half), matching the security review's C4/C4c pairing: a generic stdlib
 // client (default max version, so capable of TLS 1.3) completes on TLS 1.2
