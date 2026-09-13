@@ -10,7 +10,7 @@ import (
 
 func TestDERControlBaseCopy(t *testing.T) {
 	connected := true
-	maxW := sep2.ActivePower{Multiplier: 0, Value: 5000}
+	maxW := sep2.PerCent(5000)
 	original := sep2.DERControlBase{
 		OpModConnect: &connected,
 		OpModMaxLimW: &maxW,
@@ -18,18 +18,18 @@ func TestDERControlBaseCopy(t *testing.T) {
 
 	copied := original.Copy()
 	*copied.OpModConnect = false
-	copied.OpModMaxLimW.Value = 999
+	*copied.OpModMaxLimW = 999
 
 	if *original.OpModConnect != true {
 		t.Error("original OpModConnect mutated")
 	}
-	if original.OpModMaxLimW.Value != 5000 {
+	if *original.OpModMaxLimW != 5000 {
 		t.Error("original OpModMaxLimW mutated")
 	}
 }
 
 func TestDERControlMarshalXML(t *testing.T) {
-	maxW := sep2.ActivePower{Value: 5000}
+	maxW := sep2.PerCent(5000)
 	ctrl := sep2.DERControl{
 		DERControlBase: &sep2.DERControlBase{
 			OpModMaxLimW: &maxW,

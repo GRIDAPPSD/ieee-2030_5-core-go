@@ -18,6 +18,18 @@ type ReactivePower struct {
 	Value      int16 `xml:"value"`
 }
 
+// PerCent is a percentage in hundredths of a percent (10000 = 100%).
+// IEEE 2030.5-2018 Annex B.2.3.4 "Types package", "PerCent object
+// (UInt16)": range 0 to 10000. Unlike ActivePower/ReactivePower, PerCent
+// is a schema simple type: it marshals as bare element text, never as
+// multiplier+value children.
+type PerCent uint16
+
+// SignedPerCent is a signed percentage in hundredths of a percent (10000
+// = 100%, -10000 = -100%). IEEE 2030.5-2018 Annex B.2.3.4 "Types
+// package", "SignedPerCent object (Int16)": range -10000 to 10000.
+type SignedPerCent int16
+
 // FixedPowerFactor for fixed power factor control modes.
 type FixedPowerFactor struct {
 	Displacement uint16 `xml:"displacement"`
