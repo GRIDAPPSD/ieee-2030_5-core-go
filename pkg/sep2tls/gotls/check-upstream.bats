@@ -270,3 +270,40 @@ AWKEOF
   [ "$status" -eq 2 ]
   [[ "$output" == *"awk failed"* ]]
 }
+
+# The four cases below each fail an awk lookup at exactly one of the four
+# manifest_type/manifest_upstream_sha call sites, so each is a control on
+# its own call site's guard: reverting only that guard's error check (while
+# leaving the other three intact) must turn the matching case red and no
+# other. A single globally-broken awk (above) cannot tell the four call
+# sites apart, since whichever call site runs first wins.
+
+@test "an unrecorded file named with a backslash under gawk exits 4, not silently matched" {
+  command -v gawk >/dev/null 2>&1 || skip "gawk not installed"
+  local gawk_bin="$WORK/gawk-only-bin" t
+  mkdir -p "$gawk_bin"
+  for t in bash sed diff sha256sum gofmt mkdir rm cp mktemp find cut timeout; do
+    ln -sf "$(type -P "$t")" "$gawk_bin/$t"
+  done
+  ln -sf "$MOCKBIN/git" "$gawk_bin/git"
+  ln -sf "$(type -P gawk)" "$gawk_bin/awk"
+  printf 'package gotls\n' >"$FORK_DIR"/'cipher_suites_ccm\.go'
+  PATH="$gawk_bin" run run_check
+  [ "$status" -eq 4 ]
+  [[ "$output" == *'unrecorded: cipher_suites_ccm\.go'* ]]
+}
+
+@test "an unrecorded file named with a backslash under mawk exits 4, not silently matched" {
+  command -v mawk >/dev/null 2>&1 || skip "mawk not installed"
+  local mawk_bin="$WORK/mawk-only-bin" t
+  mkdir -p "$mawk_bin"
+  for t in bash sed diff sha256sum gofmt mkdir rm cp mktemp find cut timeout; do
+    ln -sf "$(type -P "$t")" "$mawk_bin/$t"
+  done
+  ln -sf "$MOCKBIN/git" "$mawk_bin/git"
+  ln -sf "$(type -P mawk)" "$mawk_bin/awk"
+  printf 'package gotls\n' >"$FORK_DIR"/'cipher_suites_ccm\.go'
+  PATH="$mawk_bin" run run_check
+  [ "$status" -eq 4 ]
+  [[ "$output" == *'unrecorded: cipher_suites_ccm\.go'* ]]
+}

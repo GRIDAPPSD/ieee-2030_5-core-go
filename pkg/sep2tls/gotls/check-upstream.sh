@@ -88,17 +88,23 @@ require_tools() {
 }
 
 # manifest_type PATH prints the recorded type ("fork-only" or "patched")
-# for PATH, or nothing if PATH has no manifest entry.
+# for PATH, or nothing if PATH has no manifest entry. PATH is passed
+# through the environment (ENVIRON), not `-v`: `-v var=value` runs awk's
+# backslash-escape processing on value, so a literal backslash in PATH
+# (gawk silently drops an unrecognized escape; mawk leaves it) makes the
+# comparison inconsistent across awk implementations and can match the
+# wrong manifest entry. ENVIRON copies the value verbatim.
 manifest_type() {
-  awk -F'\t' -v p="$1" '$1 !~ /^#/ && $2 == p { print $1; exit }' "$MANIFEST"
+  p="$1" awk -F'\t' '$1 !~ /^#/ && $2 == ENVIRON["p"] { print $1; exit }' "$MANIFEST"
 }
 
 # manifest_upstream_sha PATH prints the recorded upstream_sha256 column
 # for a "patched" PATH: the sha256 of the upstream file at UPSTREAM_TAG
 # as it stood when the patch was recorded. "-" for fork-only entries,
-# which have no upstream counterpart to compare.
+# which have no upstream counterpart to compare. See manifest_type for
+# why PATH goes through ENVIRON rather than `-v`.
 manifest_upstream_sha() {
-  awk -F'\t' -v p="$1" '$1 !~ /^#/ && $2 == p { print $4; exit }' "$MANIFEST"
+  p="$1" awk -F'\t' '$1 !~ /^#/ && $2 == ENVIRON["p"] { print $4; exit }' "$MANIFEST"
 }
 
 # check_manifest verifies every manifest entry's file exists and its
