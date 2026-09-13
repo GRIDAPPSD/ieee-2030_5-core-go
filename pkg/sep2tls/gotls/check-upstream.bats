@@ -142,7 +142,14 @@ echo "mock git: unhandled args: \$*" >&2
 exit 1
 GITEOF
   chmod +x "$sig_bin/git"
-  (cd "$REPO" && PATH="$sig_bin:$PATH" bash "$FORK_DIR/check-upstream.sh") &
+  # `exec` inside the subshell replaces it with check-upstream.sh itself,
+  # so `$!` names the script's own process. Without it, `$!` is the
+  # `(cd ... && ...)` subshell: an untrapped TERM kills that subshell
+  # outright (exit status 143 from being killed by the signal, not from
+  # the script's own `exit 143`) while the script keeps running
+  # underneath it, so the assertion below passes whether or not the
+  # script's own trap works.
+  (cd "$REPO" && PATH="$sig_bin:$PATH" exec bash "$FORK_DIR/check-upstream.sh") &
   pid=$!
   for _ in $(seq 1 50); do
     [ -f "$marker" ] && break
