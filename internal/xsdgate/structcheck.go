@@ -120,12 +120,12 @@ func (s *Schema) integerBase(typeName string) (builtin string, chain []string) {
 // array around it. encoding/xml repeats the element once per item, except for
 // a byte slice or array, which it writes as character data.
 func elementValueType(ft reflect.Type) reflect.Type {
-	for ft.Kind() == reflect.Ptr {
+	for ft.Kind() == reflect.Pointer {
 		ft = ft.Elem()
 	}
 	if k := ft.Kind(); (k == reflect.Slice || k == reflect.Array) && ft.Elem().Kind() != reflect.Uint8 {
 		ft = ft.Elem()
-		for ft.Kind() == reflect.Ptr {
+		for ft.Kind() == reflect.Pointer {
 			ft = ft.Elem()
 		}
 	}
