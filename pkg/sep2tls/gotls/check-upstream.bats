@@ -181,12 +181,25 @@ GITEOF
   [[ "$output" != *"internal:"* ]]
 }
 
-@test "a spoofed stub import using github_com instead of github.com is not silently normalized away" {
-  sed -i 's#github\.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/fipstls#github_com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/fipstls#' \
-    "$FORK_DIR/boring.go"
-  run run_check
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"boring.go"* ]]
+@test "a spoofed stub import using github_com instead of github.com is not silently normalized away, for each of the four rewrite patterns" {
+  # One importing file per stub the normalize pass rewrites (diff_shared_files'
+  # four `sed -e` patterns): fipstls only appears in boring.go; boring and cpu
+  # both appear in cipher_suites.go; godebug appears in three files, of which
+  # common.go is enough to exercise its pattern.
+  local -a stubs=(fipstls boring cpu godebug)
+  local -a files=(boring.go cipher_suites.go cipher_suites.go common.go)
+  local i stub file escaped spoofed
+  for i in "${!stubs[@]}"; do
+    stub="${stubs[$i]}"
+    file="${files[$i]}"
+    escaped="github\\.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/${stub}"
+    spoofed="github_com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/${stub}"
+    sed -i "s#${escaped}#${spoofed}#" "$FORK_DIR/$file"
+    run run_check
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"$file"* ]]
+    sed -i "s#${spoofed}#github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/${stub}#" "$FORK_DIR/$file"
+  done
 }
 
 @test "an edited fork-only file exits 1 via the manifest check" {
