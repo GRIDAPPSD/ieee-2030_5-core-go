@@ -121,10 +121,7 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 		{
 			// A POPULATED LogEvent, because the zero value leaves details and
 			// extendedData absent (both are omitempty) and the marshalled
-			// check then has nothing to inspect for either. extendedData is
-			// the one that matters: sep.xsd types it UInt32 while the Go field
-			// is a *int64, so a negative value marshals to a document the
-			// schema rejects. The gate catches that lexically, which is why a
+			// check then has nothing to inspect for either, which is why a
 			// populated fixture is the entry and not the zero value.
 			typeName: "LogEvent",
 			v:        populatedLogEvent(),
@@ -231,7 +228,7 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 // the standard's terms; keeping it short means the fixture is not itself the
 // thing that is wrong.
 func populatedLogEvent() sep2.LogEvent {
-	extendedData := int64(9007)
+	extendedData := uint32(9007)
 	return sep2.LogEvent{
 		Resource:        sep2.Resource{Href: "/edev/1/lel/00000000001604963587"},
 		CreatedDateTime: 1604963587,
