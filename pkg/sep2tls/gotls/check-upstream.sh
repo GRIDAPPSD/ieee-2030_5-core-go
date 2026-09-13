@@ -14,8 +14,9 @@
 #      produced as recorded (bad tag, commit mismatch, sparse-checkout
 #      failure, network failure, an upstream file absent after checkout),
 #      a step this script depends on (the file walk, the normalization
-#      pass) could not be completed, or a "patched" manifest entry has no
-#      recorded upstream_sha256 to compare against. This is a tooling or
+#      pass, a manifest type/upstream-hash lookup) could not be
+#      completed, or a "patched" manifest entry has no recorded
+#      upstream_sha256 to compare against. This is a tooling or
 #      setup failure, not evidence of drift. 2 is reserved for these and
 #      is never combined with a bit below: it is returned directly,
 #      ending the run.
@@ -146,7 +147,7 @@ check_manifest() {
 # so a broken walk fails the run instead of silently reporting that it
 # found nothing.
 scan_for_unrecorded() {
-  local rc=0 relpath list
+  local rc=0 relpath list mtype awk_failed=0
   list="$(mktemp)"
   if ! (cd "$FORK_DIR" && find . \( -type f -o -type l \) -printf '%P\0') >"$list"; then
     rm -f "$list"
@@ -156,13 +157,23 @@ scan_for_unrecorded() {
   while IFS= read -r -d '' relpath; do
     in_array "$relpath" "${IGNORED[@]}" && continue
     in_array "$relpath" "${FILES[@]}" && continue
-    if [ -n "$(manifest_type "$relpath")" ]; then
+    # A nonzero exit here is the lookup tool itself failing, not "no
+    # manifest entry" (which exits 0 with empty output): treating the two
+    # alike would misreport a broken reader as an unrecorded file (exit 4)
+    # instead of the environment failure (exit 2) it actually is.
+    if ! mtype="$(manifest_type "$relpath")"; then
+      echo "error: could not determine manifest entry type for '$relpath' (awk failed)" >&2
+      awk_failed=1
+      break
+    fi
+    if [ -n "$mtype" ]; then
       continue
     fi
     echo "unrecorded: $relpath is not in FILES or $MANIFEST" >&2
     rc=1
   done <"$list"
   rm -f "$list"
+  [ "$awk_failed" -eq 1 ] && exit 2
   return "$rc"
 }
 
@@ -217,10 +228,16 @@ diff_shared_files() {
       exit 2
     fi
 
-    ptype="$(manifest_type "$f")"
+    if ! ptype="$(manifest_type "$f")"; then
+      echo "error: could not determine manifest entry type for '$f' (awk failed)" >&2
+      exit 2
+    fi
     if [ "$ptype" = "patched" ]; then
       local upstream_expected upstream_actual
-      upstream_expected="$(manifest_upstream_sha "$f")"
+      if ! upstream_expected="$(manifest_upstream_sha "$f")"; then
+        echo "error: could not read recorded upstream_sha256 for '$f' (awk failed)" >&2
+        exit 2
+      fi
       if [ -z "$upstream_expected" ] || [ "$upstream_expected" = "-" ]; then
         echo "error: manifest entry for patched file '$f' has no recorded upstream_sha256; run sha256sum on $upstream_file and record it" >&2
         exit 2
@@ -256,7 +273,11 @@ diff_shared_files() {
   gofmt -w "$norm"/*.go 2>/dev/null || true
 
   for f in "${FILES[@]}"; do
-    [ "$(manifest_type "$f")" = "patched" ] && continue
+    if ! ptype="$(manifest_type "$f")"; then
+      echo "error: could not determine manifest entry type for '$f' (awk failed)" >&2
+      exit 2
+    fi
+    [ "$ptype" = "patched" ] && continue
     if [ ! -f "$norm/$f" ]; then
       echo "error: internal: normalized copy of $f not found (this is a script bug, not missing input)" >&2
       exit 2

@@ -256,3 +256,17 @@ BSDEOF
   [ "$status" -eq 2 ]
   [[ "$output" == *"could not walk"* ]]
 }
+
+@test "a failing awk reports an environment failure, not an unrecorded file" {
+  local broken_awk_bin="$WORK/broken-awk-bin"
+  mkdir -p "$broken_awk_bin"
+  cat >"$broken_awk_bin/awk" <<'AWKEOF'
+#!/usr/bin/env bash
+echo "mock: awk is broken" >&2
+exit 1
+AWKEOF
+  chmod +x "$broken_awk_bin/awk"
+  PATH="$broken_awk_bin:$PATH" run run_check
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"awk failed"* ]]
+}
