@@ -476,24 +476,17 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 				"type carrying multiplier and value, so the integer check cannot resolve it (#151).",
 		},
 		{
-			// creationTime, xMultiplier, yMultiplier and yRefType are absent from
-			// both lists because they are modelled without omitempty (#56); if
-			// one is dropped it reappears here as a new missing-element.
-			typeName: "DERCurve",
-			zero:     sep2.DERCurve{},
-			wantStruct: []string{
-				"omitempty-required DERCurve.CurveData",
-				"omitempty-required DERCurve.MRID",
-				"struct-order DERCurve.CurveData",
-			},
+			// The struct is in sequence order with no omitempty on a required
+			// element (#56), so a reorder or a re-added omitempty adds a line here.
+			typeName:   "DERCurve",
+			zero:       sep2.DERCurve{},
+			wantStruct: nil,
 			wantMarshal: []string{
 				"missing-element DERCurve/CurveData",
-				"missing-element DERCurve/mRID",
 			},
-			reason: "mRID and CurveData are minOccurs=1 but tagged omitempty, so a zero-value " +
-				"DERCurve serializes without them. CurveData is also declared after curveType " +
-				"while sep.xsd sequences CurveData first, so every curve that carries points " +
-				"reaches the wire out of order.",
+			reason: "CurveData is minOccurs=1, but encoding/xml emits one element per slice " +
+				"entry, so a curve with no points has nothing to emit. A served curve must " +
+				"carry at least one point; no struct tag can supply one.",
 		},
 		{
 			typeName: "DERSettings",
@@ -670,9 +663,8 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 }
 
 // TestSchemaGatePopulatedDERCurve covers what the zero-value DERCurve entry
-// cannot: with no CurveData the order defect never reaches the wire, and the
-// multipliers and yRefType are only ever checked at 0. One point keeps the
-// pin to a single order line, since assertPinned compares sets.
+// cannot: with no CurveData the placement of CurveData never reaches the
+// wire, and the multipliers and yRefType are only ever checked at 0.
 func TestSchemaGatePopulatedDERCurve(t *testing.T) {
 	ramp := uint16(600)
 	curve := sep2.DERCurve{
@@ -688,12 +680,8 @@ func TestSchemaGatePopulatedDERCurve(t *testing.T) {
 		YRefType:     3,
 	}
 
-	t.Logf("KNOWN-FAILING, not fixed in this change: CurveData is declared after curveType " +
-		"while sep.xsd sequences CurveData first")
 	problems, data := xsdgate.CollectProblems(t, "DERCurve", curve)
-	assertPinned(t, "marshalled-output", "DERCurve(populated)", problems.Summary(), []string{
-		"order DERCurve/CurveData",
-	})
+	assertPinned(t, "marshalled-output", "DERCurve(populated)", problems.Summary(), nil)
 	if t.Failed() {
 		t.Logf("XML:\n%s", data)
 	}

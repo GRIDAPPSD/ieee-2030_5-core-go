@@ -532,17 +532,18 @@ type CurveData struct {
 
 // DERCurve defines volt-var, freq-watt, etc. curves.
 //
-// creationTime, xMultiplier, yMultiplier and yRefType are minOccurs=1 in
-// sep.xsd, so they carry no omitempty: an unset one serializes as 0 rather
-// than vanishing. yRefType is a DERUnitRefType (UInt8).
+// Fields follow the sep.xsd sequence, which encoding/xml emits in declaration
+// order. Required elements carry no omitempty, so an unset one serializes as
+// an empty element or 0 rather than vanishing; CurveData still emits nothing
+// when the curve has no points. yRefType is a DERUnitRefType (UInt8).
 type DERCurve struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns DERCurve"`
 	Resource
-	MRID         string      `xml:"mRID,omitempty"`
+	MRID         string      `xml:"mRID"`
 	Description  string      `xml:"description,omitempty"`
 	CreationTime int64       `xml:"creationTime"`
+	CurveData    []CurveData `xml:"CurveData"`
 	CurveType    uint8       `xml:"curveType"`
-	CurveData    []CurveData `xml:"CurveData,omitempty"`
 	RampDecTms   *uint16     `xml:"rampDecTms,omitempty"`
 	RampIncTms   *uint16     `xml:"rampIncTms,omitempty"`
 	RampPT1Tms   *uint16     `xml:"rampPT1Tms,omitempty"`
