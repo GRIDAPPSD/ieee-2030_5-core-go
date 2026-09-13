@@ -278,6 +278,89 @@ AWKEOF
 # other. A single globally-broken awk (above) cannot tell the four call
 # sites apart, since whichever call site runs first wins.
 
+@test "an awk failure resolving alert.go's type on the first diff_shared_files pass exits 2" {
+  # Fails only alert.go's very first lookup, then falls through to the real
+  # awk: without the first-pass guard, the failure is swallowed by the
+  # unchecked assignment and the second pass's own (untouched) guard never
+  # sees a failing call to re-catch it, so this can only pass by the
+  # first-pass guard itself firing.
+  local mock_bin="$WORK/mock-awk-pass1-bin" marker="$WORK/mock-awk-pass1-fired"
+  mkdir -p "$mock_bin"
+  cat >"$mock_bin/awk" <<AWKEOF
+#!/usr/bin/env bash
+if [ "\$p" = "alert.go" ] && [ ! -e "$marker" ]; then
+  : >"$marker"
+  echo "mock: awk fails for alert.go's first lookup" >&2
+  exit 1
+fi
+exec $(type -P awk) "\$@"
+AWKEOF
+  chmod +x "$mock_bin/awk"
+  PATH="$mock_bin:$PATH" run run_check
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"could not determine manifest entry type for 'alert.go' (awk failed)"* ]]
+}
+
+@test "an awk failure resolving alert.go's type on the second diff_shared_files pass exits 2" {
+  local mock_bin="$WORK/mock-awk-pass2-bin" marker_dir="$WORK/mock-awk-pass2-seen"
+  mkdir -p "$mock_bin" "$marker_dir"
+  cat >"$mock_bin/awk" <<AWKEOF
+#!/usr/bin/env bash
+if [ "\$p" = "alert.go" ]; then
+  marker="$marker_dir/alert.go"
+  if [ -e "\$marker" ]; then
+    echo "mock: awk fails for alert.go's second lookup" >&2
+    exit 1
+  fi
+  : >"\$marker"
+fi
+exec $(type -P awk) "\$@"
+AWKEOF
+  chmod +x "$mock_bin/awk"
+  PATH="$mock_bin:$PATH" run run_check
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"could not determine manifest entry type for 'alert.go' (awk failed)"* ]]
+}
+
+@test "an awk failure resolving a patched file's recorded upstream hash exits 2" {
+  local fork_hash mock_bin="$WORK/mock-awk-upstreamsha-bin"
+  fork_hash="$(sha256sum "$FORK_DIR/handshake_server.go" | cut -d' ' -f1)"
+  printf 'patched\thandshake_server.go\t%s\t%s\ttest: pretend deliberate patch\n' \
+    "$fork_hash" "$(sha256sum "$UPSTREAM_FIXTURE/handshake_server.go" | cut -d' ' -f1)" \
+    >>"$FORK_DIR/upstream-manifest.sha256"
+  mkdir -p "$mock_bin"
+  cat >"$mock_bin/awk" <<AWKEOF
+#!/usr/bin/env bash
+if [[ "\$2" == *'\$4'* ]]; then
+  echo "mock: awk fails reading the recorded upstream hash" >&2
+  exit 1
+fi
+exec $(type -P awk) "\$@"
+AWKEOF
+  chmod +x "$mock_bin/awk"
+  PATH="$mock_bin:$PATH" run run_check
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"could not read recorded upstream_sha256 for 'handshake_server.go' (awk failed)"* ]]
+}
+
+@test "an awk failure resolving an unrecorded file's type exits 2, not misreported as unrecorded" {
+  local mock_bin="$WORK/mock-awk-unrecorded-bin"
+  printf 'package gotls\n' >"$FORK_DIR/totally-unrecorded-marker.go"
+  mkdir -p "$mock_bin"
+  cat >"$mock_bin/awk" <<AWKEOF
+#!/usr/bin/env bash
+if [ "\$p" = "totally-unrecorded-marker.go" ]; then
+  echo "mock: awk fails for the unrecorded marker" >&2
+  exit 1
+fi
+exec $(type -P awk) "\$@"
+AWKEOF
+  chmod +x "$mock_bin/awk"
+  PATH="$mock_bin:$PATH" run run_check
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"could not determine manifest entry type for 'totally-unrecorded-marker.go' (awk failed)"* ]]
+}
+
 @test "a failing sha256sum hashing a manifest entry's fork file exits 2, not drift" {
   local first_path mock_bin="$WORK/mock-sha256sum-manifest-bin"
   first_path="$(grep -vE '^#|^$' "$FORK_DIR/upstream-manifest.sha256" | head -1 | cut -f2)"
