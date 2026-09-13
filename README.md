@@ -34,6 +34,10 @@ and the inbound notification receiver.
 | `pkg/store` | Store interfaces (end device, subscription) |
 | `pkg/store/memory` | In-memory store implementation with persistence hooks |
 
+The `crypto/tls` fork under `pkg/sep2tls/gotls` records its upstream Go base,
+the deliberate changes against it, and the repeatable diff command in
+`pkg/sep2tls/gotls/UPSTREAM.md`.
+
 ## Build and test
 
 ```
