@@ -1,37 +1,40 @@
 #!/usr/bin/env bash
 # Keeps the golangci-lint gate honest after merge. Two independent checks:
-#   (1) canary: plants an unused function beside each vendored fork
-#       directory and one elsewhere in the module, then runs golangci-lint
-#       itself, pinned to the version ci.yml's Lint step uses, against a
-#       scratch copy of the tree. Any exclusion pattern or issues-exit-code
-#       setting that would hide or silence a first-party finding shows up
-#       as a missing marker or a zero exit, because it is golangci-lint's
-#       own behavior being read, not a parse of .golangci.yml.
+#   (1) canary: for every first-party package `go list ./...` reports
+#       (excluding the pkg/sep2tls/gotls and pkg/sep2tls/ccm vendored
+#       forks), plants a file with one finding per enabled linter
+#       (errcheck, govet, ineffassign, staticcheck, unused) plus a test
+#       file with one errcheck finding, and plants one unused-function and
+#       one errcheck finding in each fork directory. It then runs the
+#       committed .golangci.yml with the golangci-lint binary already on
+#       PATH (the Lint step installs it) against a scratch copy of the
+#       tracked tree, and checks: every first-party pair is reported as an
+#       issue line anchored on its file and linter; no fork pair is
+#       reported; golangci-lint exits exactly 1; and no level=warning or
+#       level=error line appears (a diff-based issues filter such as
+#       new-from-rev logs exactly such a line against a tree with no
+#       .git, so this also catches that class of weakening).
 #   (2) workflow: the lint job still runs golangci-lint to completion, with
 #       no continue-on-error, if: false, only-new-issues, or an
 #       issues-exit-code override in the action's args.
-# Limit: (2) is a scan of ci.yml in the same PR that could edit it, and
-# main is unprotected, so a workflow-level change that disables both the
-# lint job and this check together is not caught by anything running
-# inside that same job. Only branch protection or review closes that gap.
+# Limits: this check does not see a rule written to spare the planted
+# files specifically (for example a path-except naming the canary file),
+# an exclusion narrower than a package, an in-source //nolint directive,
+# a linter setting narrowed without touching a plant, a linter beyond the
+# five above, a staticcheck check other than the one planted, or a
+# lint-job weakening spelled differently from check (2)'s literal forms.
+# It runs inside the job it guards, and main is unprotected, so a
+# workflow-level change that disables the Lint job and this check
+# together is not caught by anything running inside that same job; only
+# branch protection or review closes that gap.
 set -euo pipefail
 
-GOLANGCI_CONFIG="${GOLANGCI_CONFIG:-.golangci.yml}"
+GOLANGCI_CONFIG=".golangci.yml"
 CI_WORKFLOW="${CI_WORKFLOW:-.github/workflows/ci.yml}"
 
-# Canary sites. The first-party pair sits beside the fork directories,
-# which is exactly the substring collision an unanchored or merged
-# exclusion pattern has hidden before (see .golangci.yml's own comment).
-CANARY_APPEND_FILE="pkg/sep2tls/ccmserver.go"
-CANARY_APPEND_MARKER="lintCanaryCcmserverUnused"
-CANARY_NEW_FILE="pkg/sep2cert/zz_lint_canary.go"
-CANARY_NEW_PACKAGE="sep2cert"
-CANARY_NEW_MARKER="lintCanarySep2certUnused"
-FORK_GOTLS_FILE="pkg/sep2tls/gotls/zz_lint_canary.go"
-FORK_GOTLS_MARKER="lintCanaryGotlsUnused"
-FORK_CCM_FILE="pkg/sep2tls/ccm/zz_lint_canary.go"
-FORK_CCM_MARKER="lintCanaryCcmUnused"
-LINT_SCOPE=("./pkg/sep2tls/..." "./pkg/sep2cert/...")
+FORK_PREFIXES=("pkg/sep2tls/gotls" "pkg/sep2tls/ccm")
+CANARY_FILE_NAME="zz_lint_canary.go"
+CANARY_TEST_FILE_NAME="zz_lint_canary_test.go"
 
 require_file() {
   local path="$1"
@@ -41,6 +44,19 @@ require_file() {
   fi
 }
 
+# is_fork_dir reports whether a scratch-relative directory is the fork
+# root itself or lives under it, so a package dir of exactly
+# "pkg/sep2tls/gotls" is excluded along with everything below it.
+is_fork_dir() {
+  local dir="$1" prefix
+  for prefix in "${FORK_PREFIXES[@]}"; do
+    case "$dir" in
+      "$prefix" | "$prefix"/*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
 extract_lint_job_block() {
   local workflow="$1"
   awk '
@@ -48,21 +64,6 @@ extract_lint_job_block() {
     grab && /^  [A-Za-z0-9_-]+:[[:space:]]*$/ { grab = 0 }
     grab { print }
   ' "$workflow"
-}
-
-golangci_lint_version() {
-  local workflow="$1"
-  local block version
-  block=$(extract_lint_job_block "$workflow")
-  version=$(grep -oE 'version:[[:space:]]*v[0-9]+\.[0-9]+\.[0-9]+' <<<"$block" | head -n1 | awk '{print $2}')
-  if [ -z "$version" ]; then
-    echo "error: no golangci-lint version pin (version: vX.Y.Z) found in the lint job in $workflow" >&2
-    # A command substitution's "exit" only ends its own subshell, not the
-    # script, so this precondition is signalled with "return" and checked
-    # explicitly by the caller instead.
-    return 1
-  fi
-  printf '%s' "$version"
 }
 
 build_scratch_tree() {
@@ -83,96 +84,229 @@ build_scratch_tree() {
   done <<<"$file_list"
 }
 
-plant_canaries() {
+# discover_packages prints "<scratch-relative dir>|<package name>" for
+# every package go list ./... reports in the scratch tree, one per line,
+# excluding the fork directories. Fails closed on a go list error.
+discover_packages() {
   local scratch="$1"
+  local raw
+  if ! raw=$(cd "$scratch" && go list -f '{{.Dir}}|{{.Name}}' ./... 2>&1); then
+    echo "error: go list ./... failed while discovering packages in the scratch tree" >&2
+    echo "$raw" >&2
+    return 1
+  fi
+  local dir name rel
+  while IFS='|' read -r dir name; do
+    [ -z "$dir" ] && continue
+    rel=$(realpath --relative-to="$scratch" "$dir")
+    is_fork_dir "$rel" && continue
+    printf '%s|%s\n' "$rel" "$name"
+  done <<<"$raw"
+}
 
-  require_file "$scratch/$CANARY_APPEND_FILE"
-  printf '\nfunc %s() {}\n' "$CANARY_APPEND_MARKER" >>"$scratch/$CANARY_APPEND_FILE"
+# plant_first_party writes one finding for each of the five enabled
+# linters into a non-test file, and one errcheck finding into a test
+# file, in the given scratch-relative package directory. lintCanaryUnused
+# is deliberately never referenced, so it is the only planted function
+# the `unused` linter reports on; the rest are called from init() so they
+# are not also flagged as unused.
+plant_first_party() {
+  local scratch="$1" dir="$2" name="$3"
+  cat >"$scratch/$dir/$CANARY_FILE_NAME" <<EOF
+package $name
 
-  if [ ! -d "$scratch/$(dirname "$CANARY_NEW_FILE")" ]; then
-    echo "error: expected package directory not found in scratch tree: $(dirname "$CANARY_NEW_FILE")" >&2
+import (
+	"fmt"
+	"os"
+)
+
+func lintCanaryUnused() {}
+
+func lintCanaryErrcheck() {
+	os.Remove("")
+}
+
+func lintCanaryGovet() {
+	fmt.Printf("%d\n", "x")
+}
+
+func lintCanaryIneffassign() int {
+	x := 1
+	x = 2
+	return x
+}
+
+func lintCanaryStaticcheck() bool {
+	b := true
+	return b == true
+}
+
+func init() {
+	lintCanaryErrcheck()
+	lintCanaryGovet()
+	_ = lintCanaryIneffassign()
+	_ = lintCanaryStaticcheck()
+}
+EOF
+  cat >"$scratch/$dir/$CANARY_TEST_FILE_NAME" <<EOF
+package $name
+
+import "os"
+
+func lintCanaryTestErrcheck() {
+	os.Remove("")
+}
+
+func init() {
+	lintCanaryTestErrcheck()
+}
+EOF
+}
+
+# plant_fork_dir writes one unreferenced (unused) function and one
+# referenced errcheck finding into a fork directory, so a weakened fork
+# exclusion shows up the same way an accidental one would: an issue line
+# naming a file under that directory.
+plant_fork_dir() {
+  local scratch="$1" dir="$2" name="$3" suffix="$4"
+  if [ ! -d "$scratch/$dir" ]; then
+    echo "error: expected fork directory not found in scratch tree: $dir" >&2
     exit 1
   fi
-  printf 'package %s\n\nfunc %s() {}\n' "$CANARY_NEW_PACKAGE" "$CANARY_NEW_MARKER" >"$scratch/$CANARY_NEW_FILE"
+  cat >"$scratch/$dir/$CANARY_FILE_NAME" <<EOF
+package $name
 
-  if [ ! -d "$scratch/$(dirname "$FORK_GOTLS_FILE")" ]; then
-    echo "error: expected fork directory not found in scratch tree: $(dirname "$FORK_GOTLS_FILE")" >&2
-    exit 1
-  fi
-  printf 'package gotls\n\nfunc %s() {}\n' "$FORK_GOTLS_MARKER" >"$scratch/$FORK_GOTLS_FILE"
+import "os"
 
-  if [ ! -d "$scratch/$(dirname "$FORK_CCM_FILE")" ]; then
-    echo "error: expected fork directory not found in scratch tree: $(dirname "$FORK_CCM_FILE")" >&2
-    exit 1
-  fi
-  printf 'package ccm\n\nfunc %s() {}\n' "$FORK_CCM_MARKER" >"$scratch/$FORK_CCM_FILE"
+func lintCanary${suffix}Unused() {}
+
+func lintCanary${suffix}Errcheck() {
+	os.Remove("")
+}
+
+func init() {
+	lintCanary${suffix}Errcheck()
+}
+EOF
 }
 
 run_canary_lint() {
-  local scratch="$1" version="$2"
+  local scratch="$1"
   # A cache scoped to this scratch tree: golangci-lint's build cache keys
   # on package content, and a cache shared across scratch trees with
   # byte-identical files but different roots has been observed to replay
-  # a stale run's file paths instead of relinting. Fresh cache, fresh scratch
-  # tree, every invocation.
+  # a stale run's file paths instead of relinting. Fresh cache, fresh
+  # scratch tree, every invocation.
   local cache="$scratch/.golangci-lint-cache"
   mkdir -p "$cache"
-  # golangci-lint is expected to exit non-zero here (real findings are
-  # planted); check the captured status explicitly rather than trusting
-  # errexit, which would otherwise abort the script on the expected case.
+  # golangci-lint is expected to exit 1 here (real findings are planted);
+  # check the captured status explicitly rather than trusting errexit,
+  # which would otherwise abort the script on the expected case.
   set +e
-  CANARY_LINT_OUTPUT=$(cd "$scratch" && GOLANGCI_LINT_CACHE="$cache" go run "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${version}" run "${LINT_SCOPE[@]}" 2>&1)
+  CANARY_LINT_OUTPUT=$(cd "$scratch" && GOLANGCI_LINT_CACHE="$cache" golangci-lint run ./... 2>&1)
   CANARY_LINT_STATUS=$?
   set -e
 }
 
+# pair_reported checks for an issue line anchored at the start as
+# "<path>:<line>:<col>: ... (<linter>)", so a planted marker appearing
+# only inside a message body (never as the leading path) does not count.
+pair_reported() {
+  local path="$1" linter="$2"
+  printf '%s\n' "$CANARY_LINT_OUTPUT" | grep -qE "^${path}:[0-9]+:[0-9]+: .*\(${linter}\)\$"
+}
+
+# file_reported checks whether any issue line is anchored on the given
+# file, regardless of linter.
+file_reported() {
+  local path="$1"
+  printf '%s\n' "$CANARY_LINT_OUTPUT" | grep -qE "^${path}:[0-9]+:[0-9]+: "
+}
+
 check_canary() {
-  local config="$1" workflow="$2" scratch="$3"
+  local config="$1" scratch="$2"
   require_file "$config"
-  local version
-  if ! version="$(golangci_lint_version "$workflow")"; then
+
+  if ! command -v golangci-lint >/dev/null 2>&1; then
+    echo "error: golangci-lint is not on PATH; this step must run after the Lint step so the action-installed binary is available" >&2
     return 1
   fi
+  echo "golangci-lint on PATH: $(golangci-lint version)"
 
   build_scratch_tree "$scratch"
-  plant_canaries "$scratch"
-  run_canary_lint "$scratch" "$version"
+
+  local discovered
+  if ! discovered=$(discover_packages "$scratch"); then
+    return 1
+  fi
+  local pkg_count=0
+  local dir name
+  local -a expected=()
+  local -a first_party_dirs=()
+  while IFS='|' read -r dir name; do
+    [ -z "$dir" ] && continue
+    pkg_count=$((pkg_count + 1))
+    first_party_dirs+=("$dir")
+    plant_first_party "$scratch" "$dir" "$name"
+    expected+=(
+      "$dir/$CANARY_FILE_NAME|unused"
+      "$dir/$CANARY_FILE_NAME|errcheck"
+      "$dir/$CANARY_FILE_NAME|govet"
+      "$dir/$CANARY_FILE_NAME|ineffassign"
+      "$dir/$CANARY_FILE_NAME|staticcheck"
+      "$dir/$CANARY_TEST_FILE_NAME|errcheck"
+    )
+  done <<<"$discovered"
+
+  if [ "$pkg_count" -eq 0 ]; then
+    echo "error: go list ./... in the scratch tree reported 0 first-party packages outside ${FORK_PREFIXES[*]}; refusing to run a canary with nothing to plant" >&2
+    return 1
+  fi
+  echo "discovered $pkg_count first-party package(s):"
+  printf '  %s\n' "${first_party_dirs[@]}"
+
+  plant_fork_dir "$scratch" "${FORK_PREFIXES[0]}" "gotls" "Gotls"
+  plant_fork_dir "$scratch" "${FORK_PREFIXES[1]}" "ccm" "Ccm"
+  require_file "$scratch/${FORK_PREFIXES[0]}/$CANARY_FILE_NAME"
+  require_file "$scratch/${FORK_PREFIXES[1]}/$CANARY_FILE_NAME"
+
+  run_canary_lint "$scratch"
 
   local fail=0
 
-  if [ "$CANARY_LINT_STATUS" -eq 0 ]; then
-    echo "FAIL: golangci-lint exited 0 against the canary tree with planted first-party violations present; issues-exit-code may be silenced" >&2
+  if [ "$CANARY_LINT_STATUS" -ne 1 ]; then
+    echo "FAIL: golangci-lint exited $CANARY_LINT_STATUS against the canary tree; expected exactly 1 (issues found, no tool error and no issues-exit-code override)" >&2
     fail=1
   fi
-  case "$CANARY_LINT_OUTPUT" in
-    *"$CANARY_APPEND_MARKER"*) ;;
-    *)
-      echo "FAIL: planted violation not reported: $CANARY_APPEND_MARKER in $CANARY_APPEND_FILE (an exclusion pattern may have widened to hide it)" >&2
+
+  local warn_lines
+  warn_lines=$(printf '%s\n' "$CANARY_LINT_OUTPUT" | grep -E 'level=(warning|error)' || true)
+  if [ -n "$warn_lines" ]; then
+    echo "FAIL: golangci-lint printed a level=warning or level=error line:" >&2
+    echo "$warn_lines" >&2
+    fail=1
+  fi
+
+  local pair path linter
+  for pair in "${expected[@]}"; do
+    path="${pair%|*}"
+    linter="${pair#*|}"
+    if ! pair_reported "$path" "$linter"; then
+      echo "FAIL: planted violation not reported: $linter in $path" >&2
       fail=1
-      ;;
-  esac
-  case "$CANARY_LINT_OUTPUT" in
-    *"$CANARY_NEW_MARKER"*) ;;
-    *)
-      echo "FAIL: planted violation not reported: $CANARY_NEW_MARKER in $CANARY_NEW_FILE" >&2
+    fi
+  done
+
+  local forkfile
+  for forkfile in "${FORK_PREFIXES[0]}/$CANARY_FILE_NAME" "${FORK_PREFIXES[1]}/$CANARY_FILE_NAME"; do
+    if file_reported "$forkfile"; then
+      echo "FAIL: vendored fork file was reported by golangci-lint: $forkfile; the fork exclusion is not scoped as expected" >&2
       fail=1
-      ;;
-  esac
-  case "$CANARY_LINT_OUTPUT" in
-    *"$FORK_GOTLS_MARKER"*)
-      echo "FAIL: vendored fork file was reported by golangci-lint: $FORK_GOTLS_FILE; the fork exclusion is not scoped as expected" >&2
-      fail=1
-      ;;
-  esac
-  case "$CANARY_LINT_OUTPUT" in
-    *"$FORK_CCM_MARKER"*)
-      echo "FAIL: vendored fork file was reported by golangci-lint: $FORK_CCM_FILE; the fork exclusion is not scoped as expected" >&2
-      fail=1
-      ;;
-  esac
+    fi
+  done
 
   if [ "$fail" -ne 0 ]; then
-    # Surfaces the underlying failure verbatim (a git or go error names
+    # Surfaces the underlying output verbatim (a git or go error names
     # itself) alongside the curated FAIL lines above.
     echo "canary golangci-lint invocation: exit $CANARY_LINT_STATUS" >&2
     echo "$CANARY_LINT_OUTPUT" >&2
@@ -231,14 +365,14 @@ main() {
   SCRATCH_DIR="$(mktemp -d)"
   trap 'rm -rf "$SCRATCH_DIR"' EXIT
 
-  check_canary "$GOLANGCI_CONFIG" "$CI_WORKFLOW" "$SCRATCH_DIR" || fail=1
+  check_canary "$GOLANGCI_CONFIG" "$SCRATCH_DIR" || fail=1
   check_lint_job_not_weakened "$CI_WORKFLOW" || fail=1
 
   if [ "$fail" -ne 0 ]; then
     exit 1
   fi
 
-  echo "lint gate check passed: golangci-lint reported the planted canary violations without hiding them or exiting 0, and the lint job has no continue-on-error, if: false, only-new-issues, or issues-exit-code override."
+  echo "lint gate check passed: golangci-lint reported every planted first-party finding and no fork finding, exited exactly 1 with no level=warning or level=error line, and the lint job has no continue-on-error, if: false, only-new-issues, or issues-exit-code override."
 }
 
 main "$@"

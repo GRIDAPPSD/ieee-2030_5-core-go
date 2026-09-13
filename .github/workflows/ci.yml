@@ -236,23 +236,26 @@ jobs:
       - name: Run gate-check script tests
         run: bats .github/scripts/check-lint-gate.bats
 
-      - name: Verify the lint gate itself
-        # Runs golangci-lint itself against a scratch copy of the tree with
-        # planted first-party findings, so an exclusion pattern or a
-        # silenced issues-exit-code shows up as golangci-lint's own
-        # behavior. Limit: this and the workflow checks below run inside
-        # the same job they would need to catch a disabled Lint step or
-        # job in; only branch protection or review closes that gap.
-        run: .github/scripts/check-lint-gate.sh
-
       - name: Lint
         # golangci-lint v2.12.2 is built with go1.26.2 and supports modules
         # declaring `go 1.26.3` in go.mod. Earlier releases (through v2.9.0)
         # were compiled with go1.25 and reject go1.26 modules at startup.
         # Config schema is unchanged (v2). See `.golangci.yml`.
-        # The action installs the binary (cached across runs) and runs it.
-        # Matches the pin in the sibling server repo's ci.yml so the two
-        # stay on the same golangci-lint release.
+        # The action installs the binary (cached across runs), leaves it on
+        # PATH for later steps, and runs it. Matches the pin in the sibling
+        # server repo's ci.yml so the two stay on the same golangci-lint
+        # release.
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2
+
+      - name: Verify the lint gate itself
+        # Plants a fixed set of first-party and fork findings and runs the
+        # committed .golangci.yml with this step's own golangci-lint
+        # binary (installed and left on PATH by the Lint step above); see
+        # the script's header for the exact property checked and its
+        # limits. Limit: this and the workflow checks it also runs run
+        # inside the same job they would need to catch a disabled Lint
+        # step or job in; only branch protection or review closes that
+        # gap.
+        run: .github/scripts/check-lint-gate.sh
