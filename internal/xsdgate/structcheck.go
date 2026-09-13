@@ -116,27 +116,31 @@ func (s *Schema) integerBase(typeName string) (builtin string, chain []string) {
 	}
 }
 
-// checkIntegerWidth reports a Go integer field whose range its XSD type
-// cannot hold, or whose XSD type cannot be resolved. A type resolving to a
-// non-integer built-in such as hexBinary is left to the lexical check.
-func (s *Schema) checkIntegerWidth(ps *Problems, typeName string, f reflect.StructField, elementName, xsdType, owner string) {
-	ft := f.Type
+// elementValueType strips pointers and, for a repeated element, the slice or
+// array around it. encoding/xml repeats the element once per item, except for
+// a byte slice or array, which it writes as character data.
+func elementValueType(ft reflect.Type) reflect.Type {
 	for ft.Kind() == reflect.Ptr {
 		ft = ft.Elem()
 	}
-	// encoding/xml repeats the element once per item, except for a byte slice
-	// or array, which it writes as character data.
 	if k := ft.Kind(); (k == reflect.Slice || k == reflect.Array) && ft.Elem().Kind() != reflect.Uint8 {
 		ft = ft.Elem()
 		for ft.Kind() == reflect.Ptr {
 			ft = ft.Elem()
 		}
 	}
-	gw, ok := goIntWidth(ft)
+	return ft
+}
+
+// checkIntegerWidth reports a Go integer field whose range its XSD type
+// cannot hold, or whose XSD type cannot be resolved. A type resolving to a
+// non-integer built-in such as hexBinary is left to the lexical check. path
+// is the Go field path; nodePath is the element or attribute path it binds.
+func (s *Schema) checkIntegerWidth(ps *Problems, path, nodePath, typeName string, f reflect.StructField, xsdType, owner string) {
+	gw, ok := goIntWidth(elementValueType(f.Type))
 	if !ok {
 		return
 	}
-	path := typeName + "." + f.Name
 	builtin, chain := s.integerBase(xsdType)
 	if builtin == "" {
 		*ps = append(*ps, Problem{
@@ -144,7 +148,7 @@ func (s *Schema) checkIntegerWidth(ps *Problems, typeName string, f reflect.Stru
 			Path: path,
 			Message: fmt.Sprintf("field %s is a %s Go integer but %q on %s (declared by %s) has type chain %s, "+
 				"which reaches no XSD built-in this gate knows, so its range cannot be checked",
-				f.Name, gw, elementName, typeName, owner, strings.Join(chain, " -> ")),
+				f.Name, gw, nodePath, typeName, owner, strings.Join(chain, " -> ")),
 		})
 		return
 	}
@@ -157,8 +161,119 @@ func (s *Schema) checkIntegerWidth(ps *Problems, typeName string, f reflect.Stru
 		Path: path,
 		Message: fmt.Sprintf("field %s is a %s Go integer but %q on %s (declared by %s) resolves %s, a %s XSD integer; "+
 			"the Go type permits a value outside the schema's range and the marshaller would serialize it",
-			f.Name, gw, elementName, typeName, owner, strings.Join(chain, " -> "), xw),
+			f.Name, gw, nodePath, typeName, owner, strings.Join(chain, " -> "), xw),
 	})
+}
+
+// descentKey is a Go struct checked against a schema type. A recursive pair
+// is walked once, since a deeper copy repeats the same comparisons.
+type descentKey struct {
+	goType  reflect.Type
+	xsdType string
+}
+
+// checkChildIntegers applies the integer check to the struct modelling a
+// child element, at every depth, against the type the schema gives that
+// element. An integer it cannot pair with a declaration is reported as
+// unresolved, so the descent never passes by skipping.
+func (s *Schema) checkChildIntegers(ps *Problems, path, nodePath string, ft reflect.Type, xsdType string, active map[descentKey]bool) error {
+	t := elementValueType(ft)
+	if t.Kind() != reflect.Struct {
+		return nil
+	}
+	key := descentKey{t, xsdType}
+	if active[key] {
+		return nil
+	}
+	if _, ok := s.complexTypes[xsdType]; !ok {
+		if holdsInteger(t, map[reflect.Type]bool{}) {
+			*ps = append(*ps, Problem{
+				Kind: KindIntegerUnresolved,
+				Path: path,
+				Message: fmt.Sprintf("%s is a struct holding Go integers but %q has type %s, which is not a complexType, "+
+					"so none of those integers can be paired with a declaration", path, nodePath, xsdType),
+			})
+		}
+		return nil
+	}
+	elems, err := s.EffectiveElements(xsdType)
+	if err != nil {
+		return err
+	}
+	attrs, err := s.EffectiveAttributes(xsdType)
+	if err != nil {
+		return err
+	}
+	elemByName := make(map[string]Element, len(elems))
+	for _, e := range elems {
+		elemByName[e.Name] = e
+	}
+	attrByName := make(map[string]Attribute, len(attrs))
+	for _, a := range attrs {
+		attrByName[a.Name] = a
+	}
+
+	active[key] = true
+	defer delete(active, key)
+	for _, f := range flattenFields(t) {
+		name, isAttr, _, skip := parseXMLTag(f)
+		if skip {
+			continue
+		}
+		fieldPath := path + "." + f.Name
+		if isAttr {
+			attrPath := nodePath + "/@" + name
+			if a, ok := attrByName[name]; ok {
+				s.checkIntegerWidth(ps, fieldPath, attrPath, xsdType, f, a.Type, a.Owner)
+			} else {
+				reportUndeclaredIntegers(ps, fieldPath, attrPath, xsdType, f)
+			}
+			continue
+		}
+		elemPath := nodePath + "/" + name
+		el, ok := elemByName[name]
+		if !ok {
+			reportUndeclaredIntegers(ps, fieldPath, elemPath, xsdType, f)
+			continue
+		}
+		s.checkIntegerWidth(ps, fieldPath, elemPath, xsdType, f, el.Type, el.Owner)
+		if err := s.checkChildIntegers(ps, fieldPath, elemPath, f.Type, el.Type, active); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// reportUndeclaredIntegers reports a child field that carries integers but
+// binds a name its schema type does not declare, since nothing gives a range.
+func reportUndeclaredIntegers(ps *Problems, path, nodePath, typeName string, f reflect.StructField) {
+	if !holdsInteger(elementValueType(f.Type), map[reflect.Type]bool{}) {
+		return
+	}
+	*ps = append(*ps, Problem{
+		Kind: KindIntegerUnresolved,
+		Path: path,
+		Message: fmt.Sprintf("field %s holds Go integers but %s declares nothing at %q, so their range cannot be checked",
+			f.Name, typeName, nodePath),
+	})
+}
+
+// holdsInteger reports whether t is a Go integer or a struct reaching one
+// through its marshalled fields.
+func holdsInteger(t reflect.Type, seen map[reflect.Type]bool) bool {
+	if _, ok := goIntWidth(t); ok {
+		return true
+	}
+	if t.Kind() != reflect.Struct || seen[t] {
+		return false
+	}
+	seen[t] = true
+	for _, f := range flattenFields(t) {
+		if _, _, _, skip := parseXMLTag(f); !skip && holdsInteger(elementValueType(f.Type), seen) {
+			return true
+		}
+	}
+	return false
 }
 
 // CheckStruct validates a Go struct TYPE against a schema type, statically.
@@ -179,8 +294,10 @@ func (s *Schema) checkIntegerWidth(ps *Problems, typeName string, f reflect.Stru
 //   - Fields tagged ",attr" that the schema declares as elements, and fields
 //     tagged as elements that the schema declares as attributes.
 //   - Field names absent from the schema entirely.
-//   - Go integer fields (including pointers and slices of them) whose range
-//     the XSD integer type cannot hold, or whose XSD type does not resolve.
+//   - Go integer fields (including pointers, slices and arrays of them) whose
+//     range the XSD integer type cannot hold, or whose XSD type does not
+//     resolve. This check alone descends into the structs modelling child
+//     elements, at any depth, and reports by Go field path.
 //
 // Embedded structs are flattened in declaration position, matching how
 // encoding/xml lays them out.
@@ -222,6 +339,7 @@ func (s *Schema) CheckStruct(typeName string, t reflect.Type) (Problems, error) 
 
 	var ps Problems
 	lastIdx, lastName := -1, ""
+	active := map[descentKey]bool{{t, typeName}: true}
 
 	for _, f := range flattenFields(t) {
 		name, isAttr, omitempty, skip := parseXMLTag(f)
@@ -231,7 +349,7 @@ func (s *Schema) CheckStruct(typeName string, t reflect.Type) (Problems, error) 
 
 		if isAttr {
 			if a, ok := attrByName[name]; ok {
-				s.checkIntegerWidth(&ps, typeName, f, name, a.Type, a.Owner)
+				s.checkIntegerWidth(&ps, typeName+"."+f.Name, typeName+"/@"+name, typeName, f, a.Type, a.Owner)
 				continue
 			}
 			if el, ok := elemByName[name]; ok {
@@ -280,7 +398,10 @@ func (s *Schema) CheckStruct(typeName string, t reflect.Type) (Problems, error) 
 			})
 		}
 
-		s.checkIntegerWidth(&ps, typeName, f, name, el.Type, el.Owner)
+		s.checkIntegerWidth(&ps, typeName+"."+f.Name, typeName+"/"+name, typeName, f, el.Type, el.Owner)
+		if err := s.checkChildIntegers(&ps, typeName+"."+f.Name, typeName+"/"+name, f.Type, el.Type, active); err != nil {
+			return nil, err
+		}
 
 		idx := elemIndex[name]
 		if idx < lastIdx {
