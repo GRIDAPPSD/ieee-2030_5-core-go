@@ -153,7 +153,8 @@ func TestValidateCatches(t *testing.T) {
 		{
 			name:     "wrong root namespace",
 			typeName: "Reading",
-			// The 2013 namespace, which a 2018 peer rejects.
+			// A namespace neither the 2013 nor the 2018 schema declares,
+			// so a 2018 gate rejects it as a namespace mismatch.
 			doc:      `<Reading xmlns="http://ieee.org/2030.5"></Reading>`,
 			wantKind: xsdgate.KindNamespace,
 			wantIn:   "targetNamespace",

@@ -160,7 +160,7 @@ func TestDERProgramWireOrder(t *testing.T) {
 // sep.xsd's sequence for the two field pairs Pike flagged as swapped:
 // opModFixedVar before opModFixedW, and opModTargetVar before opModTargetW.
 func TestDERControlBaseWireOrder(t *testing.T) {
-	fixedW := sep2.ActivePower{Value: 100}
+	fixedW := sep2.SignedPerCent(100)
 	fixedVar := sep2.ReactivePower{Value: 200}
 	targetW := sep2.ActivePower{Value: 300}
 	targetVar := sep2.ReactivePower{Value: 400}

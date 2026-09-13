@@ -406,7 +406,7 @@ func TestVerifyRejectsExtKeyUsageMismatch(t *testing.T) {
 // in the SAN must be a well-formed HardwareModuleName"; an extra foreign
 // otherName means the SAN as a whole still carries semantics Go's verifier
 // intentionally treated as unhandled, so x509.Verify must reject the chain.
-// (Copilot round 2 finding on internal/tls/verify.go:105.)
+// (Copilot round 2 finding on pkg/sep2tls/verify.go:105.)
 func TestVerifyRejectsSANWithExtraForeignOtherName(t *testing.T) {
 	caCert, caKey := genCA(t)
 
