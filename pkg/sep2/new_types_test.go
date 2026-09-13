@@ -2,6 +2,7 @@ package sep2_test
 
 import (
 	"encoding/xml"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -50,7 +51,7 @@ func TestConfigurationMarshalAndCopy(t *testing.T) {
 }
 
 func TestLogEventMarshalAndCopy(t *testing.T) {
-	ext := int64(42)
+	ext := uint32(42)
 	le := sep2.LogEvent{
 		CreatedDateTime: 1000, Details: "voltage fault",
 		FunctionSet: sep2.FunctionSetDER, LogEventCode: 0x02,
@@ -72,6 +73,35 @@ func TestLogEventMarshalAndCopy(t *testing.T) {
 	*copied.ExtendedData = 999
 	if *le.ExtendedData != 42 {
 		t.Error("original mutated")
+	}
+}
+
+// TestLogEventExtendedDataIsUInt32 pins extendedData to sep.xsd's UInt32: the
+// full unsigned range decodes, and a negative or 33-bit value is refused
+// rather than carried into a document the schema rejects (#111).
+func TestLogEventExtendedDataIsUInt32(t *testing.T) {
+	const doc = `<LogEvent xmlns="urn:ieee:std:2030.5:ns"><extendedData>%s</extendedData></LogEvent>`
+
+	var le sep2.LogEvent
+	if err := xml.Unmarshal([]byte(fmt.Sprintf(doc, "4294967295")), &le); err != nil {
+		t.Fatalf("decode 4294967295: %v", err)
+	}
+	if le.ExtendedData == nil || fmt.Sprint(*le.ExtendedData) != "4294967295" {
+		t.Fatalf("ExtendedData = %v, want 4294967295", le.ExtendedData)
+	}
+	data, err := xml.Marshal(&le)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(data), "<extendedData>4294967295</extendedData>") {
+		t.Errorf("marshalled %s, want extendedData 4294967295", data)
+	}
+
+	for _, text := range []string{"-1", "4294967296"} {
+		var bad sep2.LogEvent
+		if err := xml.Unmarshal([]byte(fmt.Sprintf(doc, text)), &bad); err == nil {
+			t.Errorf("decode extendedData %s succeeded with %v, want a refusal outside UInt32", text, *bad.ExtendedData)
+		}
 	}
 }
 

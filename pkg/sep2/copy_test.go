@@ -288,23 +288,29 @@ func TestEventStatusCopy(t *testing.T) {
 
 func TestDERControlCopy(t *testing.T) {
 	connected := true
-	dur := int32(300)
+	dur := sep2.OneHourRange(300)
 	ctrl := sep2.DERControl{
 		DERControlBase: &sep2.DERControlBase{OpModConnect: &connected},
 	}
 	ctrl.EventStatus = &sep2.EventStatus{CurrentStatus: 1}
 	ctrl.Interval = &sep2.DateTimeInterval{Start: 100, Duration: 600}
 	ctrl.RandomizeDuration = &dur
+	start := sep2.OneHourRange(-120)
+	ctrl.RandomizeStart = &start
 
 	copied := ctrl.Copy()
 	*copied.DERControlBase.OpModConnect = false
 	*copied.RandomizeDuration = 0
+	*copied.RandomizeStart = 0
 
 	if *ctrl.DERControlBase.OpModConnect != true {
 		t.Error("original OpModConnect mutated")
 	}
 	if *ctrl.RandomizeDuration != 300 {
 		t.Error("original RandomizeDuration mutated")
+	}
+	if *ctrl.RandomizeStart != -120 {
+		t.Errorf("original RandomizeStart = %d, want -120", *ctrl.RandomizeStart)
 	}
 }
 
@@ -326,11 +332,25 @@ func TestEndDeviceControlCopy(t *testing.T) {
 	edc := sep2.EndDeviceControl{DeviceCategory: &cat}
 	edc.EventStatus = &sep2.EventStatus{CurrentStatus: 2}
 	edc.Interval = &sep2.DateTimeInterval{Start: 500}
+	dur, start := sep2.OneHourRange(900), sep2.OneHourRange(-60)
+	edc.RandomizeDuration = &dur
+	edc.RandomizeStart = &start
 
 	copied := edc.Copy()
 	*copied.DeviceCategory = 0
+	*copied.RandomizeDuration = 1
+	*copied.RandomizeStart = 1
 
 	if *edc.DeviceCategory != 0xFF {
 		t.Error("original mutated")
+	}
+	if *edc.RandomizeDuration != 900 {
+		t.Errorf("original RandomizeDuration = %d, want 900", *edc.RandomizeDuration)
+	}
+	if *edc.RandomizeStart != -60 {
+		t.Errorf("original RandomizeStart = %d, want -60", *edc.RandomizeStart)
+	}
+	if *copied.RandomizeDuration != 1 || *copied.RandomizeStart != 1 {
+		t.Errorf("copy = %d, %d, want 1, 1", *copied.RandomizeDuration, *copied.RandomizeStart)
 	}
 }
