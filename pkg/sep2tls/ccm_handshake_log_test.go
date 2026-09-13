@@ -147,8 +147,15 @@ func TestCCMListenerLogsTLS13OnlyRefusal(t *testing.T) {
 		t.Fatal("expected a TLS 1.3-only client to be refused, the dial succeeded")
 	}
 
-	line := waitForLogLine(t, logBuf, 2*time.Second)
-	if !strings.Contains(line, "TLS handshake error") {
-		t.Errorf("server log = %q, want it to name a TLS handshake error", line)
+	waitForLogLine(t, logBuf, 2*time.Second)
+	// The handshake goroutine exits only after it has logged, so the count
+	// is final once it is gone.
+	waitGoroutinesGone(t, 2*time.Second, handshakeFrame)
+	logged := logBuf.String()
+	if n := strings.Count(logged, "TLS handshake error"); n != 1 {
+		t.Errorf("server log = %q, want exactly one TLS handshake error line, got %d", logged, n)
+	}
+	if !strings.Contains(logged, "unsupported versions") {
+		t.Errorf("server log = %q, want the refusal cause (unsupported versions)", logged)
 	}
 }
