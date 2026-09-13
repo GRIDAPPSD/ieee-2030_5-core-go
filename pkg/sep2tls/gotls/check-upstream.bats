@@ -1,0 +1,150 @@
+#!/usr/bin/env bats
+# Smoke test for check-upstream.sh: the happy path plus one test per
+# documented failure path (missing tool, wrong cwd, missing manifest,
+# clone/commit failure, content drift, and an unrecorded file). The
+# upstream clone is mocked (see mock_git below) so the suite needs no
+# network access and is not sensitive to real upstream content changes.
+
+setup() {
+  SRC_DIR="$BATS_TEST_DIRNAME"
+  WORK="$(mktemp -d)"
+  REPO="$WORK/repo"
+  FORK_DIR="$REPO/pkg/sep2tls/gotls"
+
+  mkdir -p "$REPO/pkg/sep2tls"
+  : >"$REPO/go.mod"
+  cp -r "$SRC_DIR" "$FORK_DIR"
+
+  # A frozen "upstream" fixture, built once from the pristine fork copy
+  # above, before any test mutates it. This is what the mocked git
+  # presents as the recorded upstream tag, so the happy path diffs clean
+  # by construction and a later mutation to $FORK_DIR shows up as drift
+  # against this fixture, not against a moving target.
+  UPSTREAM_FIXTURE="$WORK/upstream-fixture/src/crypto/tls"
+  mkdir -p "$UPSTREAM_FIXTURE"
+  for f in "$FORK_DIR"/*.go; do
+    base="$(basename "$f")"
+    case "$base" in
+    cipher_suites_ccm.go | ccm_check_test.go | ccm_raw_test.go) continue ;;
+    esac
+    sed -e 's/^package gotls$/package tls/' \
+      -e 's#github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/fipstls#crypto/internal/boring/fipstls#' \
+      -e 's#github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/boring#crypto/internal/boring#' \
+      -e 's#github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/cpu#internal/cpu#' \
+      -e 's#github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/godebug#internal/godebug#' \
+      "$f" >"$UPSTREAM_FIXTURE/$base"
+  done
+  gofmt -w "$UPSTREAM_FIXTURE"/*.go
+
+  MOCKBIN="$WORK/mockbin"
+  mkdir -p "$MOCKBIN"
+  cat >"$MOCKBIN/git" <<MOCKEOF
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "\$1" = "clone" ]; then
+  if [ -n "\${MOCK_GIT_FAIL_CLONE:-}" ]; then
+    echo "mock: clone failed" >&2
+    exit 1
+  fi
+  dest="\${!#}"
+  mkdir -p "\$dest"
+  exit 0
+fi
+if [ "\$1" = "-C" ]; then
+  dir="\$2"
+  sub="\$3"
+  if [ "\$sub" = "sparse-checkout" ]; then
+    mkdir -p "\$dir/src/crypto/tls"
+    cp "$UPSTREAM_FIXTURE"/*.go "\$dir/src/crypto/tls/"
+    exit 0
+  fi
+  if [ "\$sub" = "rev-parse" ]; then
+    echo "\${MOCK_GIT_COMMIT:-a10e42f219abb9c5bc4e7d86d9464700a42c7d57}"
+    exit 0
+  fi
+fi
+echo "mock git: unhandled args: \$*" >&2
+exit 1
+MOCKEOF
+  chmod +x "$MOCKBIN/git"
+
+  PATH="$MOCKBIN:$PATH"
+  export PATH REPO FORK_DIR WORK
+}
+
+teardown() {
+  rm -rf "$WORK"
+}
+
+run_check() {
+  (cd "$REPO" && bash "$FORK_DIR/check-upstream.sh")
+}
+
+@test "clean tree against the recorded upstream fixture exits 0" {
+  run run_check
+  [ "$status" -eq 0 ]
+}
+
+@test "missing required tool exits 2" {
+  # A curated PATH holding every external tool check-upstream.sh itself
+  # calls, resolved to a real executable path with "type -P" (so a
+  # builtin or a shell function with no backing file is never
+  # symlinked), except git: git is left out, so "command -v git" fails
+  # and the script's own tool-presence guard is what's under test.
+  local no_git_bin="$WORK/no-git-bin"
+  mkdir -p "$no_git_bin"
+  for t in bash sed diff sha256sum gofmt mkdir rm mktemp find awk cut; do
+    ln -s "$(type -P "$t")" "$no_git_bin/$t"
+  done
+  local saved_path="$PATH"
+  PATH="$no_git_bin"
+  run run_check
+  PATH="$saved_path"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"required tool 'git'"* ]]
+}
+
+@test "running outside the repository root exits 2" {
+  run bash -c "cd '$WORK' && bash '$FORK_DIR/check-upstream.sh'"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"repository root"* ]]
+}
+
+@test "a missing manifest exits 2" {
+  rm "$FORK_DIR/upstream-manifest.sha256"
+  run run_check
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"manifest not found"* ]]
+}
+
+@test "an upstream clone failure exits 2, not 1" {
+  export MOCK_GIT_FAIL_CLONE=1
+  run run_check
+  [ "$status" -eq 2 ]
+}
+
+@test "an upstream commit mismatch exits 2, not 1" {
+  export MOCK_GIT_COMMIT=deadbeef
+  run run_check
+  [ "$status" -eq 2 ]
+}
+
+@test "a shared file that drifts from the fixture exits 1" {
+  printf '\n// test-only marker\n' >>"$FORK_DIR/alert.go"
+  run run_check
+  [ "$status" -eq 1 ]
+}
+
+@test "an edited fork-only file exits 1 via the manifest check" {
+  sed -i 's/keyLen: 16,/keyLen: 32,/' "$FORK_DIR/cipher_suites_ccm.go"
+  run run_check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"drift: cipher_suites_ccm.go"* ]]
+}
+
+@test "an unrecorded new file exits 3" {
+  printf 'package gotls\n' >"$FORK_DIR/unrecorded.go"
+  run run_check
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"unrecorded: unrecorded.go"* ]]
+}
