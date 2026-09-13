@@ -93,13 +93,10 @@ run_check() {
   # and the script's own tool-presence guard is what's under test.
   local no_git_bin="$WORK/no-git-bin"
   mkdir -p "$no_git_bin"
-  for t in bash sed diff sha256sum gofmt mkdir rm mktemp find awk cut; do
+  for t in bash sed diff sha256sum gofmt mkdir rm mktemp find awk cut timeout; do
     ln -s "$(type -P "$t")" "$no_git_bin/$t"
   done
-  local saved_path="$PATH"
-  PATH="$no_git_bin"
-  run run_check
-  PATH="$saved_path"
+  PATH="$no_git_bin" run run_check
   [ "$status" -eq 2 ]
   [[ "$output" == *"required tool 'git'"* ]]
 }
@@ -147,4 +144,46 @@ run_check() {
   run run_check
   [ "$status" -eq 3 ]
   [[ "$output" == *"unrecorded: unrecorded.go"* ]]
+}
+
+@test "a symlink under FORK_DIR is scanned, not skipped by -type f" {
+  ln -s alert.go "$FORK_DIR/evil-link.go"
+  run run_check
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"unrecorded: evil-link.go"* ]]
+}
+
+@test "each of find, awk, cut, mktemp, and timeout is checked before use" {
+  local missing no_tool_bin t
+  for missing in find awk cut mktemp timeout; do
+    no_tool_bin="$WORK/no-$missing-bin"
+    mkdir -p "$no_tool_bin"
+    for t in bash sed diff sha256sum gofmt mkdir rm mktemp find awk cut timeout git; do
+      [ "$t" = "$missing" ] && continue
+      ln -sf "$(type -P "$t")" "$no_tool_bin/$t"
+    done
+    PATH="$no_tool_bin" run run_check
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"required tool '$missing'"* ]]
+  done
+}
+
+@test "a find that rejects -printf fails the walk instead of silently finding nothing" {
+  local bsdfind_bin="$WORK/bsdfind-bin"
+  mkdir -p "$bsdfind_bin"
+  cat >"$bsdfind_bin/find" <<'BSDEOF'
+#!/usr/bin/env bash
+for a in "$@"; do
+  if [ "$a" = "-printf" ]; then
+    echo "find: -printf: unknown primary or operator" >&2
+    exit 1
+  fi
+done
+exec /usr/bin/find "$@"
+BSDEOF
+  chmod +x "$bsdfind_bin/find"
+  printf 'package gotls\n' >"$FORK_DIR/unrecorded_m1.go"
+  PATH="$bsdfind_bin:$PATH" run run_check
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"could not walk"* ]]
 }
