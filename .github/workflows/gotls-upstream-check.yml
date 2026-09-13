@@ -11,9 +11,7 @@ name: gotls upstream check
 # verification (a script and a test suite), it deploys nothing, pushes to
 # no registry, and uses no repository secret. It does read the public
 # network to clone github.com/golang/go, which a GitHub-hosted runner can
-# reach without any additional configuration. See
-# .claude/rules/devops.md "GitHub Actions" in the workspace for the
-# posture this exception follows.
+# reach without any additional configuration.
 #
 # Scoped to pull requests (and pushes to main) that touch
 # pkg/sep2tls/gotls/, so an unrelated change elsewhere in the module does
