@@ -162,6 +162,43 @@ run_check() {
   [[ "$output" == *"unrecorded: unrecorded.go"* ]]
 }
 
+@test "a malformed manifest line (missing field) exits 1 with a distinct message" {
+  printf 'fork-only\tstubs/godebug/godebug.go\n' >>"$FORK_DIR/upstream-manifest.sha256"
+  run run_check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"malformed manifest line"* ]]
+}
+
+@test "a patched file whose recorded upstream hash still matches upstream exits 0" {
+  local fork_hash upstream_hash
+  fork_hash="$(sha256sum "$FORK_DIR/handshake_server.go" | cut -d' ' -f1)"
+  upstream_hash="$(sha256sum "$UPSTREAM_FIXTURE/handshake_server.go" | cut -d' ' -f1)"
+  printf 'patched\thandshake_server.go\t%s\t%s\ttest: pretend deliberate patch\n' \
+    "$fork_hash" "$upstream_hash" >>"$FORK_DIR/upstream-manifest.sha256"
+  run run_check
+  [ "$status" -eq 0 ]
+}
+
+@test "a patched file reports drift once upstream moves past its recorded base hash" {
+  local fork_hash
+  fork_hash="$(sha256sum "$FORK_DIR/handshake_server.go" | cut -d' ' -f1)"
+  printf 'patched\thandshake_server.go\t%s\tdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef\ttest: pretend deliberate patch\n' \
+    "$fork_hash" >>"$FORK_DIR/upstream-manifest.sha256"
+  run run_check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"drift: upstream handshake_server.go changed since the patch was recorded"* ]]
+}
+
+@test "a patched entry with no recorded upstream_sha256 exits 2" {
+  local fork_hash
+  fork_hash="$(sha256sum "$FORK_DIR/handshake_server.go" | cut -d' ' -f1)"
+  printf 'patched\thandshake_server.go\t%s\t-\ttest: pretend deliberate patch\n' \
+    "$fork_hash" >>"$FORK_DIR/upstream-manifest.sha256"
+  run run_check
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"no recorded upstream_sha256"* ]]
+}
+
 @test "each of find, awk, cut, mktemp, and timeout is checked before use" {
   local missing no_tool_bin t
   for missing in find awk cut mktemp timeout; do

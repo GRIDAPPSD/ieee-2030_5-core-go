@@ -5,23 +5,32 @@
 # change. Run from the repository root (the directory containing go.mod).
 #
 # Exit codes:
-#   0  clean: every shared file matches upstream (or a recorded patch),
-#      every manifest entry matches its recorded hash, and no unrecorded
-#      file was found under pkg/sep2tls/gotls.
+#   0  clean: every shared file matches upstream (or a recorded patch
+#      whose upstream side still matches its recorded base hash), every
+#      manifest entry matches its recorded hash, and no unrecorded file
+#      was found under pkg/sep2tls/gotls.
 #   2  environment: a required tool is missing, the script was not run
 #      from the repository root, the upstream clone/checkout could not be
 #      produced as recorded (bad tag, commit mismatch, sparse-checkout
 #      failure, network failure, an upstream file absent after checkout),
-#      or a step this script depends on (the file walk, the normalization
-#      pass) could not be completed. This is a tooling failure, not
-#      evidence of drift. 2 is reserved for these and is never combined
-#      with a bit below: it is returned directly, ending the run.
+#      a step this script depends on (the file walk, the normalization
+#      pass) could not be completed, or a "patched" manifest entry has no
+#      recorded upstream_sha256 to compare against. This is a tooling or
+#      setup failure, not evidence of drift. 2 is reserved for these and
+#      is never combined with a bit below: it is returned directly,
+#      ending the run.
 #   Any other nonzero exit is a bitwise OR of the codes below, so a run
 #   that hits more than one condition reports all of them at once instead
 #   of the last one silently winning. Read stderr for which fired.
 #     1  drift: a shared file differs from upstream with no recorded
 #        patch, a manifest entry's hash no longer matches the file's
-#        content, or a file this script expects is missing.
+#        content, an expected shared file is missing, the recorded
+#        upstream_sha256 of a patched file no longer matches upstream (an
+#        upstream change landed on a file this fork has diverged from),
+#        or a manifest line is malformed (missing a required field). A
+#        malformed line is reported under this same bit because fixing it
+#        takes the same action as fixing a hash mismatch: edit the
+#        manifest.
 #     4  unrecorded: a file (or symlink) exists under pkg/sep2tls/gotls
 #        that is neither a shared file, a manifest entry, nor an ignored
 #        path. Add it to FILES or record it in upstream-manifest.sha256.
@@ -83,18 +92,32 @@ manifest_type() {
   awk -F'\t' -v p="$1" '$1 !~ /^#/ && $2 == p { print $1; exit }' "$MANIFEST"
 }
 
+# manifest_upstream_sha PATH prints the recorded upstream_sha256 column
+# for a "patched" PATH: the sha256 of the upstream file at UPSTREAM_TAG
+# as it stood when the patch was recorded. "-" for fork-only entries,
+# which have no upstream counterpart to compare.
+manifest_upstream_sha() {
+  awk -F'\t' -v p="$1" '$1 !~ /^#/ && $2 == p { print $4; exit }' "$MANIFEST"
+}
+
 # check_manifest verifies every manifest entry's file exists and its
-# sha256 still matches. Prints one "drift:" line per mismatch to stderr
-# and returns 1 if any mismatch was found, 0 otherwise.
+# sha256 still matches, and that every non-comment line has all four
+# required fields. Prints one message per problem to stderr and returns
+# 1 if any was found, 0 otherwise.
 check_manifest() {
-  local rc=0 type path expected note full actual
+  local rc=0 type path expected upstream note full actual
   [ -f "$MANIFEST" ] || {
     echo "error: manifest not found at $MANIFEST" >&2
     exit 2
   }
-  while IFS=$'\t' read -r type path expected note; do
+  while IFS=$'\t' read -r type path expected upstream note; do
     [ -z "$type" ] && continue
     [[ "$type" == \#* ]] && continue
+    if [ -z "$path" ] || [ -z "$expected" ] || [ -z "$upstream" ]; then
+      echo "drift: malformed manifest line for type '$type': need type<TAB>path<TAB>sha256<TAB>upstream_sha256<TAB>note, got a line with a missing field" >&2
+      rc=1
+      continue
+    fi
     full="$FORK_DIR/$path"
     if [ ! -f "$full" ]; then
       echo "drift: manifest entry '$path' ($note) is missing from the fork" >&2
@@ -140,13 +163,16 @@ scan_for_unrecorded() {
 
 # diff_shared_files clones the recorded upstream tag, normalizes the
 # fork's shared files back to upstream package and import names, and
-# diffs each one. Skips any file recorded as "patched" in the manifest,
-# since that file has a deliberate, recorded divergence and is verified
-# by check_manifest instead. Returns 1 if any unpatched shared file
-# differs or is missing, 0 otherwise; exits 2 directly on an environment
-# failure.
+# diffs each one. A file recorded as "patched" in the manifest is not
+# diffed against upstream (check_manifest verifies the fork's side
+# instead); its upstream side is compared against the recorded
+# upstream_sha256 so a later upstream change to that same file is still
+# reported instead of disappearing behind the patch. Returns 1 if any
+# unpatched shared file differs or is missing, or a patched file's
+# upstream side has moved; 0 otherwise. Exits 2 directly on an
+# environment failure (network, checkout, or normalization).
 diff_shared_files() {
-  local work norm rc=0 f upstream_file
+  local work norm rc=0 f ptype upstream_file
   work="$(mktemp -d)"
   trap 'rm -rf "$work"' EXIT INT TERM
 
@@ -180,13 +206,28 @@ diff_shared_files() {
   }
 
   for f in "${FILES[@]}"; do
-    [ "$(manifest_type "$f")" = "patched" ] && continue
-
     upstream_file="$work/go/src/crypto/tls/$f"
     if [ ! -f "$upstream_file" ]; then
       echo "error: upstream file src/crypto/tls/$f not found after checkout" >&2
       exit 2
     fi
+
+    ptype="$(manifest_type "$f")"
+    if [ "$ptype" = "patched" ]; then
+      local upstream_expected upstream_actual
+      upstream_expected="$(manifest_upstream_sha "$f")"
+      if [ -z "$upstream_expected" ] || [ "$upstream_expected" = "-" ]; then
+        echo "error: manifest entry for patched file '$f' has no recorded upstream_sha256; run sha256sum on $upstream_file and record it" >&2
+        exit 2
+      fi
+      upstream_actual="$(sha256sum "$upstream_file" | cut -d' ' -f1)"
+      if [ "$upstream_actual" != "$upstream_expected" ]; then
+        echo "drift: upstream $f changed since the patch was recorded (upstream sha256 was $upstream_expected, now $upstream_actual); re-review the patch against the new upstream content" >&2
+        rc=1
+      fi
+      continue
+    fi
+
     if [ ! -f "$FORK_DIR/$f" ]; then
       echo "drift: $f is listed as shared but is missing from the fork" >&2
       rc=1

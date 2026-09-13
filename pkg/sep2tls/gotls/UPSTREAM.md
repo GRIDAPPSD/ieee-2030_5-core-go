@@ -126,14 +126,18 @@ It does three things:
 
 1. Diffs the 20 shared files (normalized back to upstream package and
    import names, then `gofmt`-formatted) against the recorded upstream tag,
-   the same comparison used to establish the base above.
+   the same comparison used to establish the base above. A file recorded
+   as `patched` is not diffed against upstream this way; instead its
+   recorded `upstream_sha256` (see "Recording a deliberate change" below)
+   is checked against the live upstream file, so an upstream change to
+   that same file after the patch was recorded is still reported.
 2. Checks every file listed in `upstream-manifest.sha256` against its
    recorded sha256. That file covers the fork-only files that have no
    upstream counterpart (`cipher_suites_ccm.go`, `ccm_check_test.go`,
    `ccm_raw_test.go`, and the four `stubs/*/*.go` files) and any shared file
    that has been deliberately patched (see "Recording a deliberate change"
    below). A content change to any of these with no matching manifest
-   update is reported.
+   update is reported, as is a manifest line missing a required field.
 3. Scans every file or symlink under `pkg/sep2tls/gotls` and reports any
    path that is neither one of the 20 shared files, a manifest entry, nor the check
    script, its `bats` test suite, the manifest, or this document. A new
@@ -144,9 +148,9 @@ Exit codes:
 
 | Exit | Meaning |
 |---|---|
-| 0 | Clean: every shared file matches upstream (or a recorded patch), every manifest entry matches its recorded hash, no unrecorded file. |
-| 2 | Environment: a required tool is missing, the script was not run from the repository root, or the upstream clone/checkout could not be produced as recorded (bad tag, commit mismatch, sparse-checkout failure, network failure, an upstream file absent after checkout). This is a tooling or setup failure, not evidence of drift, and is never combined with the bits below: it always ends the run by itself. |
-| any other nonzero | A bitwise OR of: **1** (drift: a shared file differs from upstream with no recorded patch, a manifest entry's hash no longer matches its recorded content, or an expected shared file is missing) and **4** (unrecorded: a file or symlink exists under `pkg/sep2tls/gotls` that this script cannot classify; add it to the `FILES` list in `check-upstream.sh` if it is meant to track an upstream file, or record it in `upstream-manifest.sha256` if it is fork-only). So exit 5 means both drift and an unrecorded file were found in the same run; neither overwrites the other. |
+| 0 | Clean: every shared file matches upstream (or a recorded patch whose upstream side still matches its recorded base hash), every manifest entry matches its recorded hash, no unrecorded file. |
+| 2 | Environment: a required tool is missing, the script was not run from the repository root, the upstream clone/checkout could not be produced as recorded (bad tag, commit mismatch, sparse-checkout failure, network failure, an upstream file absent after checkout), or a `patched` manifest entry has no recorded `upstream_sha256`. This is a tooling or setup failure, not evidence of drift, and is never combined with the bits below: it always ends the run by itself. |
+| any other nonzero | A bitwise OR of: **1** (drift: a shared file differs from upstream with no recorded patch, a manifest entry's hash no longer matches its recorded content, an expected shared file is missing, a `patched` file's recorded `upstream_sha256` no longer matches upstream, or a manifest line is malformed) and **4** (unrecorded: a file or symlink exists under `pkg/sep2tls/gotls` that this script cannot classify; add it to the `FILES` list in `check-upstream.sh` if it is meant to track an upstream file, or record it in `upstream-manifest.sha256` if it is fork-only). So exit 5 means both drift and an unrecorded file were found in the same run; neither overwrites the other. |
 
 A nonzero exit prints one or more messages on stderr naming which check
 failed and why; read the message to tell drift, an environment failure,
@@ -155,21 +159,29 @@ combined exit code (5) means more than one message is present.
 
 ## Recording a deliberate change
 
-Two situations call for a manifest update rather than a code change:
+Two situations call for a manifest update rather than a code change.
+`upstream-manifest.sha256`'s header documents the exact column format
+(`type<TAB>path<TAB>sha256<TAB>upstream_sha256<TAB>note`).
 
 - **A new fork-only file** (for example, a new stub or a new fork-only
-  test): add a `fork-only` line to `upstream-manifest.sha256` with
-  `sha256sum pkg/sep2tls/gotls/<path>` and a short note of why the file
-  exists. Without this, `check-upstream.sh` reports it as unrecorded (exit
-  3).
+  test): add a `fork-only` line with `sha256sum pkg/sep2tls/gotls/<path>`
+  for the `sha256` column, `-` for `upstream_sha256` (fork-only files have
+  no upstream counterpart), and a short note of why the file exists.
+  Without this, `check-upstream.sh` reports it as unrecorded (exit 4).
 - **A hand-ported fix to a shared file** (see the security-release
   procedure below): after making the change, add or update a `patched`
-  line in `upstream-manifest.sha256` for that file, again with its current
-  `sha256sum` and a note naming the release or advisory the fix came from.
-  Once a shared file has a `patched` entry, `check-upstream.sh` stops
-  diffing it against upstream and instead checks its hash against that
-  entry, so the check passes on the recorded change and still fails if the
-  file changes again without the manifest being updated.
+  line for that file with its current `sha256sum` in the `sha256` column,
+  the sha256sum of the SAME file at the fork's recorded `UPSTREAM_TAG`
+  (go1.22.0, i.e. the base the fork has not rebased past, not the fixed
+  release used only to see the delta) in the `upstream_sha256` column, and
+  a note naming the release or advisory the fix came from. Once a shared
+  file has a `patched` entry, `check-upstream.sh` stops diffing the fork's
+  copy against upstream and instead checks the fork's hash against
+  `sha256` and the live upstream file's hash against `upstream_sha256`:
+  the first catches the fork's patch changing or reverting, the second
+  catches upstream itself moving past the base the patch was recorded
+  against, so a later upstream fix to the same file (a security release,
+  say) is still reported instead of disappearing behind the patch.
 
 ## Checking upstream `crypto/tls` security releases against the fork
 
@@ -188,7 +200,10 @@ Two situations call for a manifest update rather than a code change:
    port the fix by hand into the fork file, add a new row to the
    "Deliberate changes" table above naming the CVE or release and the
    file(s) touched, and record the change per "Recording a deliberate
-   change" above. Do not bump `UPSTREAM_TAG` in `check-upstream.sh` unless
+   change" above: `upstream_sha256` is the sha256sum of that file at
+   go1.22.0 (the checkout `check-upstream.sh` already produces at its
+   recorded `UPSTREAM_TAG`), not at the fixed release used in step 2 to
+   view the delta. Do not bump `UPSTREAM_TAG` in `check-upstream.sh` unless
    every shared file has been re-verified against the new base by the same
    procedure used to establish go1.22.0 above; a partial rebase would make
    the recorded base a false claim about files that were not actually
