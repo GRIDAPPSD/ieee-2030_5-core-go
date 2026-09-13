@@ -10,7 +10,7 @@ const (
 	Namespace2013 = "http://zigbee.org/sep"
 
 	// Namespace2023 is the IEEE 2030.5-2023 XML namespace.
-	// Same as 2018 — the namespace didn't change in the 2023 revision.
+	// Same as 2018 - the namespace didn't change in the 2023 revision.
 	Namespace2023 = Namespace
 )
 
