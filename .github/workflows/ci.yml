@@ -230,6 +230,12 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Verify the lint gate itself
+        # Keeps the gate honest after merge: fails if an exclusion path
+        # escapes the two vendored fork directories, if the lint step
+        # gains continue-on-error, or if issues-exit-code is silenced.
+        run: .github/scripts/check-lint-gate.sh
+
       - name: Lint
         # golangci-lint v2.12.2 is built with go1.26.2 and supports modules
         # declaring `go 1.26.3` in go.mod. Earlier releases (through v2.9.0)
