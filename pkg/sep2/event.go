@@ -1,6 +1,7 @@
 package sep2
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"strconv"
@@ -158,6 +159,28 @@ func (o OneHourRange) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 		return fmt.Errorf("sep2: OneHourRange %d out of range [%d, %d]", int16(o), minOneHourRange, maxOneHourRange)
 	}
 	return e.EncodeElement(int16(o), start)
+}
+
+// UnmarshalJSON applies the same range refusal as UnmarshalXML; server-go
+// ingests JSON fixtures for this package's types.
+func (o *OneHourRange) UnmarshalJSON(data []byte) error {
+	var n int64
+	if err := json.Unmarshal(data, &n); err != nil {
+		return fmt.Errorf("sep2: OneHourRange: %w", err)
+	}
+	if n < minOneHourRange || n > maxOneHourRange {
+		return fmt.Errorf("sep2: OneHourRange %d out of range [%d, %d]", n, minOneHourRange, maxOneHourRange)
+	}
+	*o = OneHourRange(n)
+	return nil
+}
+
+// MarshalJSON mirrors MarshalXML's range guard.
+func (o OneHourRange) MarshalJSON() ([]byte, error) {
+	if o < minOneHourRange || o > maxOneHourRange {
+		return nil, fmt.Errorf("sep2: OneHourRange %d out of range [%d, %d]", int16(o), minOneHourRange, maxOneHourRange)
+	}
+	return json.Marshal(int16(o))
 }
 
 // EventStatus current status values per spec.
