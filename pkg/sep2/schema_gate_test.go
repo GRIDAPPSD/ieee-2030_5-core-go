@@ -784,3 +784,42 @@ func TestSchemaGateDetectsScalarForComplexType(t *testing.T) {
 	}
 	assertPinned(t, "marshalled-output", "DERStatus(defective-fixture)", problems.Summary(), want)
 }
+
+// ---------------------------------------------------------------------------
+// Integer width
+// ---------------------------------------------------------------------------
+
+// TestSchemaGateCatchesOversizedIntegerWidth pins the gate's ability to catch
+// #111's defect class: a Go integer field wider than
+// the XSD numeric base its element bottoms out at, which permits constructing
+// a value the schema forbids and the marshaller then serializes without
+// complaint. wideRandomizableEvent is the exact pre-fix shape (randomizeStart
+// and randomizeDuration as *int32 against OneHourRangeType, which extends
+// Int16 / xs:short).
+func TestSchemaGateCatchesOversizedIntegerWidth(t *testing.T) {
+	type wideRandomizableEvent struct {
+		sep2.Event
+		RandomizeDuration *int32 `xml:"randomizeDuration,omitempty"`
+		RandomizeStart    *int32 `xml:"randomizeStart,omitempty"`
+	}
+
+	got := xsdgate.CollectStructProblems(t, "RandomizableEvent", wideRandomizableEvent{}).Summary()
+	want := []string{
+		"integer-width RandomizableEvent.RandomizeDuration",
+		"integer-width RandomizableEvent.RandomizeStart",
+	}
+	assertPinned(t, "struct-definition", "RandomizableEvent(oversized-fixture)", got, want)
+}
+
+// TestSchemaGateRandomizableEventFieldsAreNotOversized is the forward-looking
+// half of the check above: the actual sep2.RandomizableEvent must report ZERO
+// integer-width problems now that RandomizeDuration and RandomizeStart are
+// OneHourRange (int16), matching OneHourRangeType's Int16/xs:short base.
+func TestSchemaGateRandomizableEventFieldsAreNotOversized(t *testing.T) {
+	got := xsdgate.CollectStructProblems(t, "RandomizableEvent", sep2.RandomizableEvent{}).Summary()
+	for _, p := range got {
+		if strings.HasPrefix(p, "integer-width") {
+			t.Errorf("sep2.RandomizableEvent has an integer-width problem: %s", p)
+		}
+	}
+}

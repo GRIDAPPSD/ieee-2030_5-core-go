@@ -17,6 +17,91 @@ const KindOmitemptyRequired ProblemKind = "omitempty-required"
 // to be populated.
 const KindStructOrder ProblemKind = "struct-order"
 
+// KindIntegerWidth means a field's Go integer storage is WIDER than the XSD
+// numeric built-in its element or attribute bottoms out at. The Go type then
+// permits constructing a value the schema forbids, and the marshaller
+// serializes it without complaint: this is the storage-capacity counterpart
+// to KindLexical in validate.go, which catches an actual out-of-range VALUE
+// but only once one has been set. See #111.
+const KindIntegerWidth ProblemKind = "integer-width"
+
+// intWidth is the bit width and signedness of an integer type, Go or XSD.
+type intWidth struct {
+	bits   int
+	signed bool
+}
+
+// xsdIntWidths gives the width of every XSD built-in integer type this gate
+// understands; it is the same name set as xsdIntRanges in lexical.go.
+var xsdIntWidths = map[string]intWidth{
+	"byte":          {8, true},
+	"short":         {16, true},
+	"int":           {32, true},
+	"long":          {64, true},
+	"unsignedByte":  {8, false},
+	"unsignedShort": {16, false},
+	"unsignedInt":   {32, false},
+	"unsignedLong":  {64, false},
+}
+
+// goIntWidth reports t's bit width when t's underlying Kind is a plain
+// integer, so a named type over an integer (OneHourRange over int16,
+// HexBinary8 over uint8) is measured by its storage, not its declared name.
+// ok is false for anything else (string, float, struct, and so on), which is
+// how this check stays silent on non-numeric elements without a separate
+// exclusion list.
+func goIntWidth(t reflect.Type) (w intWidth, ok bool) {
+	switch t.Kind() {
+	case reflect.Int8:
+		return intWidth{8, true}, true
+	case reflect.Int16:
+		return intWidth{16, true}, true
+	case reflect.Int32:
+		return intWidth{32, true}, true
+	case reflect.Int64, reflect.Int:
+		return intWidth{64, true}, true
+	case reflect.Uint8:
+		return intWidth{8, false}, true
+	case reflect.Uint16:
+		return intWidth{16, false}, true
+	case reflect.Uint32:
+		return intWidth{32, false}, true
+	case reflect.Uint64, reflect.Uint:
+		return intWidth{64, false}, true
+	}
+	return intWidth{}, false
+}
+
+// checkIntegerWidth appends a KindIntegerWidth problem when f's Go storage is
+// wider than xsdType's resolved built-in. It is a no-op for a field whose Go
+// kind is not a plain integer, or whose XSD type does not bottom out at one
+// of the eight XSD integer built-ins (a hexBinary-, string-, or
+// decimal-typed field, for instance): both cases fall through with ok=false.
+func (s *Schema) checkIntegerWidth(ps *Problems, typeName string, f reflect.StructField, elementName, xsdType, owner string) {
+	ft := f.Type
+	for ft.Kind() == reflect.Ptr {
+		ft = ft.Elem()
+	}
+	gw, ok := goIntWidth(ft)
+	if !ok {
+		return
+	}
+	builtin, _ := s.resolveBuiltin(xsdType)
+	xw, ok := xsdIntWidths[builtin]
+	if !ok {
+		return
+	}
+	if gw.bits > xw.bits {
+		*ps = append(*ps, Problem{
+			Kind: KindIntegerWidth,
+			Path: typeName + "." + f.Name,
+			Message: fmt.Sprintf("field %s is a %d-bit Go integer but %q is xs:%s (%d-bit) on %s (declared by %s); "+
+				"the Go type permits a value outside the schema's range and the marshaller would serialize it",
+				f.Name, gw.bits, elementName, builtin, xw.bits, typeName, owner),
+		})
+	}
+}
+
 // CheckStruct validates a Go struct TYPE against a schema type, statically.
 //
 // This complements Validate rather than duplicating it. Validating marshalled
@@ -84,7 +169,8 @@ func (s *Schema) CheckStruct(typeName string, t reflect.Type) (Problems, error) 
 		}
 
 		if isAttr {
-			if _, ok := attrByName[name]; ok {
+			if a, ok := attrByName[name]; ok {
+				s.checkIntegerWidth(&ps, typeName, f, name, a.Type, a.Owner)
 				continue
 			}
 			if el, ok := elemByName[name]; ok {
@@ -132,6 +218,8 @@ func (s *Schema) CheckStruct(typeName string, t reflect.Type) (Problems, error) 
 					f.Name, name, typeName, el.Owner),
 			})
 		}
+
+		s.checkIntegerWidth(&ps, typeName, f, name, el.Type, el.Owner)
 
 		idx := elemIndex[name]
 		if idx < lastIdx {

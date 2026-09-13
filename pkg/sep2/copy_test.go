@@ -288,7 +288,7 @@ func TestEventStatusCopy(t *testing.T) {
 
 func TestDERControlCopy(t *testing.T) {
 	connected := true
-	dur := int32(300)
+	dur := sep2.OneHourRange(300)
 	ctrl := sep2.DERControl{
 		DERControlBase: &sep2.DERControlBase{OpModConnect: &connected},
 	}
