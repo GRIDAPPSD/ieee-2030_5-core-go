@@ -481,3 +481,32 @@ func TestWrapCCMListenerNilLoggerUsesStandardLogger(t *testing.T) {
 		t.Errorf("standard log = %q, want it to name a TLS handshake error", line)
 	}
 }
+
+// TestCCMListenerClosesSilentPeerAfterHandshakeBound proves a peer that opens
+// the connection and never sends a ClientHello is closed once the handshake
+// bound elapses, rather than held indefinitely. Not parallel: it shrinks the
+// package-level handshake bound (export_test.go) for its duration.
+func TestCCMListenerClosesSilentPeerAfterHandshakeBound(t *testing.T) {
+	restore := sepTLS.SetCCMHandshakeTimeoutForTest(150 * time.Millisecond)
+	defer restore()
+
+	files := newCCMTestFiles(t)
+	cfg := newCCMServerConfig(t, files)
+	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	wrapped := sepTLS.WrapCCMListener(gotls.NewListener(tcpListener, cfg), log.New(io.Discard, "", 0))
+	defer func() { _ = wrapped.Close() }()
+
+	silent, err := net.Dial("tcp", tcpListener.Addr().String())
+	if err != nil {
+		t.Fatalf("dial silent peer: %v", err)
+	}
+	defer func() { _ = silent.Close() }()
+
+	// assertClosedByServer's 2s window is well over the shrunk 150ms bound, so
+	// a mutant that removes the bound or lengthens it stays open past the
+	// window and fails here instead of passing silently.
+	assertClosedByServer(t, silent)
+}

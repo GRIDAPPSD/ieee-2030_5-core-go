@@ -130,8 +130,9 @@ func CCMIdentityMiddleware(next http.Handler) http.Handler {
 
 // ccmHandshakeTimeout bounds the per-connection handshake WrapCCMListener
 // runs, so a peer that opens the TCP connection and never speaks TLS cannot
-// hold a goroutine indefinitely.
-const ccmHandshakeTimeout = 10 * time.Second
+// hold a goroutine indefinitely. A var, not a const, so export_test.go can
+// shrink it for a test; production code never assigns to it.
+var ccmHandshakeTimeout = 10 * time.Second
 
 // WrapCCMListener wraps a gotls listener so a handshake failure is logged
 // the way net/http logs one for *tls.Conn (net/http's own "TLS handshake
