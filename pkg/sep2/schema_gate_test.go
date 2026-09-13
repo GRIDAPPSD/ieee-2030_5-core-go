@@ -264,8 +264,8 @@ func respondableFixtures() map[string]any {
 	rr := sep2.HexBinary8(0x07)
 	category := sep2.DeviceCategoryType(0x0080)
 
-	base := func() sep2.RandomizableEvent {
-		var e sep2.RandomizableEvent
+	baseEvent := func() sep2.Event {
+		var e sep2.Event
 		e.ReplyTo = replyTo
 		e.ResponseRequired = &rr
 		e.MRID = "0102030405060708090A0B0C0D0E0F10"
@@ -274,6 +274,12 @@ func respondableFixtures() map[string]any {
 		e.EventStatus = &sep2.EventStatus{CurrentStatus: 1, DateTime: 1500000000}
 		e.Interval = &sep2.DateTimeInterval{Duration: 3600, Start: 1500000000}
 		return e
+	}
+	// base is for the two types the schema actually derives from
+	// RandomizableEvent (DERControl, EndDeviceControl). FlowReservationResponse
+	// and TextMessage derive from Event directly (#107) and use baseEvent.
+	base := func() sep2.RandomizableEvent {
+		return sep2.RandomizableEvent{Event: baseEvent()}
 	}
 
 	derc := sep2.DERControl{RandomizableEvent: base()}
@@ -284,10 +290,10 @@ func respondableFixtures() map[string]any {
 	edc.Href = "/drp/0/edc/1"
 	edc.DeviceCategory = &category
 
-	frr := sep2.FlowReservationResponse{RandomizableEvent: base()}
+	frr := sep2.FlowReservationResponse{Event: baseEvent()}
 	frr.Href = "/edev/1/frp/1"
 
-	tm := sep2.TextMessage{RandomizableEvent: base()}
+	tm := sep2.TextMessage{Event: baseEvent()}
 	tm.Href = "/msg/0/txt/1"
 
 	return map[string]any{
@@ -554,8 +560,6 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 				"omitempty-required FlowReservationResponse.MRID",
 				"omitempty-required FlowReservationResponse.PowerAvailable",
 				"omitempty-required FlowReservationResponse.Subject",
-				"unknown-element FlowReservationResponse.RandomizeDuration",
-				"unknown-element FlowReservationResponse.RandomizeStart",
 			},
 			wantMarshal: []string{
 				"missing-element FlowReservationResponse/EventStatus",
@@ -565,10 +569,10 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 				"missing-element FlowReservationResponse/powerAvailable",
 				"missing-element FlowReservationResponse/subject",
 			},
-			reason: "one defect beyond the usual omitempty set, from the embedded " +
-				"RandomizableEvent: the schema derives FlowReservationResponse from Event, not " +
-				"RandomizableEvent, so randomizeStart and randomizeDuration are elements the " +
-				"schema does not declare here; a known gap, not fixed here. This entry used " +
+			reason: "the omitempty-required defects below remain (not fixed here). The " +
+				"embedding-versus-derivation defect is fixed: FlowReservationResponse now embeds " +
+				"Event directly rather than RandomizableEvent, so randomizeStart and " +
+				"randomizeDuration no longer reach the wire (#107). This entry used " +
 				"to also pin 'placement ReplyTo' and 'placement ResponseRequired'; both are " +
 				"now fixed and guarded by TestSchemaGateRejectsRespondableFieldsAsElements " +
 				"instead.",
@@ -580,19 +584,18 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 				"omitempty-required TextMessage.EventStatus",
 				"omitempty-required TextMessage.Interval",
 				"omitempty-required TextMessage.MRID",
-				"unknown-element TextMessage.RandomizeDuration",
-				"unknown-element TextMessage.RandomizeStart",
 			},
 			wantMarshal: []string{
 				"missing-element TextMessage/EventStatus",
 				"missing-element TextMessage/interval",
 				"missing-element TextMessage/mRID",
 			},
-			reason: "the same RandomizableEvent-versus-Event divergence as " +
-				"FlowReservationResponse (not fixed here): the schema derives TextMessage from " +
-				"Event. The missing EventStatus reflects that nothing on the TextMessage path " +
-				"ever constructs one. The two 'placement' entries this list used to carry are " +
-				"now fixed.",
+			reason: "the omitempty-required defects below remain (not fixed here). The missing " +
+				"EventStatus reflects that nothing on the TextMessage path ever constructs one. " +
+				"The embedding-versus-derivation defect is fixed: TextMessage now embeds Event " +
+				"directly rather than RandomizableEvent, so randomizeStart and randomizeDuration " +
+				"no longer reach the wire (#107). The two 'placement' entries this list used to " +
+				"carry are also fixed.",
 		},
 		{
 			typeName: "EndDevice",
