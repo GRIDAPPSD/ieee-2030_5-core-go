@@ -458,6 +458,26 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 				"type carrying multiplier and value, so the integer check cannot resolve it (#151).",
 		},
 		{
+			// creationTime, xMultiplier, yMultiplier and yRefType are absent from
+			// both lists because they are modelled without omitempty (#56); if
+			// one is dropped it reappears here as a new missing-element.
+			typeName: "DERCurve",
+			zero:     sep2.DERCurve{},
+			wantStruct: []string{
+				"omitempty-required DERCurve.CurveData",
+				"omitempty-required DERCurve.MRID",
+				"struct-order DERCurve.CurveData",
+			},
+			wantMarshal: []string{
+				"missing-element DERCurve/CurveData",
+				"missing-element DERCurve/mRID",
+			},
+			reason: "mRID and CurveData are minOccurs=1 but tagged omitempty, so a zero-value " +
+				"DERCurve serializes without them. CurveData is also declared after curveType " +
+				"while sep.xsd sequences CurveData first, so every curve that carries points " +
+				"reaches the wire out of order.",
+		},
+		{
 			typeName: "DERSettings",
 			zero:     sep2.DERSettings{},
 			wantStruct: []string{
@@ -631,6 +651,36 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 	}
 }
 
+// TestSchemaGatePopulatedDERCurve covers what the zero-value DERCurve entry
+// cannot: with no CurveData the order defect never reaches the wire, and the
+// multipliers and yRefType are only ever checked at 0. One point keeps the
+// pin to a single order line, since assertPinned compares sets.
+func TestSchemaGatePopulatedDERCurve(t *testing.T) {
+	ramp := uint16(600)
+	curve := sep2.DERCurve{
+		Resource:     sep2.Resource{Href: "/derp/0/dc/3"},
+		MRID:         "0102030405060708090A0B0C0D0E0F10",
+		Description:  "volt-var",
+		CreationTime: 1341446380,
+		CurveType:    11,
+		CurveData:    []sep2.CurveData{{XValue: 99, YValue: 50}},
+		RampDecTms:   &ramp,
+		XMultiplier:  -1,
+		YMultiplier:  2,
+		YRefType:     3,
+	}
+
+	t.Logf("KNOWN-FAILING, not fixed in this change: CurveData is declared after curveType " +
+		"while sep.xsd sequences CurveData first")
+	problems, data := xsdgate.CollectProblems(t, "DERCurve", curve)
+	assertPinned(t, "marshalled-output", "DERCurve(populated)", problems.Summary(), []string{
+		"order DERCurve/CurveData",
+	})
+	if t.Failed() {
+		t.Logf("XML:\n%s", data)
+	}
+}
+
 // assertPinned compares an observed problem set against the pinned one and
 // explains, in the failure message, which direction the drift went and what
 // to do about it. A pinned expectation that fails without telling the reader
@@ -701,7 +751,7 @@ func TestSchemaGateCoversKnownResources(t *testing.T) {
 	// either address. That is no longer true, so this server now serves them
 	// and they are in scope.
 	required := []string{
-		"DERCapability", "DERSettings", "DERStatus",
+		"DERCapability", "DERCurve", "DERSettings", "DERStatus",
 		"MirrorUsagePoint", "MirrorMeterReading", "Registration",
 		"EndDevice", "Reading", "ReadingType",
 		"DERControl", "EndDeviceControl", "FlowReservationResponse", "TextMessage",
@@ -710,10 +760,10 @@ func TestSchemaGateCoversKnownResources(t *testing.T) {
 
 	covered := map[string]bool{
 		"Registration": true, "Reading": true, "ReadingType": true,
-		"MirrorMeterReading": true, "DERCapability": true, "DERSettings": true,
-		"DERStatus": true, "MirrorUsagePoint": true, "UsagePoint": true,
-		"EndDevice": true, "DERControl": true, "EndDeviceControl": true,
-		"FlowReservationResponse": true, "TextMessage": true,
+		"MirrorMeterReading": true, "DERCapability": true, "DERCurve": true,
+		"DERSettings": true, "DERStatus": true, "MirrorUsagePoint": true,
+		"UsagePoint": true, "EndDevice": true, "DERControl": true,
+		"EndDeviceControl": true, "FlowReservationResponse": true, "TextMessage": true,
 		"LogEvent": true, "LogEventList": true,
 	}
 
