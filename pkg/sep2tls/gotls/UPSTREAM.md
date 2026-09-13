@@ -4,7 +4,8 @@
 carrying the mandatory IEEE 2030.5 / CSIP CCM-8 cipher suite that upstream
 does not implement. This file records what it was forked from, what changed,
 how to reproduce the diff, and how to check upstream security fixes against
-it.
+it. It describes the tree at this branch only: it makes no statement about
+the effect of any pull request that has not merged.
 
 ## Upstream base
 
@@ -30,145 +31,145 @@ suite is more likely cut from a stable minor release than rebased file by
 file across a whole later cycle.
 
 Comparison method: for each of the 20 files the fork shares with upstream
-`crypto/tls` (see the file list in the diff command below), the fork's copy
-was rewritten to swap `package gotls` back to `package tls` and the four
-local stub import paths back to their real standard-library paths (see
+`crypto/tls` (the `FILES` list in `check-upstream.sh`), the fork's copy was
+rewritten to swap `package gotls` back to `package tls` and the four local
+stub import paths back to their real standard-library paths (see
 "Deliberate changes" below), then passed through `gofmt`, then diffed
 against each candidate release's copy of the same file.
 
-Diff line counts (added + removed lines, summed across all 20 shared files,
-after `gofmt`):
+Diff line counts below are the added-plus-removed content lines `diff -u`
+reports, not counting the `---`/`+++` file-header line pair it prints once
+per differing file. Given a raw `diff -u` run saved to `out`, the exact
+command is:
 
-| Candidate | Commit | Diff lines |
-|---|---|---|
-| go1.21.13 (latest Go 1.21.x) | `8bba868de983dd7bf55fcd121495ba8d6e2734e7` | 209 |
-| **go1.22.0** | `a10e42f219abb9c5bc4e7d86d9464700a42c7d57` | **0** |
-| go1.22.12 (latest Go 1.22.x) | (see `git ls-remote --tags` on `go.googlesource.com/go`) | 8, all import-block reordering that disappears under `gofmt` (see below) |
+```
+grep -Ec '^[+-][^+-]' out
+```
+
+| Candidate | Commit | Diff lines | Files differing |
+|---|---|---|---|
+| go1.21.13 (latest Go 1.21.x) | `8bba868de983dd7bf55fcd121495ba8d6e2734e7` | 209 | 10 of 20 |
+| **go1.22.0** | `a10e42f219abb9c5bc4e7d86d9464700a42c7d57` | **0** | 0 of 20 |
+| go1.22.12 (latest Go 1.22.x) | `5817e650946aaa0ac28956de96b3f9aa1de4b299` | 4 | 2 of 20 |
 
 Go 1.22.0 is a byte-for-byte match, after `gofmt`, on every one of the 20
-shared files. This confirmed the prediction. The result also shows the fork
-predates every later Go 1.22.x point release: none of them changed these
-files relative to go1.22.0, since go1.22.12 differs from go1.22.0 only by
-import-block order, an artifact of `gofmt` re-sorting the import list once
-the stub paths are swapped back to their original (shorter) names, not a
-real content change. `gofmt -w` on the rewritten fork copy removes that
-artifact entirely (verified: 0 lines differ after formatting for every file
-that showed a nonzero raw `diff` before formatting).
+shared files.
 
-Before trusting the zero: the same procedure run against go1.21.13 (a
-release known NOT to match, since it lacks the file layout Go 1.22.0 has)
-produced 209 changed lines and a nonzero exit from the diff command below.
-The check can fail; it did, against the wrong base.
+Before trusting the zero: the same procedure run against go1.21.13 produced
+209 changed lines and a nonzero exit. Both tags carry the same 22 non-test
+files under `src/crypto/tls` (confirmed by listing both checkouts); the
+difference is in file content, not file layout. The check can fail; it did,
+against the wrong base.
+
+go1.22.12 is not a byte-for-byte match: it differs from go1.22.0 by 4 lines
+in `handshake_client.go` and `handshake_server.go`, where upstream added an
+`!needFIPS() &&` guard around a debug counter increment
+(`tlsrsakex.IncNonDefault()`) between go1.22.0 and go1.22.12. This is a real,
+small upstream content change, not an import-ordering artifact, and it does
+not disappear under `gofmt`. It has no effect on the fork's behavior, because
+the fork's `needFIPS` always returns `false` (see `notboring.go`), so the
+guarded call always runs regardless of the guard's presence. Go 1.22.0
+remains the fork's exact, byte-for-byte base; later 1.22.x point releases are
+not implied to match it and were not all checked (only go1.22.12, the latest,
+was).
 
 ## Deliberate changes against the base
 
 | Change | Files | Notes |
 |---|---|---|
-| Package rename `tls` -> `gotls` | all 21 non-test `.go` files carried from upstream | Required so the fork can be vendored as an ordinary importable package rather than the standard library's `crypto/tls`. |
-| Internal package stand-ins | `boring.go`, `cipher_suites.go`, `handshake_client.go` (import sites); new files `stubs/boring/boring.go`, `stubs/cpu/cpu.go`, `stubs/fipstls/fipstls.go`, `stubs/godebug/godebug.go` | Upstream `crypto/tls` imports four packages under `internal/` or `crypto/internal/`, which are not importable outside the standard library: `crypto/internal/boring`, `crypto/internal/boring/fipstls`, `internal/cpu`, `internal/godebug`. Each is replaced by a local stub package of the same name and function signatures, with `Enabled`/`Required`/`HasAES` and friends hardcoded to their disabled/false values and `Setting.Value()` hardcoded to `""`. `notboring.go` is otherwise unmodified upstream code; it already assumes `boring.Enabled == false` at compile time via a build tag pair, which this stand-in preserves logically without reproducing the build-tag split. |
+| Package rename `tls` -> `gotls` | all 20 non-test `.go` files carried from upstream | Required so the fork can be vendored as an ordinary importable package rather than the standard library's `crypto/tls`. |
+| Internal package stand-ins | new files `stubs/boring/boring.go`, `stubs/cpu/cpu.go`, `stubs/fipstls/fipstls.go`, `stubs/godebug/godebug.go`; import sites: `stubs/fipstls` in `boring.go`; `stubs/boring` and `stubs/cpu` in `cipher_suites.go`; `stubs/godebug` in `common.go`, `conn.go`, and `handshake_client.go` | Upstream `crypto/tls` imports four packages under `internal/` or `crypto/internal/`, which are not importable outside the standard library: `crypto/internal/boring`, `crypto/internal/boring/fipstls`, `internal/cpu`, `internal/godebug`. Each is replaced by a local stub package of the same name and function signatures, with `Enabled`/`Required`/`HasAES` and friends hardcoded to their disabled/false values and `Setting.Value()` hardcoded to `""`. `notboring.go` is otherwise unmodified upstream code; it already assumes `boring.Enabled == false` at compile time via a build tag pair, which this stand-in preserves logically without reproducing the build-tag split. |
 | CCM-8 cipher suite registration | new file `cipher_suites_ccm.go` | Registers `TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8` (`0xC0AE`, RFC 7251), the suite IEEE 2030.5-2018 SEP2 mandates, via an `init()` function that appends to `cipherSuites`, `cipherSuitesPreferenceOrder`, and `cipherSuitesPreferenceOrderNoAES`. It does not edit `cipher_suites.go` itself, which is why that file is byte-identical to upstream. The AEAD construction calls the sibling `pkg/sep2tls/ccm` package (a vendored pure-Go RFC 3610 CCM implementation), not a standard-library CCM. |
-| Fork-only tests | new files `ccm_check_test.go`, `ccm_raw_test.go` | Assert the CCM-8 suite is registered and exercise a raw handshake using it. Not part of upstream and not part of the diff below. |
-| Dropped file | `generate_cert.go` (upstream `crypto/tls`) | A `package main`, `//go:build ignore` standalone certificate-generation tool, not part of the `tls` package's compiled surface. Not carried into the fork. |
+| Fork-only tests | new files `ccm_check_test.go`, `ccm_raw_test.go` | Assert the CCM-8 suite is registered and exercise a raw handshake using it. Not part of upstream and not part of the diff. |
+| Dropped files | `generate_cert.go`, `fipsonly/fipsonly.go` (both upstream `crypto/tls`) | `generate_cert.go` is a `package main`, `//go:build ignore` standalone certificate-generation tool, not part of the `tls` package's compiled surface. `fipsonly/fipsonly.go` is a separate package (`crypto/tls/fipsonly`) that, when blank-imported, forces FIPS-only TLS configuration; it only exists under `GOEXPERIMENT=boringcrypto` and calls `crypto/internal/boring/fipstls` and `crypto/internal/boring/sig` directly, neither of which the fork stands in for. Neither file is carried into the fork. |
 
-## Known divergences (not yet reconciled with upstream; unverified by this record)
+## Known divergences (not yet reconciled with upstream)
 
-These are reported findings, not independently confirmed by this record.
-Source: `artifacts/outputs/leon-tls-dual-version-feasibility-2026-09-13.md`,
-findings LOW-5 and LOW-6, in the workspace at
-`/home/debian/repos/ieee-2030_5-project`.
+- **Legacy ClientHello handling**: `handshake_server.go` matches go1.22.0
+  byte-for-byte (see the base comparison above), and go1.22.0's
+  `handshake_server.go` does not contain the RFC 8446 Section 4.2.1 branch that
+  rejects a pre-TLS-1.3-style ClientHello carrying `legacy_version =
+  0x0304` with no `supported_versions` extension. That branch is present at
+  go1.25.0 and go1.27.1, and absent at go1.22.0, go1.22.12, go1.23.0,
+  go1.23.12, and go1.24.0 (checked directly against each tag's
+  `handshake_server.go`). Whether it was backported to a later go1.24.x
+  point release is not checked. Since the fork has never been rebased past
+  go1.22.0, it does not have this change either way.
+- **No AES-NI / hardware AES detection for cipher suite preference**:
+  `stubs/cpu/cpu.go` hardcodes `HasAES` (and the other feature flags) to
+  `false` on every architecture. `cipher_suites.go` reads this once, to
+  compute `hasAESGCMHardwareSupport`, which selects between
+  `cipherSuitesPreferenceOrder` and `cipherSuitesPreferenceOrderNoAES` in
+  `handshake_client.go` and `handshake_server.go`. So the fork always
+  negotiates as if no hardware AES acceleration were present, which can
+  affect which cipher suite a handshake settles on. It does not affect
+  whether AES itself runs in hardware: the AES primitives come from the
+  standard library's `crypto/aes.NewCipher`, which does its own,
+  independent CPU feature detection at the point the cipher is constructed.
+  This is a property of the stand-in design, not an upstream-fix gap, and
+  it holds regardless of which upstream base the fork is rebased to.
 
-- **LOW-5, legacy ClientHello handling**: the fork is reported to lack an
-  upstream fix for old-style TLS 1.3 ClientHellos that carry
-  `legacy_version = 0x0304` with no `supported_versions` extension. If real,
-  this is not a fork-introduced defect: `handshake_server.go` matches
-  go1.22.0 byte-for-byte (see the diff above), so any such fix would have to
-  have landed in a Go release after go1.22.0, and the fork has never been
-  rebased past it. Unverified by this record: confirm against the CVE or
-  commit that introduced the fix, then check whether it postdates go1.22.0.
-- **LOW-6, no AES-NI / hardware AES detection**: `stubs/cpu/cpu.go` hardcodes
-  `HasAES = false` (and the other feature flags) on every architecture, so
-  the fork always takes the pure-Go AES path even on hardware that has
-  AES-NI, ARMv8 crypto extensions, or the S390x equivalents. Confirmed by
-  reading `stubs/cpu/cpu.go`: this is exactly what the stub does, unlike
-  LOW-5 this is not an upstream-fix gap, it is a property of the stand-in
-  design and holds regardless of the upstream base chosen.
+## Reproducing the diff and checking for unrecorded files
 
-## Pending change: GRIDAPPSD/ieee-2030_5-core-go#136
+`check-upstream.sh`, in this directory, is the repeatable check. It needs
+network access to `github.com/golang/go` (a read-only mirror of
+`go.googlesource.com/go`) and `git`, `gofmt`, `sed`, `diff`, `sha256sum` on
+`PATH`. Run it from the repository root (the directory containing this
+project's `go.mod`):
 
-A change in progress on another branch (not merged as of this writing)
-reorders `cipherSuitesPreferenceOrder` and
-`cipherSuitesPreferenceOrderNoAES` in `cipher_suites_ccm.go` so CCM-8 is
-preferred ahead of the GCM suites already in those lists, rather than
-appended after them. That branch is out of scope for this record: this file
-is not edited by it and should be re-read, not assumed current, once #136
-lands, since the change list above for `cipher_suites_ccm.go` will need a
-line for it.
-
-## Reproducing the diff
-
-The command below clones a sparse, shallow copy of the upstream Go source
-tree at the recorded tag, rewrites the fork's package name and stub import
-paths back to their upstream form, runs `gofmt`, and diffs each shared file.
-It needs network access to `github.com/golang/go` (a read-only mirror of
-`go.googlesource.com/go`) and a `git`, `gofmt`, `sed`, `diff` on `PATH`.
-
-Save the block below as a script (for example `/tmp/gotls-diff.sh`) and run
-it from the repository root (the directory containing this project's
-`go.mod`):
-
-```bash
-#!/usr/bin/env bash
-# Repeatable diff of pkg/sep2tls/gotls against its recorded upstream base.
-# Run from the repository root (the directory containing go.mod).
-set -euo pipefail
-
-UPSTREAM_TAG="go1.22.0"
-UPSTREAM_COMMIT="a10e42f219abb9c5bc4e7d86d9464700a42c7d57"
-FORK_DIR="$(pwd)/pkg/sep2tls/gotls"
-WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
-
-git clone --quiet --filter=blob:none --sparse --branch "$UPSTREAM_TAG" --depth 1 \
-  https://github.com/golang/go "$WORK/go" >/dev/null
-git -C "$WORK/go" sparse-checkout set src/crypto/tls >/dev/null
-got="$(git -C "$WORK/go" rev-parse HEAD)"
-if [ "$got" != "$UPSTREAM_COMMIT" ]; then
-  echo "upstream commit mismatch: got $got, want $UPSTREAM_COMMIT" >&2
-  exit 1
-fi
-
-NORM="$WORK/norm"
-mkdir -p "$NORM"
-
-# Files shared between the fork and upstream crypto/tls. Excludes the fork's
-# own additions (cipher_suites_ccm.go, ccm_*_test.go, stubs/**), upstream's
-# generate_cert.go (a standalone cmd the fork drops), and all _test.go files
-# (the fork carries none of upstream's).
-FILES="alert.go auth.go boring.go cache.go cipher_suites.go common.go
-common_string.go conn.go handshake_client.go handshake_client_tls13.go
-handshake_messages.go handshake_server.go handshake_server_tls13.go
-key_agreement.go key_schedule.go notboring.go prf.go quic.go ticket.go tls.go"
-
-for f in $FILES; do
-  sed -e 's/^package gotls$/package tls/' \
-      -e 's#github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/fipstls#crypto/internal/boring/fipstls#' \
-      -e 's#github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/boring#crypto/internal/boring#' \
-      -e 's#github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/cpu#internal/cpu#' \
-      -e 's#github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/godebug#internal/godebug#' \
-      "$FORK_DIR/$f" > "$NORM/$f"
-done
-gofmt -w "$NORM"/*.go
-
-status=0
-for f in $FILES; do
-  diff -u "$WORK/go/src/crypto/tls/$f" "$NORM/$f" || status=1
-done
-exit $status
+```
+pkg/sep2tls/gotls/check-upstream.sh
 ```
 
-A clean run produces no diff output and exits 0. Any output means either a
-deliberate change was made outside the list above (update this file) or
-upstream drift needs reconciling (see the next section).
+It does three things:
+
+1. Diffs the 20 shared files (normalized back to upstream package and
+   import names, then `gofmt`-formatted) against the recorded upstream tag,
+   the same comparison used to establish the base above.
+2. Checks every file listed in `upstream-manifest.sha256` against its
+   recorded sha256. That file covers the fork-only files that have no
+   upstream counterpart (`cipher_suites_ccm.go`, `ccm_check_test.go`,
+   `ccm_raw_test.go`, and the four `stubs/*/*.go` files) and any shared file
+   that has been deliberately patched (see "Recording a deliberate change"
+   below). A content change to any of these with no matching manifest
+   update is reported.
+3. Scans every file under `pkg/sep2tls/gotls` and reports any path that is
+   neither one of the 20 shared files, a manifest entry, nor the check
+   script, its `bats` test suite, the manifest, or this document. A new
+   file added to the tree without being classified one way or the other is
+   reported rather than passing silently.
+
+Exit codes:
+
+| Exit | Meaning |
+|---|---|
+| 0 | Clean: every shared file matches upstream (or a recorded patch), every manifest entry matches its recorded hash, no unrecorded file. |
+| 1 | Drift: a shared file differs from upstream with no recorded patch, a manifest entry's content no longer matches its recorded hash, or an expected file is missing. |
+| 2 | Environment: a required tool is missing, the script was not run from the repository root, or the upstream clone/checkout could not be produced as recorded (bad tag, commit mismatch, sparse-checkout failure, network failure, an upstream file absent after checkout). This is a tooling failure, not evidence of drift. |
+| 3 | Unrecorded: a file exists under `pkg/sep2tls/gotls` that this script cannot classify. Add it to the `FILES` list in `check-upstream.sh` if it is meant to track an upstream file, or record it in `upstream-manifest.sha256` if it is fork-only. |
+
+A nonzero exit prints one or more messages on stderr naming which of the
+three checks above failed and why; read the message to tell drift, an
+environment failure, and an unrecorded file apart, since each calls for a
+different fix.
+
+## Recording a deliberate change
+
+Two situations call for a manifest update rather than a code change:
+
+- **A new fork-only file** (for example, a new stub or a new fork-only
+  test): add a `fork-only` line to `upstream-manifest.sha256` with
+  `sha256sum pkg/sep2tls/gotls/<path>` and a short note of why the file
+  exists. Without this, `check-upstream.sh` reports it as unrecorded (exit
+  3).
+- **A hand-ported fix to a shared file** (see the security-release
+  procedure below): after making the change, add or update a `patched`
+  line in `upstream-manifest.sha256` for that file, again with its current
+  `sha256sum` and a note naming the release or advisory the fix came from.
+  Once a shared file has a `patched` entry, `check-upstream.sh` stops
+  diffing it against upstream and instead checks its hash against that
+  entry, so the check passes on the recorded change and still fails if the
+  file changes again without the manifest being updated.
 
 ## Checking upstream `crypto/tls` security releases against the fork
 
@@ -178,19 +179,20 @@ upstream drift needs reconciling (see the next section).
    mentions `crypto/tls`.
 2. For each such release, fetch the affected file(s) from
    `https://go.googlesource.com/go/+/refs/tags/<tag>/src/crypto/tls/<file>`
-   (append `?format=TEXT` for a base64 body, or use the diff command above
-   with `UPSTREAM_TAG` and `UPSTREAM_COMMIT` temporarily set to the fixed
-   release, run against the CURRENT base tag's checkout, to see the
-   security delta directly) and compare the affected function against the
-   fork's copy of the same file.
+   (append `?format=TEXT` for a base64 body, or temporarily edit
+   `UPSTREAM_TAG` and `UPSTREAM_COMMIT` in a scratch copy of
+   `check-upstream.sh` to the fixed release and run it against the current
+   base's checkout, to see the security delta directly) and compare the
+   affected function against the fork's copy of the same file.
 3. If the fix applies to a file the fork carries unmodified from go1.22.0,
-   port the fix by hand into the fork file, and update the "Deliberate
-   changes" table above with a new row naming the CVE or release and the
-   file(s) touched. Do not bump `UPSTREAM_TAG` in the diff command unless
-   every file has been re-verified against the new base by the same
+   port the fix by hand into the fork file, add a new row to the
+   "Deliberate changes" table above naming the CVE or release and the
+   file(s) touched, and record the change per "Recording a deliberate
+   change" above. Do not bump `UPSTREAM_TAG` in `check-upstream.sh` unless
+   every shared file has been re-verified against the new base by the same
    procedure used to establish go1.22.0 above; a partial rebase would make
    the recorded base a false claim about files that were not actually
    re-diffed.
-4. If the fix applies to `generate_cert.go` or any other file the fork does
-   not carry, no action is needed here; note it was checked and found
-   inapplicable.
+4. If the fix applies to `generate_cert.go`, `fipsonly/fipsonly.go`, or any
+   other file the fork does not carry, no action is needed here; note it
+   was checked and found inapplicable.
