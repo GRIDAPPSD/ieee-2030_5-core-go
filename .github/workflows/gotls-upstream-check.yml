@@ -1,0 +1,71 @@
+name: gotls upstream check
+
+# check-upstream.sh diffs pkg/sep2tls/gotls against its recorded upstream
+# crypto/tls base and checks upstream-manifest.sha256; check-upstream.bats
+# is its smoke-and-failure-path suite. See pkg/sep2tls/gotls/UPSTREAM.md.
+# Without this workflow, a change to a covered file (or PR #143-style
+# addition of a fork-only file) can merge with a red or stale check and
+# nobody finds out until someone runs the script by hand.
+#
+# GitHub-hosted runners are acceptable here: this job is read-only
+# verification (a script and a test suite), it deploys nothing, pushes to
+# no registry, and uses no repository secret. It does read the public
+# network to clone github.com/golang/go, which a GitHub-hosted runner can
+# reach without any additional configuration. See
+# .claude/rules/devops.md "GitHub Actions" in the workspace for the
+# posture this exception follows.
+#
+# Scoped to pull requests (and pushes to main) that touch
+# pkg/sep2tls/gotls/, so an unrelated change elsewhere in the module does
+# not pay for a network clone of golang/go on every run.
+
+on:
+  push:
+    branches: [main]
+    paths: ['pkg/sep2tls/gotls/**']
+  pull_request:
+    branches: [main]
+    paths: ['pkg/sep2tls/gotls/**']
+
+permissions:
+  contents: read
+
+jobs:
+  check-upstream:
+    name: check-upstream.sh and bats
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Install shellcheck and bats
+        # shellcheck ships on GitHub's ubuntu-latest image already; bats
+        # does not, per the runner image's published software list. Both
+        # are installed explicitly so this job does not depend on an
+        # unstated assumption about what the image happens to carry.
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends shellcheck bats
+
+      - name: Shellcheck
+        run: |
+          set -euo pipefail
+          shellcheck -x pkg/sep2tls/gotls/check-upstream.sh
+          shellcheck pkg/sep2tls/gotls/check-upstream.bats
+
+      - name: bats suite (mocked upstream, no network)
+        run: bats pkg/sep2tls/gotls/check-upstream.bats
+
+      - name: check-upstream.sh (live upstream clone)
+        # Run from the repository root, as UPSTREAM.md documents. A
+        # nonzero exit here means drift, an unrecorded file, or both (see
+        # the exit-code table in UPSTREAM.md); an environment failure
+        # (network, missing tool, bad checkout) exits 2 and is not
+        # evidence of either.
+        run: pkg/sep2tls/gotls/check-upstream.sh

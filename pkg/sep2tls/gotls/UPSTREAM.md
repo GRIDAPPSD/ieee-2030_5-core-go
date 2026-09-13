@@ -158,6 +158,15 @@ failed and why; read the message to tell drift, an environment failure,
 and an unrecorded file apart, since each calls for a different fix, and a
 combined exit code (5) means more than one message is present.
 
+## Running this check automatically
+
+`.github/workflows/gotls-upstream-check.yml` runs `check-upstream.sh` and
+the `bats` suite on every pull request that touches `pkg/sep2tls/gotls/`,
+and fails the job on a nonzero exit from either. A change to a covered
+file that is merged without this job having run (for example, a manifest
+edit outside a pull request) is not covered by this automation and
+should be verified by hand before relying on it.
+
 ## Recording a deliberate change
 
 Three situations call for a manifest update rather than a code change.
