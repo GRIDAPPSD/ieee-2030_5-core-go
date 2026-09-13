@@ -97,7 +97,9 @@ func Noop(_ context.Context, _ *x509.Certificate, _ sep2.Notification) {}
 // callers can wire the listener and defer dispatcher selection.
 //
 // Logger, if non-nil, receives diagnostic messages from the receiver
-// (currently: dispatcher panic recovery). A nil Logger is silent.
+// (currently: dispatcher panic recovery). A nil Logger is silent. Refused
+// TLS handshakes are logged through the standard log package, where
+// net/http logs its own server errors.
 type Config struct {
 	CertFile   string
 	KeyFile    string
@@ -183,8 +185,6 @@ func (r *Receiver) Start() error {
 	if err != nil {
 		return fmt.Errorf("notify receiver: listen %s: %w", r.listenAddr, err)
 	}
-	tlsL := gotls.NewListener(tcpL, r.tlsCfg)
-
 	mux := http.NewServeMux()
 	mux.Handle("/notify", r.handler())
 
@@ -202,6 +202,9 @@ func (r *Receiver) Start() error {
 			return ctx
 		},
 	}
+	// net/http does not run or log the handshake for a *gotls.Conn, so the
+	// wrapper logs refused handshakes where net/http logs its own errors.
+	tlsL := sepTLS.WrapCCMListener(gotls.NewListener(tcpL, r.tlsCfg), srv.ErrorLog)
 
 	doneCh := make(chan error, 1)
 	r.tlsL = tlsL
