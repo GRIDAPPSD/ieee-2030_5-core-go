@@ -303,9 +303,9 @@ type DERList struct {
 //
 // Field order matches the sep.xsd DERCapability sequence (subset present
 // here): modesSupported, rtgMaxA, rtgMaxChargeRateW, rtgMaxDischargeRateW,
-// rtgMaxVar, rtgMaxW, type. rtgMaxW is required (minOccurs=1) and sorts
-// near the end of the full XSD sequence, not immediately after
-// modesSupported.
+// rtgMaxV, rtgMaxVA, rtgMaxVar, rtgMaxW, type. rtgMaxW is required
+// (minOccurs=1) and sorts near the end of the full XSD sequence, not
+// immediately after modesSupported.
 type DERCapability struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns DERCapability"`
 	Resource
@@ -313,6 +313,8 @@ type DERCapability struct {
 	RTGMaxA              *int32          `xml:"rtgMaxA,omitempty"`
 	RTGMaxChargeRateW    *ActivePower    `xml:"rtgMaxChargeRateW,omitempty"`
 	RTGMaxDischargeRateW *ActivePower    `xml:"rtgMaxDischargeRateW,omitempty"`
+	RTGMaxV              *VoltageRMS     `xml:"rtgMaxV,omitempty"`
+	RTGMaxVA             *ApparentPower  `xml:"rtgMaxVA,omitempty"`
 	RTGMaxVar            *ReactivePower  `xml:"rtgMaxVar,omitempty"`
 	RTGMaxW              *ActivePower    `xml:"rtgMaxW,omitempty"`
 	Type                 *uint8          `xml:"type,omitempty"`
@@ -344,6 +346,14 @@ func (d DERCapability) Copy() DERCapability {
 	if d.RTGMaxDischargeRateW != nil {
 		v := *d.RTGMaxDischargeRateW
 		c.RTGMaxDischargeRateW = &v
+	}
+	if d.RTGMaxV != nil {
+		v := *d.RTGMaxV
+		c.RTGMaxV = &v
+	}
+	if d.RTGMaxVA != nil {
+		v := *d.RTGMaxVA
+		c.RTGMaxVA = &v
 	}
 	if d.Type != nil {
 		v := *d.Type
