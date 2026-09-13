@@ -2,6 +2,7 @@ package sep2tls_test
 
 import (
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -516,4 +517,46 @@ func TestCCMListenerClosesSilentPeerAfterHandshakeBound(t *testing.T) {
 	// a mutant that removes the bound or lengthens it stays open past the
 	// window and fails here instead of passing silently.
 	assertClosedByServer(t, silent)
+}
+
+// TestCCMListenerClosesConnectionAfterFailedHandshake proves the wrapper
+// closes the accepted connection itself when the TLS handshake fails for a
+// protocol reason (not just the timeout bound above), so the peer observes
+// the close rather than a connection left open behind a TLS-level refusal.
+func TestCCMListenerClosesConnectionAfterFailedHandshake(t *testing.T) {
+	files := newCCMTestFiles(t)
+	cfg := newCCMServerConfig(t, files)
+	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	wrapped := sepTLS.WrapCCMListener(gotls.NewListener(tcpListener, cfg), log.New(io.Discard, "", 0))
+	srv := &http.Server{Handler: http.NewServeMux()}
+	go func() { _ = srv.Serve(wrapped) }()
+	defer func() { _ = srv.Close() }()
+
+	raw, err := net.Dial("tcp", tcpListener.Addr().String())
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer func() { _ = raw.Close() }()
+
+	caPool := x509.NewCertPool()
+	if !caPool.AppendCertsFromPEM(files.caPEM) {
+		t.Fatal("failed to parse CA cert into pool")
+	}
+	client := tls.Client(raw, &tls.Config{
+		RootCAs:          caPool,
+		ServerName:       "127.0.0.1",
+		MinVersion:       tls.VersionTLS13,
+		MaxVersion:       tls.VersionTLS13,
+		CurvePreferences: []tls.CurveID{tls.CurveP256},
+	})
+	if err := client.Handshake(); err == nil {
+		t.Fatal("expected a TLS 1.3-only client to be refused, the handshake succeeded")
+	}
+
+	// raw, not client: proves the underlying connection was closed, not just
+	// that the tls.Conn abstraction gave up on it.
+	assertClosedByServer(t, raw)
 }
