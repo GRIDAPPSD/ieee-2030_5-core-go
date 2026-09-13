@@ -230,10 +230,19 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Install bats
+        run: sudo apt-get update && sudo apt-get install -y bats
+
+      - name: Run gate-check script tests
+        run: bats .github/scripts/check-lint-gate.bats
+
       - name: Verify the lint gate itself
-        # Keeps the gate honest after merge: fails if an exclusion path
-        # escapes the two vendored fork directories, if the lint step
-        # gains continue-on-error, or if issues-exit-code is silenced.
+        # Runs golangci-lint itself against a scratch copy of the tree with
+        # planted first-party findings, so an exclusion pattern or a
+        # silenced issues-exit-code shows up as golangci-lint's own
+        # behavior. Limit: this and the workflow checks below run inside
+        # the same job they would need to catch a disabled Lint step or
+        # job in; only branch protection or review closes that gap.
         run: .github/scripts/check-lint-gate.sh
 
       - name: Lint
