@@ -210,6 +210,17 @@ run_check() {
   [ "$status" -eq 0 ]
 }
 
+@test "a patched file whose fork content has actually diverged from upstream is exempt from the direct diff" {
+  local fork_hash upstream_hash
+  printf '\n// deliberate fork patch: diverges from upstream\n' >>"$FORK_DIR/handshake_server.go"
+  fork_hash="$(sha256sum "$FORK_DIR/handshake_server.go" | cut -d' ' -f1)"
+  upstream_hash="$(sha256sum "$UPSTREAM_FIXTURE/handshake_server.go" | cut -d' ' -f1)"
+  printf 'patched\thandshake_server.go\t%s\t%s\ttest: pretend deliberate patch that diverges from upstream\n' \
+    "$fork_hash" "$upstream_hash" >>"$FORK_DIR/upstream-manifest.sha256"
+  run run_check
+  [ "$status" -eq 0 ]
+}
+
 @test "a patched file reports drift once upstream moves past its recorded base hash" {
   local fork_hash
   fork_hash="$(sha256sum "$FORK_DIR/handshake_server.go" | cut -d' ' -f1)"
