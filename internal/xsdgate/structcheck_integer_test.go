@@ -11,6 +11,7 @@ import (
 // operator-supplied schema is present.
 const integerFixtureXSD = `<?xml version="1.0" encoding="UTF-8"?>
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns="urn:example:fixture" targetNamespace="urn:example:fixture">
+  <xs:simpleType name="Int8"><xs:restriction base="xs:byte"/></xs:simpleType>
   <xs:simpleType name="Int16"><xs:restriction base="xs:short"/></xs:simpleType>
   <xs:simpleType name="Int32"><xs:restriction base="xs:int"/></xs:simpleType>
   <xs:simpleType name="UInt8"><xs:restriction base="xs:unsignedByte"/></xs:simpleType>
@@ -22,6 +23,8 @@ const integerFixtureXSD = `<?xml version="1.0" encoding="UTF-8"?>
     </xs:restriction>
   </xs:simpleType>
   <xs:simpleType name="Dangling"><xs:restriction base="NoSuchType"/></xs:simpleType>
+  <xs:simpleType name="CycleA"><xs:restriction base="CycleB"/></xs:simpleType>
+  <xs:simpleType name="CycleB"><xs:restriction base="CycleA"/></xs:simpleType>
   <xs:simpleType name="Unbounded"><xs:restriction base="xs:integer"/></xs:simpleType>
   <xs:simpleType name="Hex8">
     <xs:restriction base="xs:hexBinary"><xs:maxLength value="1"/></xs:restriction>
@@ -94,7 +97,11 @@ func TestCheckStructIntegerRange(t *testing.T) {
 		{"uint32 over xs:int exceeds the signed maximum", reflect.TypeOf(uint32(0)), "Int32", false, width},
 		{"slice of int64 over repeated xs:unsignedInt", reflect.TypeOf([]int64(nil)), "UInt32", false, width},
 		{"slice of uint32 over repeated xs:unsignedInt", reflect.TypeOf([]uint32(nil)), "UInt32", false, nil},
+		{"slice of pointer int32 over repeated xs:short", reflect.TypeOf([]*int32(nil)), "Int16", false, width},
+		{"array of int32 over repeated xs:short", reflect.TypeOf([3]int32{}), "Int16", false, width},
 		{"byte slice is character data, not repeated integers", reflect.TypeOf([]byte(nil)), "Hex8", false, nil},
+		{"byte slice over an integer type is character data", reflect.TypeOf([]byte(nil)), "Int8", false, nil},
+		{"byte array over an integer type is character data", reflect.TypeOf([4]byte{}), "Int8", false, nil},
 		{"int32 over simpleContent extending xs:short", reflect.TypeOf(int32(0)), "Wrapped16", false, width},
 		{"int16 over simpleContent extending xs:short", reflect.TypeOf(int16(0)), "Wrapped16", false, nil},
 		{"named int16 type over xs:short", reflect.TypeOf(fixtureRange(0)), "Int16", false, nil},
@@ -103,6 +110,7 @@ func TestCheckStructIntegerRange(t *testing.T) {
 		{"int16 over a facet-narrowed xs:short passes on width alone", reflect.TypeOf(int16(0)), "Ranged16", false, nil},
 		{"dangling restriction base", reflect.TypeOf(int32(0)), "Dangling", false, unresolved},
 		{"undeclared type", reflect.TypeOf(int32(0)), "NotDeclared", false, unresolved},
+		{"restriction cycle", reflect.TypeOf(int32(0)), "CycleA", false, unresolved},
 		{"built-in outside the gate's integer set", reflect.TypeOf(int64(0)), "Unbounded", false, unresolved},
 		{"complex type with element content", reflect.TypeOf(uint16(0)), "Holder", false, unresolved},
 		{"attribute int32 over xs:short is wider", reflect.TypeOf(int32(0)), "Int16", true, width},
@@ -169,6 +177,7 @@ func TestIntegerBaseChain(t *testing.T) {
 		{"Hex8", "hexBinary", "Hex8 -> hexBinary"},
 		{"Dangling", "", "Dangling -> NoSuchType"},
 		{"Holder", "", "Holder"},
+		{"CycleA", "", "CycleA -> CycleB -> CycleA"},
 		{"Unbounded", "", "Unbounded -> integer"},
 	}
 	for _, tc := range cases {
