@@ -120,12 +120,12 @@ func (s *Schema) integerBase(typeName string) (builtin string, chain []string) {
 // array around it. encoding/xml repeats the element once per item, except for
 // a byte slice or array, which it writes as character data.
 func elementValueType(ft reflect.Type) reflect.Type {
-	for ft.Kind() == reflect.Ptr {
+	for ft.Kind() == reflect.Pointer {
 		ft = ft.Elem()
 	}
 	if k := ft.Kind(); (k == reflect.Slice || k == reflect.Array) && ft.Elem().Kind() != reflect.Uint8 {
 		ft = ft.Elem()
-		for ft.Kind() == reflect.Ptr {
+		for ft.Kind() == reflect.Pointer {
 			ft = ft.Elem()
 		}
 	}
@@ -308,7 +308,7 @@ func holdsInteger(t reflect.Type, seen map[reflect.Type]bool) bool {
 // element name with an unrepresentable Go type can pass here. Marshalling a
 // value and running Validate catches the lexical consequence.
 func (s *Schema) CheckStruct(typeName string, t reflect.Type) (Problems, error) {
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t.Kind() != reflect.Struct {
@@ -431,7 +431,7 @@ func flattenFields(t reflect.Type) []reflect.StructField {
 		f := t.Field(i)
 		if f.Anonymous {
 			ft := f.Type
-			for ft.Kind() == reflect.Ptr {
+			for ft.Kind() == reflect.Pointer {
 				ft = ft.Elem()
 			}
 			if ft.Kind() == reflect.Struct && f.Tag.Get("xml") == "" {

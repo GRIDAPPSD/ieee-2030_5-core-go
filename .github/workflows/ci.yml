@@ -3,9 +3,7 @@ name: CI
 # GitHub-hosted runners are acceptable here: both jobs are read-only
 # verification (build, vet, test, and a gofmt formatting check), and
 # neither job deploys, pushes to a registry, or writes anywhere but
-# its own ephemeral runner storage. See
-# .claude/rules/devops.md "GitHub Actions" in the Knowledge workspace
-# for the posture this exception follows.
+# its own ephemeral runner storage.
 #
 # Unlike the sibling gridappsd-ieee-2030_5-go bridge repo, this module
 # imports no other GRIDAPPSD modules (see go.mod: only
@@ -219,3 +217,45 @@ jobs:
             exit 1
           fi
           echo "gofmt check passed (excluding the vendored stub noted above)."
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Install bats
+        run: sudo apt-get update && sudo apt-get install -y bats
+
+      - name: Run gate-check script tests
+        run: bats .github/scripts/check-lint-gate.bats
+
+      - name: Lint
+        # golangci-lint v2.12.2 is built with go1.26.2 and supports modules
+        # declaring `go 1.26.3` in go.mod. Earlier releases (through v2.9.0)
+        # were compiled with go1.25 and reject go1.26 modules at startup.
+        # Config schema is unchanged (v2). See `.golangci.yml`.
+        # The action installs the binary (cached across runs), leaves it on
+        # PATH for later steps, and runs it. Matches the pin in the sibling
+        # server repo's ci.yml so the two stay on the same golangci-lint
+        # release.
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+
+      - name: Verify the lint gate itself
+        # Plants a fixed set of first-party and fork findings and runs the
+        # committed .golangci.yml with this step's own golangci-lint
+        # binary (installed and left on PATH by the Lint step above); see
+        # the script's header for the exact property checked and its
+        # limits. Limit: this and the workflow checks it also runs run
+        # inside the same job they would need to catch a disabled Lint
+        # step or job in; only branch protection or review closes that
+        # gap.
+        run: .github/scripts/check-lint-gate.sh
