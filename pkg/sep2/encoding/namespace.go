@@ -19,7 +19,7 @@ type NamespaceMode int
 
 const (
 	Namespace2018 NamespaceMode = iota // urn:ieee:std:2030.5:ns (2018/2023)
-	Namespace2013                      // http://ieee.org/2030.5 (2013)
+	Namespace2013                      // http://zigbee.org/sep (2013)
 )
 
 // maxMediaRanges bounds per-request parsing cost against an oversized
