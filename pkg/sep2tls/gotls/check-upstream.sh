@@ -215,6 +215,7 @@ scan_for_unrecorded() {
 diff_shared_files() {
   local work norm rc=0 f ptype upstream_file diff_rc
   local -a missing_from_fork=()
+  local clone_err=""
   work="$(mktemp -d)"
   # A trap set for INT or TERM runs its command and then, by default,
   # resumes the script rather than terminating it: without an explicit
@@ -223,11 +224,15 @@ diff_shared_files() {
   # reflects whatever that continuation happens to hit (including 0)
   # instead of the interruption. Separate traps that exit immediately
   # after cleanup, with the conventional 128+signal codes, close that.
-  trap 'rm -rf "$work"' EXIT
-  trap 'rm -rf "$work"; exit 130' INT
-  trap 'rm -rf "$work"; exit 143' TERM
+  # Each trap also removes clone_err: it is created below, outside
+  # $work, so a signal caught mid-clone (before the two unconditional
+  # rm -f clone_err lines further down ever run) would otherwise leave
+  # it behind. The guard on clone_err being non-empty covers the window
+  # before it is assigned.
+  trap 'rm -rf "$work"; [ -n "$clone_err" ] && rm -f "$clone_err"' EXIT
+  trap 'rm -rf "$work"; [ -n "$clone_err" ] && rm -f "$clone_err"; exit 130' INT
+  trap 'rm -rf "$work"; [ -n "$clone_err" ] && rm -f "$clone_err"; exit 143' TERM
 
-  local clone_err
   clone_err="$(mktemp)"
   if ! timeout "$CLONE_TIMEOUT_SECS" git clone --quiet --filter=blob:none --sparse \
     --branch "$UPSTREAM_TAG" --depth 1 \

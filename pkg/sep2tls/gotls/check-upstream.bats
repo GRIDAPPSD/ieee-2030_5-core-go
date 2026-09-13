@@ -127,7 +127,7 @@ run_check() {
 }
 
 @test "a SIGTERM during the upstream clone exits at once instead of continuing" {
-  local sig_bin="$WORK/sigterm-git-bin" marker="$WORK/sigterm-clone-started" pid status
+  local sig_bin="$WORK/sigterm-git-bin" marker="$WORK/sigterm-clone-started" tmp_under_test pid status
   mkdir -p "$sig_bin"
   cat >"$sig_bin/git" <<GITEOF
 #!/usr/bin/env bash
@@ -142,14 +142,18 @@ echo "mock git: unhandled args: \$*" >&2
 exit 1
 GITEOF
   chmod +x "$sig_bin/git"
+  tmp_under_test="$WORK/tmp-under-test"
+  mkdir -p "$tmp_under_test"
   # `exec` inside the subshell replaces it with check-upstream.sh itself,
   # so `$!` names the script's own process. Without it, `$!` is the
   # `(cd ... && ...)` subshell: an untrapped TERM kills that subshell
   # outright (exit status 143 from being killed by the signal, not from
   # the script's own `exit 143`) while the script keeps running
   # underneath it, so the assertion below passes whether or not the
-  # script's own trap works.
-  (cd "$REPO" && PATH="$sig_bin:$PATH" exec bash "$FORK_DIR/check-upstream.sh") &
+  # script's own trap works. TMPDIR is scoped to a directory this test
+  # owns so the emptiness check below can only see temp files this run
+  # created, mktemp honors it.
+  (cd "$REPO" && TMPDIR="$tmp_under_test" PATH="$sig_bin:$PATH" exec bash "$FORK_DIR/check-upstream.sh") &
   pid=$!
   for _ in $(seq 1 50); do
     [ -f "$marker" ] && break
@@ -160,6 +164,7 @@ GITEOF
   status=0
   wait "$pid" || status=$?
   [ "$status" -eq 143 ]
+  [ -z "$(find "$tmp_under_test" -mindepth 1)" ]
 }
 
 @test "a shared file that drifts from the fixture exits 1" {
