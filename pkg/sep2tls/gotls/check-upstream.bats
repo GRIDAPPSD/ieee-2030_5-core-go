@@ -139,18 +139,27 @@ run_check() {
   [[ "$output" == *"drift: cipher_suites_ccm.go"* ]]
 }
 
-@test "an unrecorded new file exits 3" {
+@test "an unrecorded new file exits 4" {
   printf 'package gotls\n' >"$FORK_DIR/unrecorded.go"
   run run_check
-  [ "$status" -eq 3 ]
+  [ "$status" -eq 4 ]
   [[ "$output" == *"unrecorded: unrecorded.go"* ]]
 }
 
 @test "a symlink under FORK_DIR is scanned, not skipped by -type f" {
   ln -s alert.go "$FORK_DIR/evil-link.go"
   run run_check
-  [ "$status" -eq 3 ]
+  [ "$status" -eq 4 ]
   [[ "$output" == *"unrecorded: evil-link.go"* ]]
+}
+
+@test "drift and an unrecorded file combine into exit 5 instead of one overwriting the other" {
+  printf '\n// test-only marker\n' >>"$FORK_DIR/alert.go"
+  printf 'package gotls\n' >"$FORK_DIR/unrecorded.go"
+  run run_check
+  [ "$status" -eq 5 ]
+  [[ "$output" == *"test-only marker"* ]]
+  [[ "$output" == *"unrecorded: unrecorded.go"* ]]
 }
 
 @test "each of find, awk, cut, mktemp, and timeout is checked before use" {

@@ -113,7 +113,8 @@ was).
 
 `check-upstream.sh`, in this directory, is the repeatable check. It needs
 network access to `github.com/golang/go` (a read-only mirror of
-`go.googlesource.com/go`) and `git`, `gofmt`, `sed`, `diff`, `sha256sum` on
+`go.googlesource.com/go`, bounded to a 90-second clone) and `git`, `gofmt`,
+`sed`, `diff`, `sha256sum`, `find`, `awk`, `cut`, `mktemp`, and `timeout` on
 `PATH`. Run it from the repository root (the directory containing this
 project's `go.mod`):
 
@@ -133,8 +134,8 @@ It does three things:
    that has been deliberately patched (see "Recording a deliberate change"
    below). A content change to any of these with no matching manifest
    update is reported.
-3. Scans every file under `pkg/sep2tls/gotls` and reports any path that is
-   neither one of the 20 shared files, a manifest entry, nor the check
+3. Scans every file or symlink under `pkg/sep2tls/gotls` and reports any
+   path that is neither one of the 20 shared files, a manifest entry, nor the check
    script, its `bats` test suite, the manifest, or this document. A new
    file added to the tree without being classified one way or the other is
    reported rather than passing silently.
@@ -144,14 +145,13 @@ Exit codes:
 | Exit | Meaning |
 |---|---|
 | 0 | Clean: every shared file matches upstream (or a recorded patch), every manifest entry matches its recorded hash, no unrecorded file. |
-| 1 | Drift: a shared file differs from upstream with no recorded patch, a manifest entry's content no longer matches its recorded hash, or an expected file is missing. |
-| 2 | Environment: a required tool is missing, the script was not run from the repository root, or the upstream clone/checkout could not be produced as recorded (bad tag, commit mismatch, sparse-checkout failure, network failure, an upstream file absent after checkout). This is a tooling failure, not evidence of drift. |
-| 3 | Unrecorded: a file exists under `pkg/sep2tls/gotls` that this script cannot classify. Add it to the `FILES` list in `check-upstream.sh` if it is meant to track an upstream file, or record it in `upstream-manifest.sha256` if it is fork-only. |
+| 2 | Environment: a required tool is missing, the script was not run from the repository root, or the upstream clone/checkout could not be produced as recorded (bad tag, commit mismatch, sparse-checkout failure, network failure, an upstream file absent after checkout). This is a tooling or setup failure, not evidence of drift, and is never combined with the bits below: it always ends the run by itself. |
+| any other nonzero | A bitwise OR of: **1** (drift: a shared file differs from upstream with no recorded patch, a manifest entry's hash no longer matches its recorded content, or an expected shared file is missing) and **4** (unrecorded: a file or symlink exists under `pkg/sep2tls/gotls` that this script cannot classify; add it to the `FILES` list in `check-upstream.sh` if it is meant to track an upstream file, or record it in `upstream-manifest.sha256` if it is fork-only). So exit 5 means both drift and an unrecorded file were found in the same run; neither overwrites the other. |
 
-A nonzero exit prints one or more messages on stderr naming which of the
-three checks above failed and why; read the message to tell drift, an
-environment failure, and an unrecorded file apart, since each calls for a
-different fix.
+A nonzero exit prints one or more messages on stderr naming which check
+failed and why; read the message to tell drift, an environment failure,
+and an unrecorded file apart, since each calls for a different fix, and a
+combined exit code (5) means more than one message is present.
 
 ## Recording a deliberate change
 

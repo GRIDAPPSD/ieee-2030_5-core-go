@@ -8,19 +8,25 @@
 #   0  clean: every shared file matches upstream (or a recorded patch),
 #      every manifest entry matches its recorded hash, and no unrecorded
 #      file was found under pkg/sep2tls/gotls.
-#   1  drift: a shared file differs from upstream with no recorded patch,
-#      a manifest entry's hash no longer matches the file's content, or a
-#      file this script expects is missing.
 #   2  environment: a required tool is missing, the script was not run
 #      from the repository root, the upstream clone/checkout could not be
 #      produced as recorded (bad tag, commit mismatch, sparse-checkout
 #      failure, network failure, an upstream file absent after checkout),
 #      or a step this script depends on (the file walk, the normalization
 #      pass) could not be completed. This is a tooling failure, not
-#      evidence of drift.
-#   3  unrecorded: a file exists under pkg/sep2tls/gotls that is neither a
-#      shared file, a manifest entry, nor an ignored path. Add it to FILES
-#      or record it in upstream-manifest.sha256.
+#      evidence of drift. 2 is reserved for these and is never combined
+#      with a bit below: it is returned directly, ending the run.
+#   Any other nonzero exit is a bitwise OR of the codes below, so a run
+#   that hits more than one condition reports all of them at once instead
+#   of the last one silently winning. Read stderr for which fired.
+#     1  drift: a shared file differs from upstream with no recorded
+#        patch, a manifest entry's hash no longer matches the file's
+#        content, or a file this script expects is missing.
+#     4  unrecorded: a file (or symlink) exists under pkg/sep2tls/gotls
+#        that is neither a shared file, a manifest entry, nor an ignored
+#        path. Add it to FILES or record it in upstream-manifest.sha256.
+#   So 5 (1|4) means both drift and an unrecorded file were found in the
+#   same run.
 set -euo pipefail
 
 UPSTREAM_TAG="go1.22.0"
@@ -106,7 +112,7 @@ check_manifest() {
 
 # scan_for_unrecorded walks every file or symlink under FORK_DIR and
 # reports any path that is neither a shared FILES entry, a manifest entry,
-# nor an ignored path. Returns 3 if it found one, 0 otherwise; exits 2
+# nor an ignored path. Returns 1 if it found one, 0 otherwise; exits 2
 # directly if the walk itself could not be completed (for example a find
 # that rejects -printf, a GNU extension not available on BSD/macOS find),
 # so a broken walk fails the run instead of silently reporting that it
@@ -126,7 +132,7 @@ scan_for_unrecorded() {
       continue
     fi
     echo "unrecorded: $relpath is not in FILES or $MANIFEST" >&2
-    rc=3
+    rc=1
   done <"$list"
   rm -f "$list"
   return "$rc"
@@ -230,9 +236,9 @@ main() {
   fi
 
   local status=0
-  diff_shared_files || status=1
-  check_manifest || status=1
-  scan_for_unrecorded || status=3
+  diff_shared_files || status=$((status | 1))
+  check_manifest || status=$((status | 1))
+  scan_for_unrecorded || status=$((status | 4))
 
   exit "$status"
 }
