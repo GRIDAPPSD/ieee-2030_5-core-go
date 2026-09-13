@@ -110,7 +110,12 @@ check_manifest() {
     echo "error: manifest not found at $MANIFEST" >&2
     exit 2
   }
-  while IFS=$'\t' read -r type path expected upstream note; do
+  # `|| [ -n "$type" ]` picks up a final line with no trailing newline:
+  # `read` returns nonzero at EOF-without-newline but still populates the
+  # fields from it, so without this the last entry is silently skipped
+  # while awk-based readers elsewhere (manifest_type) still see it as
+  # recorded, and a changed or wrongly hashed last entry passes as clean.
+  while IFS=$'\t' read -r type path expected upstream note || [ -n "$type" ]; do
     [ -z "$type" ] && continue
     [[ "$type" == \#* ]] && continue
     if [ -z "$path" ] || [ -z "$expected" ] || [ -z "$upstream" ]; then

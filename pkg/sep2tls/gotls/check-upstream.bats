@@ -169,6 +169,29 @@ run_check() {
   [[ "$output" == *"malformed manifest line"* ]]
 }
 
+@test "a manifest with no final newline still hash-checks its last entry" {
+  local last_path
+  last_path="$(tail -1 "$FORK_DIR/upstream-manifest.sha256" | cut -f2)"
+  printf '\n// test-only marker\n' >>"$FORK_DIR/$last_path"
+  # Strip the manifest's own trailing newline: $(...) drops it, printf
+  # writes the content back with none, so the last line (the one just
+  # corrupted) is what `read`'s EOF-without-newline behavior is tested
+  # against.
+  printf '%s' "$(cat "$FORK_DIR/upstream-manifest.sha256")" >"$FORK_DIR/upstream-manifest.sha256"
+  run run_check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"drift: $last_path content changed"* ]]
+}
+
+@test "a wrongly hashed entry appended with no final newline still hash-checks" {
+  printf 'package gotls\n// new fork-only file\n' >"$FORK_DIR/no_newline_new.go"
+  printf 'fork-only\tno_newline_new.go\tdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef\t-\ttest: wrong hash, no trailing newline' \
+    >>"$FORK_DIR/upstream-manifest.sha256"
+  run run_check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"drift: no_newline_new.go content changed"* ]]
+}
+
 @test "a patched file whose recorded upstream hash still matches upstream exits 0" {
   local fork_hash upstream_hash
   fork_hash="$(sha256sum "$FORK_DIR/handshake_server.go" | cut -d' ' -f1)"
