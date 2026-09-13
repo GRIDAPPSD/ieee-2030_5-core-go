@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"mime"
 	"net/http"
 	"strings"
 
@@ -20,10 +21,36 @@ const (
 	Namespace2013                      // http://ieee.org/2030.5 (2013)
 )
 
-// DetectNamespace checks the request for hints about which namespace.
+// DetectNamespace selects the response namespace from the request's Accept
+// header. IEEE 2030.5-2018 clause 5.7.2 defines level=-S1 (or +S1) as the
+// 2018 base schema; IEEE 2030.5-2013 defines level=-S0 (or +S0) as the 2013
+// base schema. Only an explicit S0 level selects the legacy 2013 namespace:
+// a missing level, an S1 level, or an unrecognized level all default to
+// 2018. Each comma-separated media range is parsed on its own so a
+// substring anywhere in the header (a q value, a media type) can never be
+// mistaken for the level parameter. When a header carries both an S0 and an
+// S1 signal, 2018 wins.
 func DetectNamespace(r *http.Request) NamespaceMode {
 	accept := r.Header.Get("Accept")
-	if strings.Contains(accept, "level=-S1") || strings.Contains(accept, "S1") {
+	if accept == "" {
+		return Namespace2018
+	}
+
+	sawS1, sawS0 := false, false
+	for _, part := range strings.Split(accept, ",") {
+		_, params, err := mime.ParseMediaType(strings.TrimSpace(part))
+		if err != nil {
+			continue
+		}
+		switch params["level"] {
+		case "-S1", "+S1":
+			sawS1 = true
+		case "-S0", "+S0":
+			sawS0 = true
+		}
+	}
+
+	if sawS0 && !sawS1 {
 		return Namespace2013
 	}
 	return Namespace2018

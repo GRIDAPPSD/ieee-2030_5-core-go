@@ -12,12 +12,14 @@ import (
 )
 
 func TestDetectNamespace2013(t *testing.T) {
+	// IEEE 2030.5-2018 clause 5.7.2: level=-S1 identifies the 2018 base
+	// schema, not the 2013 one. Only level=-S0 selects the 2013 namespace.
 	req := httptest.NewRequest("GET", "/dcap", nil)
-	req.Header.Set("Accept", "application/sep+xml; level=-S1")
+	req.Header.Set("Accept", "application/sep+xml; level=-S0")
 
 	mode := encoding.DetectNamespace(req)
 	if mode != encoding.Namespace2013 {
-		t.Errorf("S1 header should detect 2013, got %d", mode)
+		t.Errorf("S0 header should detect 2013, got %d", mode)
 	}
 }
 
@@ -37,6 +39,56 @@ func TestDetectNamespace2018Explicit(t *testing.T) {
 	mode := encoding.DetectNamespace(req)
 	if mode != encoding.Namespace2018 {
 		t.Errorf("plain accept should be 2018, got %d", mode)
+	}
+}
+
+func TestDetectNamespaceLevel(t *testing.T) {
+	tests := []struct {
+		name   string
+		accept string
+		want   encoding.NamespaceMode
+	}{
+		{"level -S1 selects 2018", "application/sep+xml; level=-S1", encoding.Namespace2018},
+		{"level +S1 selects 2018", "application/sep+xml; level=+S1", encoding.Namespace2018},
+		{"level -S0 selects 2013", "application/sep+xml; level=-S0", encoding.Namespace2013},
+		{"level +S0 selects 2013", "application/sep+xml; level=+S0", encoding.Namespace2013},
+		{"no level defaults to 2018", "application/sep+xml", encoding.Namespace2018},
+		{"no Accept header defaults to 2018", "", encoding.Namespace2018},
+		{"sep-exi with level -S1 selects 2018", "application/sep-exi; level=-S1", encoding.Namespace2018},
+		{"sep-exi with level -S0 selects 2013", "application/sep-exi; level=-S0", encoding.Namespace2013},
+		{
+			"multiple ranges with q values, conflicting S1 and S0 selects 2018",
+			"application/sep+xml; level=-S1; q=0.1, application/sep-exi; level=-S0; q=0.9",
+			encoding.Namespace2018,
+		},
+		{
+			"S0 alone across multiple ranges with q values selects 2013",
+			"text/plain; q=0.1, application/sep-exi; level=-S0; q=0.9",
+			encoding.Namespace2013,
+		},
+		{
+			"conflicting S0 and S1 in one header selects 2018",
+			"application/sep+xml; level=-S1, application/sep-exi; level=-S0",
+			encoding.Namespace2018,
+		},
+		{"malformed header defaults to 2018", "application/sep+xml; level", encoding.Namespace2018},
+		{"malformed header with stray semicolon defaults to 2018", ";;;", encoding.Namespace2018},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			req := httptest.NewRequest("GET", "/dcap", nil)
+			if tt.accept != "" {
+				req.Header.Set("Accept", tt.accept)
+			}
+
+			got := encoding.DetectNamespace(req)
+			if got != tt.want {
+				t.Errorf("DetectNamespace(%q) = %d, want %d", tt.accept, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -74,7 +126,7 @@ func TestNamespaceMiddleware2013(t *testing.T) {
 	wrapped := encoding.NamespaceMiddleware(inner)
 
 	req := httptest.NewRequest("GET", "/tm", nil)
-	req.Header.Set("Accept", "application/sep+xml; level=-S1")
+	req.Header.Set("Accept", "application/sep+xml; level=-S0")
 	w := httptest.NewRecorder()
 	wrapped.ServeHTTP(w, req)
 
@@ -99,7 +151,7 @@ func TestNamespaceMiddleware2013NoExplicitWriteHeader(t *testing.T) {
 
 	wrapped := encoding.NamespaceMiddleware(inner)
 	req := httptest.NewRequest("GET", "/tm", nil)
-	req.Header.Set("Accept", "application/sep+xml; level=-S1")
+	req.Header.Set("Accept", "application/sep+xml; level=-S0")
 	w := httptest.NewRecorder()
 	wrapped.ServeHTTP(w, req)
 
@@ -126,5 +178,55 @@ func TestNamespaceMiddleware2018PassThrough(t *testing.T) {
 	body := w.Body.String()
 	if !strings.Contains(body, "urn:ieee:std:2030.5:ns") {
 		t.Errorf("2018 client should get 2018 namespace, got: %s", body)
+	}
+}
+
+func TestNamespaceMiddlewareLevelS1Selects2018Body(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		encoding.WriteXML(w, 200, &sep2.Time{
+			Resource:    sep2.Resource{Href: "/tm"},
+			CurrentTime: 1000,
+			Quality:     7,
+		})
+	})
+
+	wrapped := encoding.NamespaceMiddleware(inner)
+
+	req := httptest.NewRequest("GET", "/tm", nil)
+	req.Header.Set("Accept", "application/sep+xml; level=-S1")
+	w := httptest.NewRecorder()
+	wrapped.ServeHTTP(w, req)
+
+	body := w.Body.String()
+	if !strings.Contains(body, "urn:ieee:std:2030.5:ns") {
+		t.Errorf("level=-S1 client should get 2018 namespace, got: %s", body)
+	}
+	if strings.Contains(body, "http://ieee.org/2030.5") {
+		t.Errorf("level=-S1 client should NOT get 2013 namespace")
+	}
+}
+
+func TestNamespaceMiddlewareLevelS0Selects2013Body(t *testing.T) {
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		encoding.WriteXML(w, 200, &sep2.Time{
+			Resource:    sep2.Resource{Href: "/tm"},
+			CurrentTime: 1000,
+			Quality:     7,
+		})
+	})
+
+	wrapped := encoding.NamespaceMiddleware(inner)
+
+	req := httptest.NewRequest("GET", "/tm", nil)
+	req.Header.Set("Accept", "application/sep+xml; level=-S0")
+	w := httptest.NewRecorder()
+	wrapped.ServeHTTP(w, req)
+
+	body := w.Body.String()
+	if !strings.Contains(body, "http://ieee.org/2030.5") {
+		t.Errorf("level=-S0 client should get 2013 namespace, got: %s", body)
+	}
+	if strings.Contains(body, "urn:ieee:std:2030.5:ns") {
+		t.Errorf("level=-S0 client should NOT get 2018 namespace")
 	}
 }
