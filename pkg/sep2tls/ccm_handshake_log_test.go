@@ -120,7 +120,7 @@ func TestCCMListenerLogsTLS13OnlyRefusal(t *testing.T) {
 		t.Fatalf("Listen: %v", err)
 	}
 	logBuf := newSyncLogBuf()
-	wrapped := sepTLS.WrapCCMListener(gotls.NewListener(tcpListener, cfg), log.New(logBuf, "", 0).Printf)
+	wrapped := sepTLS.WrapCCMListener(gotls.NewListener(tcpListener, cfg), log.New(logBuf, "", 0))
 	srv := &http.Server{Handler: http.NewServeMux()}
 	go func() { _ = srv.Serve(wrapped) }()
 	defer func() { _ = srv.Close() }()

@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -137,17 +138,21 @@ const ccmHandshakeTimeout = 10 * time.Second
 // error" case in its Serve dispatch). That case never fires for *gotls.Conn:
 // it is a different concrete type, so net/http leaves the handshake to run
 // lazily on the connection's first Read, and a failure there reaches no log
-// line. Pass logf as (*http.Server).ErrorLog.Printf, or log.Printf when
-// ErrorLog is nil, and serve the returned listener in place of inner.
+// line. Pass the serving http.Server's ErrorLog and serve the returned
+// listener in place of inner. A nil errorLog logs through the standard
+// logger, as net/http does when ErrorLog is nil.
 //
 // A temporary Accept error is returned to the caller and accepting continues,
 // so net/http's retry works. Close cancels handshakes in flight and returns
 // once every goroutine the listener started has exited.
-func WrapCCMListener(inner net.Listener, logf func(format string, args ...any)) net.Listener {
+func WrapCCMListener(inner net.Listener, errorLog *log.Logger) net.Listener {
+	if errorLog == nil {
+		errorLog = log.Default()
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	l := &ccmLoggingListener{
 		Listener: inner,
-		logf:     logf,
+		errorLog: errorLog,
 		conns:    make(chan net.Conn),
 		errs:     make(chan error),
 		stopped:  make(chan struct{}),
@@ -161,7 +166,7 @@ func WrapCCMListener(inner net.Listener, logf func(format string, args ...any)) 
 
 type ccmLoggingListener struct {
 	net.Listener
-	logf func(format string, args ...any)
+	errorLog *log.Logger
 
 	conns chan net.Conn
 	errs  chan error // temporary Accept errors, for the caller to retry
@@ -216,7 +221,7 @@ func (l *ccmLoggingListener) handshake(ctx context.Context, c net.Conn) {
 		if err != nil {
 			// A handshake cut short by Close is not the peer's failure.
 			if ctx.Err() == nil {
-				l.logf("http: TLS handshake error from %s: %v", c.RemoteAddr(), err)
+				l.errorLog.Printf("http: TLS handshake error from %s: %v", c.RemoteAddr(), err)
 			}
 			_ = c.Close()
 			return

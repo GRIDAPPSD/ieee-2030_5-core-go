@@ -180,7 +180,7 @@ func TestCCMListenerServesSuccessfulHandshakes(t *testing.T) {
 	}
 	logBuf := newSyncLogBuf()
 	errorLog := log.New(logBuf, "", 0)
-	wrapped := sepTLS.WrapCCMListener(gotls.NewListener(tcpListener, cfg), errorLog.Printf)
+	wrapped := sepTLS.WrapCCMListener(gotls.NewListener(tcpListener, cfg), errorLog)
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
@@ -230,7 +230,7 @@ func TestCCMListenerPassesNonTLSConnectionsThrough(t *testing.T) {
 		t.Fatalf("Listen: %v", err)
 	}
 	logBuf := newSyncLogBuf()
-	wrapped := sepTLS.WrapCCMListener(tcpListener, log.New(logBuf, "", 0).Printf)
+	wrapped := sepTLS.WrapCCMListener(tcpListener, log.New(logBuf, "", 0))
 
 	type connTypeKey struct{}
 	srv := &http.Server{
@@ -274,7 +274,7 @@ func TestCCMListenerRetriesTemporaryAcceptError(t *testing.T) {
 	flaky.failures.Store(2)
 	logBuf := newSyncLogBuf()
 	errorLog := log.New(logBuf, "", 0)
-	wrapped := sepTLS.WrapCCMListener(flaky, errorLog.Printf)
+	wrapped := sepTLS.WrapCCMListener(flaky, errorLog)
 
 	srv := &http.Server{Handler: http.NewServeMux(), ErrorLog: errorLog}
 	served := make(chan error, 1)
@@ -369,7 +369,7 @@ func TestCCMListenerCloseReleasesGoroutines(t *testing.T) {
 				t.Fatalf("Listen: %v", err)
 			}
 			signal := &signalListener{Listener: gotls.NewListener(tcpListener, cfg), accepted: make(chan struct{}, 1)}
-			wrapped := sepTLS.WrapCCMListener(signal, log.New(io.Discard, "", 0).Printf)
+			wrapped := sepTLS.WrapCCMListener(signal, log.New(io.Discard, "", 0))
 
 			afterClose := tt.beforeClose(t, tcpListener.Addr().String(), files, signal.accepted)
 			within(t, 2*time.Second, "Close", func() { _ = wrapped.Close() })
@@ -424,7 +424,7 @@ func TestCCMServerStopsWithHandshakeInFlight(t *testing.T) {
 				t.Fatalf("Listen: %v", err)
 			}
 			signal := &signalListener{Listener: gotls.NewListener(tcpListener, cfg), accepted: make(chan struct{}, 1)}
-			wrapped := sepTLS.WrapCCMListener(signal, log.New(io.Discard, "", 0).Printf)
+			wrapped := sepTLS.WrapCCMListener(signal, log.New(io.Discard, "", 0))
 			srv := &http.Server{Handler: http.NewServeMux()}
 			served := make(chan error, 1)
 			go func() { served <- srv.Serve(wrapped) }()
@@ -444,5 +444,40 @@ func TestCCMServerStopsWithHandshakeInFlight(t *testing.T) {
 			within(t, 2*time.Second, "Serve", func() { <-served })
 			waitGoroutinesGone(t, time.Second, acceptLoopFrame, handshakeFrame, constructorFrame)
 		})
+	}
+}
+
+// TestWrapCCMListenerNilLoggerUsesStandardLogger proves a nil logger does not
+// panic on a refused handshake and the refusal reaches the standard logger,
+// as it does for net/http with a nil ErrorLog.
+func TestWrapCCMListenerNilLoggerUsesStandardLogger(t *testing.T) {
+	files := newCCMTestFiles(t)
+	cfg := newCCMServerConfig(t, files)
+
+	logBuf := newSyncLogBuf()
+	prevOut, prevFlags := log.Writer(), log.Flags()
+	log.SetOutput(logBuf)
+	log.SetFlags(0)
+	defer func() {
+		log.SetOutput(prevOut)
+		log.SetFlags(prevFlags)
+	}()
+
+	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	wrapped := sepTLS.WrapCCMListener(gotls.NewListener(tcpListener, cfg), nil)
+	srv := &http.Server{Handler: http.NewServeMux()}
+	go func() { _ = srv.Serve(wrapped) }()
+	defer within(t, 3*time.Second, "Close", func() { _ = srv.Close() })
+
+	if conn, err := dialTLS13Stdlib(t, tcpListener.Addr().String(), files, true); err == nil {
+		_ = conn.Close()
+		t.Fatal("expected a TLS 1.3-only client to be refused, the dial succeeded")
+	}
+	line := waitForLogLine(t, logBuf, 2*time.Second)
+	if !strings.Contains(line, "TLS handshake error") {
+		t.Errorf("standard log = %q, want it to name a TLS handshake error", line)
 	}
 }
