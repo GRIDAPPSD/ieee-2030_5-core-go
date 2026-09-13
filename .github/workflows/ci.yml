@@ -3,9 +3,7 @@ name: CI
 # GitHub-hosted runners are acceptable here: both jobs are read-only
 # verification (build, vet, test, and a gofmt formatting check), and
 # neither job deploys, pushes to a registry, or writes anywhere but
-# its own ephemeral runner storage. See
-# .claude/rules/devops.md "GitHub Actions" in the Knowledge workspace
-# for the posture this exception follows.
+# its own ephemeral runner storage.
 #
 # Unlike the sibling gridappsd-ieee-2030_5-go bridge repo, this module
 # imports no other GRIDAPPSD modules (see go.mod: only
