@@ -455,7 +455,7 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 				"so a zero-value DERCapability serializes with none of them. Fixing this means " +
 				"dropping omitempty and deciding each field's zero-value semantics. Separately, " +
 				"rtgMaxA is modelled as *int32 while the schema types it CurrentRMS, a complex " +
-				"type carrying multiplier and value, so the integer check cannot resolve it.",
+				"type carrying multiplier and value, so the integer check cannot resolve it (#151).",
 		},
 		{
 			typeName: "DERSettings",
@@ -552,7 +552,7 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 				"stamps href and creationTime and stores whatever else the client sent. " +
 				"Separately, RequestStatus is modelled as *uint8 while the schema's RequestStatus " +
 				"element is a complex type carrying dateTime and requestStatus, so the integer " +
-				"check cannot resolve it.",
+				"check cannot resolve it (#152).",
 		},
 		{
 			typeName: "FlowReservationResponse",
@@ -824,6 +824,52 @@ func TestSchemaGateCatchesOversizedIntegerWidth(t *testing.T) {
 	assertPinned(t, "struct-definition", "RandomizableEvent(oversized-fixture)", integerProblemLines(ps), want)
 	if t.Failed() {
 		t.Logf("all struct problems for the fixture:\n%s", ps.Error())
+	}
+}
+
+// TestSchemaGateControlIntegerPins pins the integer lines of the two control
+// resources whose respondable struct lane keeps only placement lines, so a
+// mismatch inside a child element such as DERControlBase is asserted both ways.
+func TestSchemaGateControlIntegerPins(t *testing.T) {
+	const curveRef = "the schema types this element DERCurveLink, a link carrying an href; " +
+		"the Go field is an int32 curve ref by design (see the DERControlBase doc comment)"
+	type pin struct{ line, reason string }
+	cases := []struct {
+		typeName string
+		v        any
+		pins     []pin
+	}{
+		{
+			typeName: "DERControl",
+			v:        sep2.DERControl{},
+			pins: []pin{
+				{"integer-unresolved DERControl.DERControlBase.OpModFixedVar.Multiplier",
+					"the schema types opModFixedVar FixedVar, which declares refType and value but no multiplier; the Go field reuses ReactivePower"},
+				{"integer-unresolved DERControl.DERControlBase.OpModFreqDroop",
+					"the schema types this element FreqDroopType, a complex type of droop parameters; the Go field is a single uint16"},
+				{"integer-unresolved DERControl.DERControlBase.OpModFreqWatt", curveRef},
+				{"integer-unresolved DERControl.DERControlBase.OpModHFRTMustTrip", curveRef},
+				{"integer-unresolved DERControl.DERControlBase.OpModHVRTMomentaryCessation", curveRef},
+				{"integer-unresolved DERControl.DERControlBase.OpModHVRTMustTrip", curveRef},
+				{"integer-unresolved DERControl.DERControlBase.OpModLFRTMustTrip", curveRef},
+				{"integer-unresolved DERControl.DERControlBase.OpModLVRTMomentaryCessation", curveRef},
+				{"integer-unresolved DERControl.DERControlBase.OpModLVRTMustTrip", curveRef},
+				{"integer-unresolved DERControl.DERControlBase.OpModVoltVar", curveRef},
+				{"integer-unresolved DERControl.DERControlBase.OpModVoltWatt", curveRef},
+			},
+		},
+		{typeName: "EndDeviceControl", v: sep2.EndDeviceControl{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.typeName, func(t *testing.T) {
+			var want []string
+			for _, p := range tc.pins {
+				t.Logf("KNOWN-FAILING, not fixed in this change: %s: %s", p.line, p.reason)
+				want = append(want, p.line)
+			}
+			ps := xsdgate.CollectStructProblems(t, tc.typeName, tc.v)
+			assertPinned(t, "struct-definition integer", tc.typeName, integerProblemLines(ps), want)
+		})
 	}
 }
 
