@@ -62,39 +62,19 @@ func NewCCMServerConfigWithExtraCAs(certFile, keyFile, caFile string, extraCAFil
 		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
 			return VerifyPeerCertWithHardwareModuleSAN(rawCerts, caPool)
 		},
-		// MinVersion stays at the IEEE 2030.5 section 6.7 spec floor (TLS 1.2),
-		// so a spec-strict CCM-8 client still negotiates exactly as
-		// before. MaxVersion is raised to 1.3 to accept clients that
-		// offer only TLS 1.3 (observed with the EPRI reference client).
-		// gotls is a vendored fork of Go's crypto/tls that implements
-		// TLS 1.3 (see handshake_server_tls13.go); its 1.3 handshake path
-		// calls the same processCertsFromClient used by the 1.2 path, so
-		// ClientAuth and VerifyPeerCertificate above are enforced
-		// identically under 1.3. CipherSuites below still governs 1.2
-		// only: gotls, like stdlib crypto/tls, selects TLS 1.3 cipher
-		// suites from its own fixed list and ignores CipherSuites for a
-		// 1.3 connection, so CCM-8 is never offered or negotiated under
-		// 1.3 and no additional 1.3 suite needs to be listed here.
+		// IEEE 2030.5-2018 clauses 6.1 and 6.4 (and IEEE 2030.5-2023) specify
+		// TLS 1.2; no server configuration accepts TLS 1.3. No exported
+		// field, option, or environment variable raises MaxVersion. CCM-8 is
+		// ranked ahead of GCM in the fork's preference order (cipher_suites_ccm.go),
+		// so it wins when a client offers both.
 		MinVersion: gotls.VersionTLS12,
-		MaxVersion: gotls.VersionTLS13,
+		MaxVersion: gotls.VersionTLS12,
 		CipherSuites: []uint16{
 			gotls.TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8,
 			0xC02B, // TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 (fallback)
 		},
-		CurvePreferences: []gotls.CurveID{gotls.CurveP256},
-		// This is a low-frequency device-control listener, not a high-volume
-		// web endpoint: session resumption buys almost nothing here, and a
-		// resumed TLS 1.3 session restores the peer cert from the ticket
-		// without re-running VerifyPeerCertificate above, so the CSIP
-		// HardwareModuleName SAN check would be skipped on resumption.
-		// Disabling tickets forces a full mutual-auth handshake, with a
-		// fresh SAN verification, on every connection.
+		CurvePreferences:       []gotls.CurveID{gotls.CurveP256},
 		SessionTicketsDisabled: true,
-		// Safe only because callers use net/http or Conn.Read (via
-		// SetupCCMServer/CCMIdentityMiddleware below), both of which finish
-		// Handshake (and any client-cert rejection) before dispatching data;
-		// a raw handler writing before Handshake would leak the server's
-		// first flight to an unauthenticated TLS 1.3 peer.
 	}, nil
 }
 
