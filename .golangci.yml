@@ -1,7 +1,8 @@
 version: "2"
 
 # Exclude vendored Go stdlib crypto/tls fork and vendored pion CCM code from lint.
-# These are intentionally kept close to upstream: see VENDORED.md.
+# These are intentionally kept close to their upstream sources; each
+# package's own header comment names its origin and license.
 run:
   build-tags: []
 
