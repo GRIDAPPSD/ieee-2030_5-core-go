@@ -91,7 +91,7 @@ func TestNamespaceMiddleware2013NoExplicitWriteHeader(t *testing.T) {
 	// Inner handler writes body without calling WriteHeader explicitly.
 	// nsBufferedWriter.flush() must default w.status to 200 when it is zero.
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Deliberately no WriteHeader call — exercises the w.status==0 default branch.
+		// Deliberately no WriteHeader call - exercises the w.status==0 default branch.
 		if _, err := w.Write([]byte(`<T xmlns="urn:ieee:std:2030.5:ns"/>`)); err != nil {
 			t.Errorf("inner Write: %v", err)
 		}
