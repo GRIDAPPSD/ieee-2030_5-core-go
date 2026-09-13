@@ -3,6 +3,7 @@ package sep2tls_test
 import (
 	"context"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,7 +20,13 @@ import (
 	gotls "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls"
 )
 
-const handshakeFrame = "sep2tls.(*ccmLoggingListener).handshake"
+const (
+	acceptLoopFrame = "sep2tls.(*ccmLoggingListener).acceptLoop"
+	handshakeFrame  = "sep2tls.(*ccmLoggingListener).handshake"
+	// A goroutine that has not run yet shows only its creator in a stack
+	// dump, so the constructor frame is what catches a just-started loop.
+	constructorFrame = "sep2tls.WrapCCMListener"
+)
 
 // goroutinesIn counts running goroutines whose stack contains frame.
 func goroutinesIn(frame string) int {
@@ -60,6 +68,21 @@ func waitGoroutinesGone(t *testing.T, timeout time.Duration, frames ...string) {
 	}
 }
 
+// within runs fn and fails t if it has not returned after timeout.
+func within(t *testing.T, timeout time.Duration, what string, fn func()) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		fn()
+	}()
+	select {
+	case <-done:
+	case <-time.After(timeout):
+		t.Fatalf("%s did not return within %s", what, timeout)
+	}
+}
+
 func ccmClientConfig(t *testing.T, files ccmTestFiles) *gotls.Config {
 	t.Helper()
 	caPool := x509.NewCertPool()
@@ -93,6 +116,50 @@ func ccmHTTPClient(t *testing.T, files ccmTestFiles) *http.Client {
 				return (&gotls.Dialer{Config: cfg}).DialContext(ctx, network, addr)
 			},
 		},
+	}
+}
+
+type temporaryAcceptError struct{}
+
+func (temporaryAcceptError) Error() string   { return "injected temporary accept error" }
+func (temporaryAcceptError) Timeout() bool   { return false }
+func (temporaryAcceptError) Temporary() bool { return true }
+
+// flakyListener fails its first failures Accept calls with a temporary error,
+// as accept(2) does under file descriptor exhaustion.
+type flakyListener struct {
+	net.Listener
+	failures atomic.Int32
+}
+
+func (l *flakyListener) Accept() (net.Conn, error) {
+	if l.failures.Add(-1) >= 0 {
+		return nil, temporaryAcceptError{}
+	}
+	return l.Listener.Accept()
+}
+
+// signalListener reports each accepted connection on accepted, so a test can
+// act after the wrapper has taken a connection but before it is handed on.
+type signalListener struct {
+	net.Listener
+	accepted chan struct{}
+}
+
+func (l *signalListener) Accept() (net.Conn, error) {
+	c, err := l.Listener.Accept()
+	if err == nil {
+		l.accepted <- struct{}{}
+	}
+	return c, err
+}
+
+func waitAccepted(t *testing.T, accepted <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-accepted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("listener did not accept the connection within 2s")
 	}
 }
 
@@ -189,5 +256,193 @@ func TestCCMListenerPassesNonTLSConnectionsThrough(t *testing.T) {
 	}
 	if resp.StatusCode != http.StatusOK || string(body) != "*net.TCPConn" {
 		t.Errorf("status %d body %q, want 200 %q", resp.StatusCode, body, "*net.TCPConn")
+	}
+}
+
+// TestCCMListenerRetriesTemporaryAcceptError proves a temporary Accept error
+// reaches net/http, which retries, and the listener keeps accepting and still
+// shuts down within a bound afterwards.
+func TestCCMListenerRetriesTemporaryAcceptError(t *testing.T) {
+	files := newCCMTestFiles(t)
+	cfg := newCCMServerConfig(t, files)
+
+	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	flaky := &flakyListener{Listener: gotls.NewListener(tcpListener, cfg)}
+	flaky.failures.Store(2)
+	logBuf := newSyncLogBuf()
+	errorLog := log.New(logBuf, "", 0)
+	wrapped := sepTLS.WrapCCMListener(flaky, errorLog.Printf)
+
+	srv := &http.Server{Handler: http.NewServeMux(), ErrorLog: errorLog}
+	served := make(chan error, 1)
+	go func() { served <- srv.Serve(wrapped) }()
+
+	resp, err := ccmHTTPClient(t, files).Get("https://" + tcpListener.Addr().String() + "/")
+	if err != nil {
+		t.Errorf("request after temporary Accept errors: %v", err)
+	} else {
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("status = %d, want 404 from the empty mux", resp.StatusCode)
+		}
+	}
+	if got := logBuf.String(); !strings.Contains(got, "Accept error: injected temporary accept error") {
+		t.Errorf("server log = %q, want net/http's Accept retry line", got)
+	}
+
+	within(t, 3*time.Second, "Shutdown", func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			t.Errorf("Shutdown: %v", err)
+		}
+	})
+	within(t, 2*time.Second, "Serve", func() {
+		if err := <-served; !errors.Is(err, http.ErrServerClosed) {
+			t.Errorf("Serve returned %v, want http.ErrServerClosed", err)
+		}
+	})
+	waitGoroutinesGone(t, time.Second, acceptLoopFrame, handshakeFrame, constructorFrame)
+}
+
+// TestCCMListenerCloseReleasesGoroutines proves Close leaves no accept or
+// handshake goroutine and no open connection behind, and that every Accept
+// after Close returns an error instead of blocking.
+func TestCCMListenerCloseReleasesGoroutines(t *testing.T) {
+	tests := []struct {
+		name string
+		// beforeClose runs against the listener's address and returns a
+		// check to run after Close.
+		beforeClose func(t *testing.T, addr string, files ccmTestFiles, accepted <-chan struct{}) (afterClose func(t *testing.T))
+	}{
+		{
+			name: "no connection and no Accept caller",
+			beforeClose: func(*testing.T, string, ccmTestFiles, <-chan struct{}) func(*testing.T) {
+				return func(*testing.T) {}
+			},
+		},
+		{
+			name: "handshake completed but never accepted",
+			beforeClose: func(t *testing.T, addr string, files ccmTestFiles, accepted <-chan struct{}) func(*testing.T) {
+				conn, err := gotls.Dial("tcp", addr, ccmClientConfig(t, files))
+				if err != nil {
+					t.Fatalf("dial: %v", err)
+				}
+				waitAccepted(t, accepted)
+				return func(t *testing.T) {
+					defer func() { _ = conn.Close() }()
+					assertClosedByServer(t, conn)
+				}
+			},
+		},
+		{
+			name: "handshake finishes after Close",
+			beforeClose: func(t *testing.T, addr string, files ccmTestFiles, accepted <-chan struct{}) func(*testing.T) {
+				raw, err := net.Dial("tcp", addr)
+				if err != nil {
+					t.Fatalf("dial: %v", err)
+				}
+				waitAccepted(t, accepted)
+				return func(t *testing.T) {
+					conn := gotls.Client(raw, ccmClientConfig(t, files))
+					defer func() { _ = conn.Close() }()
+					ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+					defer cancel()
+					if err := conn.HandshakeContext(ctx); err != nil {
+						return
+					}
+					assertClosedByServer(t, conn)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			files := newCCMTestFiles(t)
+			cfg := newCCMServerConfig(t, files)
+			tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatalf("Listen: %v", err)
+			}
+			signal := &signalListener{Listener: gotls.NewListener(tcpListener, cfg), accepted: make(chan struct{}, 1)}
+			wrapped := sepTLS.WrapCCMListener(signal, log.New(io.Discard, "", 0).Printf)
+
+			afterClose := tt.beforeClose(t, tcpListener.Addr().String(), files, signal.accepted)
+			within(t, 2*time.Second, "Close", func() { _ = wrapped.Close() })
+			afterClose(t)
+			waitGoroutinesGone(t, time.Second, acceptLoopFrame, handshakeFrame, constructorFrame)
+
+			for i := range 2 {
+				within(t, time.Second, fmt.Sprintf("Accept %d after Close", i+1), func() {
+					if c, err := wrapped.Accept(); err == nil {
+						_ = c.Close()
+						t.Errorf("Accept %d after Close returned a connection, want an error", i+1)
+					}
+				})
+			}
+		})
+	}
+}
+
+// assertClosedByServer fails t unless the server side of conn has been closed,
+// which a read observes as an error other than its own deadline expiring.
+func assertClosedByServer(t *testing.T, conn net.Conn) {
+	t.Helper()
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, err := conn.Read(make([]byte, 1))
+	var ne net.Error
+	if err == nil || (errors.As(err, &ne) && ne.Timeout()) {
+		t.Errorf("read after Close = %v, want the server to have closed the connection", err)
+	}
+}
+
+// TestCCMServerStopsWithHandshakeInFlight proves Shutdown and Close return
+// promptly while a peer holds a handshake open, and take its goroutine down.
+func TestCCMServerStopsWithHandshakeInFlight(t *testing.T) {
+	tests := []struct {
+		name string
+		stop func(srv *http.Server) error
+	}{
+		{name: "Shutdown", stop: func(srv *http.Server) error {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			return srv.Shutdown(ctx)
+		}},
+		{name: "Close", stop: func(srv *http.Server) error { return srv.Close() }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			files := newCCMTestFiles(t)
+			cfg := newCCMServerConfig(t, files)
+			tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatalf("Listen: %v", err)
+			}
+			signal := &signalListener{Listener: gotls.NewListener(tcpListener, cfg), accepted: make(chan struct{}, 1)}
+			wrapped := sepTLS.WrapCCMListener(signal, log.New(io.Discard, "", 0).Printf)
+			srv := &http.Server{Handler: http.NewServeMux()}
+			served := make(chan error, 1)
+			go func() { served <- srv.Serve(wrapped) }()
+
+			silent, err := net.Dial("tcp", tcpListener.Addr().String())
+			if err != nil {
+				t.Fatalf("dial silent peer: %v", err)
+			}
+			defer func() { _ = silent.Close() }()
+			waitAccepted(t, signal.accepted)
+
+			within(t, 3*time.Second, tt.name, func() {
+				if err := tt.stop(srv); err != nil {
+					t.Errorf("%s: %v", tt.name, err)
+				}
+			})
+			within(t, 2*time.Second, "Serve", func() { <-served })
+			waitGoroutinesGone(t, time.Second, acceptLoopFrame, handshakeFrame, constructorFrame)
+		})
 	}
 }

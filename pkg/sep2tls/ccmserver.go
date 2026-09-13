@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	gotls "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls"
@@ -128,7 +129,7 @@ func CCMIdentityMiddleware(next http.Handler) http.Handler {
 
 // ccmHandshakeTimeout bounds the per-connection handshake WrapCCMListener
 // runs, so a peer that opens the TCP connection and never speaks TLS cannot
-// leak one goroutine per attempt.
+// hold a goroutine indefinitely.
 const ccmHandshakeTimeout = 10 * time.Second
 
 // WrapCCMListener wraps a gotls listener so a handshake failure is logged
@@ -138,52 +139,120 @@ const ccmHandshakeTimeout = 10 * time.Second
 // lazily on the connection's first Read, and a failure there reaches no log
 // line. Pass logf as (*http.Server).ErrorLog.Printf, or log.Printf when
 // ErrorLog is nil, and serve the returned listener in place of inner.
+//
+// A temporary Accept error is returned to the caller and accepting continues,
+// so net/http's retry works. Close cancels handshakes in flight and returns
+// once every goroutine the listener started has exited.
 func WrapCCMListener(inner net.Listener, logf func(format string, args ...any)) net.Listener {
-	l := &ccmLoggingListener{Listener: inner, logf: logf, ready: make(chan ccmAcceptResult)}
-	go l.acceptLoop()
+	ctx, cancel := context.WithCancel(context.Background())
+	l := &ccmLoggingListener{
+		Listener: inner,
+		logf:     logf,
+		conns:    make(chan net.Conn),
+		errs:     make(chan error),
+		stopped:  make(chan struct{}),
+		done:     ctx.Done(),
+		cancel:   cancel,
+	}
+	l.wg.Add(1)
+	go l.acceptLoop(ctx)
 	return l
 }
 
 type ccmLoggingListener struct {
 	net.Listener
-	logf  func(format string, args ...any)
-	ready chan ccmAcceptResult
+	logf func(format string, args ...any)
+
+	conns chan net.Conn
+	errs  chan error // temporary Accept errors, for the caller to retry
+
+	// stopped is closed when acceptLoop returns; acceptErr is written before.
+	stopped   chan struct{}
+	acceptErr error
+
+	done   <-chan struct{}
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
-type ccmAcceptResult struct {
-	conn net.Conn
-	err  error
-}
-
-func (l *ccmLoggingListener) acceptLoop() {
+func (l *ccmLoggingListener) acceptLoop(ctx context.Context) {
+	defer l.wg.Done()
+	defer close(l.stopped)
 	for {
 		c, err := l.Listener.Accept()
-		if err != nil {
-			l.ready <- ccmAcceptResult{err: err}
-			return
+		if err == nil {
+			l.wg.Add(1)
+			go l.handshake(ctx, c)
+			continue
 		}
-		go l.handshake(c)
+		if ctx.Err() == nil && isTemporary(err) {
+			select {
+			case l.errs <- err:
+				continue
+			case <-ctx.Done():
+			}
+		}
+		if ctx.Err() != nil {
+			err = net.ErrClosed
+		}
+		l.acceptErr = err
+		return
 	}
 }
 
-func (l *ccmLoggingListener) handshake(c net.Conn) {
-	gc, ok := c.(*gotls.Conn)
-	if !ok {
-		l.ready <- ccmAcceptResult{conn: c}
-		return
-	}
+// isTemporary matches the errors net/http's Serve loop retries, such as
+// EMFILE, using the same non-unwrapping check.
+func isTemporary(err error) bool {
+	te, ok := err.(interface{ Temporary() bool })
+	return ok && te.Temporary()
+}
 
-	ctx, cancel := context.WithTimeout(context.Background(), ccmHandshakeTimeout)
-	defer cancel()
-	if err := gc.HandshakeContext(ctx); err != nil {
-		l.logf("http: TLS handshake error from %s: %v", c.RemoteAddr(), err)
-		_ = c.Close()
-		return
+func (l *ccmLoggingListener) handshake(ctx context.Context, c net.Conn) {
+	defer l.wg.Done()
+	if gc, ok := c.(*gotls.Conn); ok {
+		hsCtx, cancel := context.WithTimeout(ctx, ccmHandshakeTimeout)
+		err := gc.HandshakeContext(hsCtx)
+		cancel()
+		if err != nil {
+			// A handshake cut short by Close is not the peer's failure.
+			if ctx.Err() == nil {
+				l.logf("http: TLS handshake error from %s: %v", c.RemoteAddr(), err)
+			}
+			_ = c.Close()
+			return
+		}
 	}
-	l.ready <- ccmAcceptResult{conn: gc}
+	select {
+	case l.conns <- c:
+	case <-ctx.Done():
+		_ = c.Close()
+	}
 }
 
 func (l *ccmLoggingListener) Accept() (net.Conn, error) {
-	r := <-l.ready
-	return r.conn, r.err
+	select {
+	case c := <-l.conns:
+		// Both select cases can be ready after Close; never hand out a
+		// connection once the listener is closed.
+		select {
+		case <-l.done:
+			_ = c.Close()
+			return nil, net.ErrClosed
+		default:
+			return c, nil
+		}
+	case err := <-l.errs:
+		return nil, err
+	case <-l.stopped:
+		return nil, l.acceptErr
+	}
+}
+
+// Close stops accepting, cancels handshakes in flight, closes connections
+// not yet returned by Accept, and waits for the listener's goroutines.
+func (l *ccmLoggingListener) Close() error {
+	l.cancel()
+	err := l.Listener.Close()
+	l.wg.Wait()
+	return err
 }
