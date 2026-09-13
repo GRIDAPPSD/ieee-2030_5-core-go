@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2cert"
 	sepTLS "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls"
@@ -244,8 +245,8 @@ func TestCCMCapRefusesTLS13OnlyClient(t *testing.T) {
 		if !strings.Contains(serverErr.Error(), "unsupported versions") {
 			t.Errorf("server-side handshake error = %q, want it to name the unsupported version", serverErr)
 		}
-	default:
-		t.Error("expected a server-side handshake error, none was captured")
+	case <-time.After(2 * time.Second):
+		t.Error("expected a server-side handshake error, none was captured within 2s")
 	}
 }
 
