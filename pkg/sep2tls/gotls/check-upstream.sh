@@ -194,11 +194,16 @@ scan_for_unrecorded() {
 # diffs each one. A file recorded as "patched" in the manifest is not
 # diffed against upstream (check_manifest verifies the fork's side
 # instead); its upstream side is compared against the recorded
-# upstream_sha256 so a later upstream change to that same file is still
-# reported instead of disappearing behind the patch. Returns 1 if any
-# unpatched shared file differs or is missing, or a patched file's
-# upstream side has moved; 0 otherwise. Exits 2 directly on an
-# environment failure (network, checkout, or normalization).
+# upstream_sha256. The clone is pinned to UPSTREAM_TAG/UPSTREAM_COMMIT on
+# every run, so this comparison cannot detect a crypto/tls security
+# release published after that pin; it only catches the manifest's
+# recorded value going stale, typically after UPSTREAM_TAG is bumped
+# without re-verifying this entry. See UPSTREAM.md's "Checking upstream
+# crypto/tls security releases against the fork" for the manual
+# procedure. Returns 1 if any unpatched shared file differs or is
+# missing, or a patched file's recorded upstream hash has gone stale; 0
+# otherwise. Exits 2 directly on an environment failure (network,
+# checkout, or normalization).
 diff_shared_files() {
   local work norm rc=0 f ptype upstream_file diff_rc
   local -a missing_from_fork=()

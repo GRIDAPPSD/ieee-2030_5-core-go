@@ -130,8 +130,14 @@ It does three things:
    the same comparison used to establish the base above. A file recorded
    as `patched` is not diffed against upstream this way; instead its
    recorded `upstream_sha256` (see "Recording a deliberate change" below)
-   is checked against the live upstream file, so an upstream change to
-   that same file after the patch was recorded is still reported.
+   is checked against the live upstream file at the same pinned tag. This
+   catches the manifest's recorded value going stale, most often after a
+   maintainer bumps `UPSTREAM_TAG`. It does **not** detect a `crypto/tls`
+   security release published after the pin while the pin itself stays
+   put: the clone always fetches the same recorded `UPSTREAM_TAG` and
+   `UPSTREAM_COMMIT`, so there is nothing for it to compare against.
+   Picking up such a release is a manual step; see "Checking upstream
+   `crypto/tls` security releases against the fork" below.
 2. Checks every file listed in `upstream-manifest.sha256` against its
    recorded sha256. That file covers the fork-only files that have no
    upstream counterpart (`cipher_suites_ccm.go`, `ccm_check_test.go`,
@@ -204,9 +210,14 @@ Three situations call for a manifest update rather than a code change.
   copy against upstream and instead checks the fork's hash against
   `sha256` and the live upstream file's hash against `upstream_sha256`:
   the first catches the fork's patch changing or reverting, the second
-  catches upstream itself moving past the base the patch was recorded
-  against, so a later upstream fix to the same file (a security release,
-  say) is still reported instead of disappearing behind the patch.
+  catches the recorded `upstream_sha256` going stale against the pinned
+  base, which in practice means it fires after `UPSTREAM_TAG` is bumped
+  without this entry being re-verified. It does not, by itself, detect a
+  later `crypto/tls` security release: the live upstream file it compares
+  against is always fetched from the same pinned `UPSTREAM_TAG` and
+  `UPSTREAM_COMMIT`, which do not change on their own. Watching for and
+  hand-porting a security release is the manual procedure below, in
+  "Checking upstream `crypto/tls` security releases against the fork".
 
 ## Checking upstream `crypto/tls` security releases against the fork
 
