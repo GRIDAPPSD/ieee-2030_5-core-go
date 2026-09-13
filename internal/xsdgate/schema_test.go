@@ -173,6 +173,30 @@ func TestKnownSchemaFacts(t *testing.T) {
 		})
 	})
 
+	t.Run("DERCapability rtgMaxV and rtgMaxVA in sequence", func(t *testing.T) {
+		els, err := s.EffectiveElements("DERCapability")
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertSequence(t, "DERCapability", els, []seqWant{
+			{name: "rtgMaxDischargeRateW"},
+			{name: "rtgMaxV", typ: "VoltageRMS"},
+			{name: "rtgMaxVA", typ: "ApparentPower"},
+			{name: "rtgMaxVar"},
+			{name: "rtgMaxW", required: true},
+		})
+		for _, typeName := range []string{"VoltageRMS", "ApparentPower"} {
+			fields, err := s.EffectiveElements(typeName)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertSequence(t, typeName, fields, []seqWant{
+				{name: "multiplier", typ: "PowerOfTenMultiplierType", required: true},
+				{name: "value", typ: "UInt16", required: true},
+			})
+		}
+	})
+
 	t.Run("DERCapability modesSupported is required", func(t *testing.T) {
 		els, err := s.EffectiveElements("DERCapability")
 		if err != nil {

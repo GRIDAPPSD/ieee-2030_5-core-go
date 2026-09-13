@@ -145,6 +145,24 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 			},
 		},
 		{
+			// The zero-value DERCapability entry below leaves rtgMaxV and
+			// rtgMaxVA nil, so only this fixture puts them through the
+			// marshalled check (#55). rtgMaxA stays nil because its Go type
+			// cannot produce the CurrentRMS the schema requires (#151).
+			typeName: "DERCapability",
+			v: sep2.DERCapability{
+				Resource:             sep2.Resource{Href: "/edev/1/der/1/dercap"},
+				ModesSupported:       func() *sep2.DERControlType { v := sep2.DERControlType(0x0800); return &v }(),
+				RTGMaxChargeRateW:    &sep2.ActivePower{Multiplier: 3, Value: 5},
+				RTGMaxDischargeRateW: &sep2.ActivePower{Multiplier: 3, Value: 5},
+				RTGMaxV:              &sep2.VoltageRMS{Multiplier: -1, Value: 2400},
+				RTGMaxVA:             &sep2.ApparentPower{Multiplier: 0, Value: 65000},
+				RTGMaxVar:            &sep2.ReactivePower{Multiplier: 3, Value: 4},
+				RTGMaxW:              &sep2.ActivePower{Multiplier: 3, Value: 6},
+				Type:                 func() *uint8 { v := uint8(4); return &v }(),
+			},
+		},
+		{
 			typeName: "Registration",
 			v: sep2.Registration{
 				Resource:           sep2.Resource{Href: "/edev/1/rg"},
@@ -774,7 +792,7 @@ func TestSchemaGateCoversKnownResources(t *testing.T) {
 	// defect once reached an interop run. Resources listed here must have a
 	// populated fixture in TestSchemaGatePopulatedResources.
 	populated := []string{
-		"Registration", "Reading", "ReadingType", "MirrorMeterReading", "MirrorUsagePoint", "DERStatus",
+		"Registration", "Reading", "ReadingType", "MirrorMeterReading", "MirrorUsagePoint", "DERStatus", "DERCapability",
 		"DERControl", "EndDeviceControl", "FlowReservationResponse", "TextMessage",
 		"LogEvent", "LogEventList",
 	}
