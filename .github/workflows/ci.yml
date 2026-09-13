@@ -219,3 +219,27 @@ jobs:
             exit 1
           fi
           echo "gofmt check passed (excluding the vendored stub noted above)."
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Lint
+        # golangci-lint v2.12.2 is built with go1.26.2 and supports modules
+        # declaring `go 1.26.3` in go.mod. Earlier releases (through v2.9.0)
+        # were compiled with go1.25 and reject go1.26 modules at startup.
+        # Config schema is unchanged (v2). See `.golangci.yml`.
+        # The action installs the binary (cached across runs) and runs it.
+        # Matches the pin in the sibling server repo's ci.yml so the two
+        # stay on the same golangci-lint release.
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
