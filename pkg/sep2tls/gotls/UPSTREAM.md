@@ -150,7 +150,7 @@ Exit codes:
 | Exit | Meaning |
 |---|---|
 | 0 | Clean: every shared file matches upstream (or a recorded patch whose upstream side still matches its recorded base hash), every manifest entry matches its recorded hash, no unrecorded file. |
-| 2 | Environment: a required tool is missing, the script was not run from the repository root, the upstream clone/checkout could not be produced as recorded (bad tag, commit mismatch, sparse-checkout failure, network failure, an upstream file absent after checkout), the file walk under `pkg/sep2tls/gotls` could not be completed, or a `patched` manifest entry has no recorded `upstream_sha256`. This is a tooling or setup failure, not evidence of drift, and is never combined with the bits below: it always ends the run by itself. |
+| 2 | Environment: a required tool is missing, the script was not run from the repository root, the upstream clone/checkout could not be produced as recorded (bad tag, commit mismatch, sparse-checkout failure, network failure, an upstream file absent after checkout), the file walk under `pkg/sep2tls/gotls` or the normalization pass (creating the working directory, rewriting a file's package and import paths) could not be completed, a manifest type or upstream-hash lookup failed, or a `patched` manifest entry has no recorded `upstream_sha256`. This is a tooling or setup failure, not evidence of drift, and is never combined with the bits below: it always ends the run by itself. |
 | any other nonzero | A bitwise OR of: **1** (drift: a shared file differs from upstream with no recorded patch, a manifest entry's hash no longer matches its recorded content, an expected shared file is missing, a `patched` file's recorded `upstream_sha256` no longer matches upstream, or a manifest line is malformed) and **4** (unrecorded: a file or symlink exists under `pkg/sep2tls/gotls` that this script cannot classify; add it to the `FILES` list in `check-upstream.sh` if it is meant to track an upstream file, or record it in `upstream-manifest.sha256` if it is fork-only). So exit 5 means both drift and an unrecorded file were found in the same run; neither overwrites the other. |
 
 A nonzero exit prints one or more messages on stderr naming which check
@@ -178,13 +178,21 @@ Three situations call for a manifest update rather than a code change.
   for the `sha256` column, `-` for `upstream_sha256` (fork-only files have
   no upstream counterpart), and a short note of why the file exists.
   Without this, `check-upstream.sh` reports it as unrecorded (exit 4).
+  Also add the file to the matching row of the "Deliberate changes" table
+  above: the manifest update alone does not keep that table's file lists
+  in sync, and `check-upstream.sh` cannot detect a table that has fallen
+  behind the manifest.
 - **An edit to an existing fork-only file** (for example, PR #143 editing
   `cipher_suites_ccm.go`): re-run `sha256sum` on the changed file and
   replace the `sha256` column on its existing `fork-only` line. Do not add
   a new line and do not touch `upstream_sha256` (still `-`); this is a
   manifest hash update, not a new-file registration, and needs no CVE or
   release note. Without it, `check-upstream.sh` reports the file as
-  drifted (exit 1) against its old hash.
+  drifted (exit 1) against its old hash. If the edit also changes behavior
+  this document describes elsewhere (for example, whether CCM-8 appends or
+  prepends to a preference order), update that description too: a clean
+  hash check proves the manifest matches the file, not that the prose
+  above still matches the file.
 - **A hand-ported fix to a shared file** (see the security-release
   procedure below): after making the change, add or update a `patched`
   line for that file with its current `sha256sum` in the `sha256` column,
