@@ -37,6 +37,18 @@ const nestedFixtureTypes = `
       <xs:element name="node" type="Node" minOccurs="0"/>
     </xs:sequence>
   </xs:complexType>
+  <xs:complexType name="Siblings">
+    <xs:sequence>
+      <xs:element name="a" type="Leaf" minOccurs="0"/>
+      <xs:element name="b" type="Leaf" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="SelfRoot">
+    <xs:sequence>
+      <xs:element name="child" type="SelfRoot" minOccurs="0"/>
+      <xs:element name="n" type="Int16" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
 `
 
 type nestedLeaf struct {
@@ -47,6 +59,33 @@ type nestedLeaf struct {
 type nestedLeafOK struct {
 	N int16 `xml:"n,omitempty"`
 	A uint8 `xml:"a,attr,omitempty"`
+}
+
+// nestedLeafUndeclaredAttr binds an attribute name Leaf does not declare, so
+// the child's own undeclared-attribute path is exercised below the top level.
+type nestedLeafUndeclaredAttr struct {
+	A uint8 `xml:"a,attr,omitempty"`
+	Z int32 `xml:"z,attr,omitempty"`
+}
+
+// nestedLeafUndeclaredNonInt binds an undeclared child element that holds no
+// Go integer, which must stay silent rather than reported as unresolved.
+type nestedLeafUndeclaredNonInt struct {
+	A     uint8  `xml:"a,attr,omitempty"`
+	Extra string `xml:"extra,omitempty"`
+}
+
+// nestedScalarSkippedInt's only integer-holding field is tagged xml:"-", so
+// it must not count toward holdsInteger.
+type nestedScalarSkippedInt struct {
+	X       string `xml:"x,omitempty"`
+	Skipped int32  `xml:"-"`
+}
+
+// siblingLeaf is bound to Leaf under two sibling fields of the same parent,
+// to prove the active-set cleanup runs after each child, not once overall.
+type siblingLeaf struct {
+	N int32 `xml:"n,omitempty"`
 }
 
 type NestedMidBase struct {
@@ -148,6 +187,37 @@ type (
 	rootCycle struct {
 		Node *nestedNode `xml:"node,omitempty"`
 	}
+
+	midLeafUndeclaredAttr struct {
+		Leaf *nestedLeafUndeclaredAttr `xml:"leaf,omitempty"`
+	}
+	rootLeafUndeclaredAttr struct {
+		Mid *midLeafUndeclaredAttr `xml:"mid,omitempty"`
+	}
+
+	midLeafUndeclaredNonInt struct {
+		Leaf *nestedLeafUndeclaredNonInt `xml:"leaf,omitempty"`
+	}
+	rootLeafUndeclaredNonInt struct {
+		Mid *midLeafUndeclaredNonInt `xml:"mid,omitempty"`
+	}
+
+	midScalarSkippedInt struct {
+		Scalar *nestedScalarSkippedInt `xml:"scalar,omitempty"`
+	}
+	rootScalarSkippedInt struct {
+		Mid *midScalarSkippedInt `xml:"mid,omitempty"`
+	}
+
+	siblings struct {
+		A *siblingLeaf `xml:"a,omitempty"`
+		B *siblingLeaf `xml:"b,omitempty"`
+	}
+
+	selfRoot struct {
+		Child *selfRoot `xml:"child,omitempty"`
+		N     int32     `xml:"n,omitempty"`
+	}
 )
 
 func nestedSchema(t *testing.T) *Schema {
@@ -194,6 +264,9 @@ func TestCheckStructIntegerDescendsIntoChildElements(t *testing.T) {
 		{"recursive struct with no integers over a simple type", rootScalarRecursive{}, nil},
 		{"integer over a child complex type with no simple content", rootCurve{}, []string{"integer-unresolved Root.Mid.Curve"}},
 		{"recursive child type terminates", rootCycle{}, []string{"integer-width Root.Node.V"}},
+		{"undeclared attribute on a child type", rootLeafUndeclaredAttr{}, []string{"integer-unresolved Root.Mid.Leaf.Z"}},
+		{"undeclared non-integer field on a child type is not reported", rootLeafUndeclaredNonInt{}, nil},
+		{"skip-tagged integer field does not count toward holds-integer", rootScalarSkippedInt{}, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -237,5 +310,60 @@ func TestCheckStructNestedMessageNamesElementPath(t *testing.T) {
 	}
 	for path := range want {
 		t.Errorf("no problem reported at %s (all problems: %v)", path, ps.Summary())
+	}
+}
+
+// TestCheckStructUnresolvedMessageNamesElementPath is
+// TestCheckStructNestedMessageNamesElementPath's counterpart for the
+// unresolved message, which names its own path fields independently.
+func TestCheckStructUnresolvedMessageNamesElementPath(t *testing.T) {
+	t.Parallel()
+	s := nestedSchema(t)
+	ps, err := s.CheckStruct("Root", reflect.TypeOf(rootCurve{}))
+	if err != nil {
+		t.Fatalf("CheckStruct: %v", err)
+	}
+	for _, p := range ps {
+		if p.Path != "Root.Mid.Curve" {
+			continue
+		}
+		if !strings.Contains(p.Message, "Root/mid/curve") {
+			t.Errorf("message %q does not name the element path Root/mid/curve", p.Message)
+		}
+		return
+	}
+	t.Fatalf("no problem at Root.Mid.Curve (all problems: %v)", ps.Summary())
+}
+
+// TestCheckStructSiblingChildTypeEachChecked pins that active is cleared
+// after each child descent, so two sibling fields sharing a (Go type, schema
+// type) pair are each checked instead of only the first.
+func TestCheckStructSiblingChildTypeEachChecked(t *testing.T) {
+	t.Parallel()
+	s := nestedSchema(t)
+	ps, err := s.CheckStruct("Siblings", reflect.TypeOf(siblings{}))
+	if err != nil {
+		t.Fatalf("CheckStruct: %v", err)
+	}
+	want := []string{"integer-width Siblings.A.N", "integer-width Siblings.B.N"}
+	if got := sortedIntegerProblems(ps); !reflect.DeepEqual(got, want) {
+		t.Errorf("integer problems = %v, want %v (all problems: %v)", got, want, ps.Summary())
+	}
+}
+
+// TestCheckStructRootPairSeededBeforeDescent pins that the top-level (Go
+// type, schema type) pair is seeded into active before the descent starts, so
+// a child element referring back to the exact same pair is not independently
+// re-checked and reported a second time.
+func TestCheckStructRootPairSeededBeforeDescent(t *testing.T) {
+	t.Parallel()
+	s := nestedSchema(t)
+	ps, err := s.CheckStruct("SelfRoot", reflect.TypeOf(selfRoot{}))
+	if err != nil {
+		t.Fatalf("CheckStruct: %v", err)
+	}
+	want := []string{"integer-width SelfRoot.N"}
+	if got := sortedIntegerProblems(ps); !reflect.DeepEqual(got, want) {
+		t.Errorf("integer problems = %v, want %v (all problems: %v)", got, want, ps.Summary())
 	}
 }
