@@ -104,7 +104,7 @@ func TestNamespaceConstants(t *testing.T) {
 	if sep2.Namespace != "urn:ieee:std:2030.5:ns" {
 		t.Errorf("2018 namespace = %q", sep2.Namespace)
 	}
-	if sep2.Namespace2013 != "http://ieee.org/2030.5" {
+	if sep2.Namespace2013 != "http://zigbee.org/sep" {
 		t.Errorf("2013 namespace = %q", sep2.Namespace2013)
 	}
 	if sep2.Namespace2023 != sep2.Namespace {

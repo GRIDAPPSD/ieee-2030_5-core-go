@@ -2,8 +2,10 @@ package encoding_test
 
 import (
 	"bytes"
+	"encoding/xml"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -159,11 +161,34 @@ func TestRewriteNamespaceTo2013(t *testing.T) {
 	data := []byte(`<DeviceCapability xmlns="urn:ieee:std:2030.5:ns" href="/dcap"/>`)
 	rewritten := encoding.RewriteNamespace(data, encoding.Namespace2013)
 
-	if !bytes.Contains(rewritten, []byte("http://ieee.org/2030.5")) {
+	if !bytes.Contains(rewritten, []byte("http://zigbee.org/sep")) {
 		t.Errorf("should contain 2013 namespace, got: %s", rewritten)
 	}
 	if bytes.Contains(rewritten, []byte("urn:ieee:std:2030.5:ns")) {
 		t.Error("should NOT contain 2018 namespace after rewrite")
+	}
+}
+
+func TestRewriteNamespaceTo2013ExactBytes(t *testing.T) {
+	// Asserts the full rewritten document, not just a substring: a
+	// straight namespace swap must leave exactly one xmlns declaration
+	// and otherwise well-formed, decodable XML.
+	data := []byte(`<DeviceCapability xmlns="urn:ieee:std:2030.5:ns" href="/dcap"/>`)
+	want := []byte(`<DeviceCapability xmlns="http://zigbee.org/sep" href="/dcap"/>`)
+
+	rewritten := encoding.RewriteNamespace(data, encoding.Namespace2013)
+	if !bytes.Equal(rewritten, want) {
+		t.Errorf("RewriteNamespace = %s, want %s", rewritten, want)
+	}
+	if n := bytes.Count(rewritten, []byte(`xmlns=`)); n != 1 {
+		t.Errorf("expected exactly one xmlns declaration, got %d in %s", n, rewritten)
+	}
+	var probe struct {
+		XMLName xml.Name `xml:"DeviceCapability"`
+		Href    string   `xml:"href,attr"`
+	}
+	if err := xml.Unmarshal(rewritten, &probe); err != nil {
+		t.Errorf("rewritten document is not well-formed XML: %v", err)
 	}
 }
 
@@ -194,7 +219,7 @@ func TestNamespaceMiddleware2013(t *testing.T) {
 	wrapped.ServeHTTP(w, req)
 
 	body := w.Body.String()
-	if !strings.Contains(body, "http://ieee.org/2030.5") {
+	if !strings.Contains(body, "http://zigbee.org/sep") {
 		t.Errorf("2013 client should get 2013 namespace, got: %s", body)
 	}
 	if strings.Contains(body, "urn:ieee:std:2030.5:ns") {
@@ -224,11 +249,76 @@ func TestNamespaceMiddleware2013NoExplicitWriteHeader(t *testing.T) {
 		t.Errorf("flush default status should be 200, got %d", w.Code)
 	}
 	body := w.Body.String()
-	if !strings.Contains(body, "http://ieee.org/2030.5") {
+	if !strings.Contains(body, "http://zigbee.org/sep") {
 		t.Errorf("buffered 2013 response should contain the 2013 namespace, got: %s", body)
 	}
 	if strings.Contains(body, "urn:ieee:std:2030.5:ns") {
 		t.Errorf("buffered 2013 response should NOT contain the 2018 namespace")
+	}
+}
+
+func TestNamespaceMiddleware2013ExactBytesAndContentLength(t *testing.T) {
+	// The 2013 namespace is one byte shorter than the 2018 one, so a
+	// Content-Length computed before rewriting (rather than after) is
+	// wrong by exactly the bytes the rewrite removed, and a real client
+	// reading by that header would see a truncated body.
+	body := `<Time xmlns="urn:ieee:std:2030.5:ns"><currentTime>1000</currentTime></Time>`
+	want := strings.ReplaceAll(body, sep2.Namespace, sep2.Namespace2013)
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := w.Write([]byte(body)); err != nil {
+			t.Errorf("inner Write: %v", err)
+		}
+	})
+
+	wrapped := encoding.NamespaceMiddleware(inner)
+	req := httptest.NewRequest("GET", "/tm", nil)
+	req.Header.Set("Accept", "application/sep+xml; level=-S0")
+	w := httptest.NewRecorder()
+	wrapped.ServeHTTP(w, req)
+
+	if got := w.Body.String(); got != want {
+		t.Errorf("body = %q, want %q", got, want)
+	}
+	if got := w.Header().Get("Content-Length"); got != strconv.Itoa(len(want)) {
+		t.Errorf("Content-Length = %q, want %q", got, strconv.Itoa(len(want)))
+	}
+}
+
+func TestNamespaceMiddleware2013MultipleOccurrencesExactBytes(t *testing.T) {
+	// List resources declare the namespace once per item, so a Replace
+	// bounded to the first occurrence (rather than ReplaceAll) leaves
+	// every occurrence after the first still carrying the 2018 namespace.
+	body := `<EndDeviceList xmlns="urn:ieee:std:2030.5:ns">` +
+		`<EndDevice xmlns="urn:ieee:std:2030.5:ns"><sFDI>111</sFDI></EndDevice>` +
+		`<EndDevice xmlns="urn:ieee:std:2030.5:ns"><sFDI>222</sFDI></EndDevice>` +
+		`</EndDeviceList>`
+	want := strings.ReplaceAll(body, sep2.Namespace, sep2.Namespace2013)
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := w.Write([]byte(body)); err != nil {
+			t.Errorf("inner Write: %v", err)
+		}
+	})
+
+	wrapped := encoding.NamespaceMiddleware(inner)
+	req := httptest.NewRequest("GET", "/edev", nil)
+	req.Header.Set("Accept", "application/sep+xml; level=-S0")
+	w := httptest.NewRecorder()
+	wrapped.ServeHTTP(w, req)
+
+	got := w.Body.Bytes()
+	if string(got) != want {
+		t.Errorf("body = %q, want %q", got, want)
+	}
+	if n := bytes.Count(got, []byte(sep2.Namespace)); n != 0 {
+		t.Errorf("2018 namespace still present %d time(s), want 0", n)
+	}
+	if n := bytes.Count(got, []byte(sep2.Namespace2013)); n != 3 {
+		t.Errorf("2013 namespace present %d time(s), want 3", n)
+	}
+	if gotLen := w.Header().Get("Content-Length"); gotLen != strconv.Itoa(len(want)) {
+		t.Errorf("Content-Length = %q, want %q", gotLen, strconv.Itoa(len(want)))
 	}
 }
 
@@ -273,7 +363,7 @@ func TestNamespaceMiddlewareLevelS1Selects2018Body(t *testing.T) {
 	if !strings.Contains(body, "urn:ieee:std:2030.5:ns") {
 		t.Errorf("level=-S1 client should get 2018 namespace, got: %s", body)
 	}
-	if strings.Contains(body, "http://ieee.org/2030.5") {
+	if strings.Contains(body, "http://zigbee.org/sep") {
 		t.Errorf("level=-S1 client should NOT get 2013 namespace")
 	}
 }
@@ -298,7 +388,7 @@ func TestNamespaceMiddlewareLevelPlusS1Selects2018Body(t *testing.T) {
 	if !strings.Contains(body, "urn:ieee:std:2030.5:ns") {
 		t.Errorf("level=+S1 client should get 2018 namespace, got: %s", body)
 	}
-	if strings.Contains(body, "http://ieee.org/2030.5") {
+	if strings.Contains(body, "http://zigbee.org/sep") {
 		t.Errorf("level=+S1 client should NOT get 2013 namespace")
 	}
 }
