@@ -136,7 +136,13 @@ check_manifest() {
       rc=1
       continue
     fi
-    actual="$(sha256sum "$full" | cut -d' ' -f1)"
+    # A failing sha256sum is a broken or missing tool, not a signal about
+    # the file's content: reporting it as drift would hide the real cause
+    # behind a message that says the wrong thing happened.
+    if ! actual="$(sha256sum "$full" | cut -d' ' -f1)"; then
+      echo "error: could not hash $full (sha256sum failed)" >&2
+      exit 2
+    fi
     if [ "$actual" != "$expected" ]; then
       echo "drift: $path content changed and its manifest hash was not updated ($note)" >&2
       rc=1
@@ -248,7 +254,10 @@ diff_shared_files() {
         echo "error: manifest entry for patched file '$f' has no recorded upstream_sha256; run sha256sum on $upstream_file and record it" >&2
         exit 2
       fi
-      upstream_actual="$(sha256sum "$upstream_file" | cut -d' ' -f1)"
+      if ! upstream_actual="$(sha256sum "$upstream_file" | cut -d' ' -f1)"; then
+        echo "error: could not hash $upstream_file (sha256sum failed)" >&2
+        exit 2
+      fi
       if [ "$upstream_actual" != "$upstream_expected" ]; then
         echo "drift: upstream $f changed since the patch was recorded (upstream sha256 was $upstream_expected, now $upstream_actual); re-review the patch against the new upstream content" >&2
         rc=1

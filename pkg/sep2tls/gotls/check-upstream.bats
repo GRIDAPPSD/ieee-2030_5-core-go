@@ -278,6 +278,56 @@ AWKEOF
 # other. A single globally-broken awk (above) cannot tell the four call
 # sites apart, since whichever call site runs first wins.
 
+@test "a failing sha256sum hashing a manifest entry's fork file exits 2, not drift" {
+  local first_path mock_bin="$WORK/mock-sha256sum-manifest-bin"
+  first_path="$(grep -vE '^#|^$' "$FORK_DIR/upstream-manifest.sha256" | head -1 | cut -f2)"
+  mkdir -p "$mock_bin"
+  cat >"$mock_bin/sha256sum" <<'SHAEOF'
+#!/usr/bin/env bash
+echo "mock: sha256sum is broken" >&2
+exit 1
+SHAEOF
+  chmod +x "$mock_bin/sha256sum"
+  PATH="$mock_bin:$PATH" run run_check
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"could not hash"* ]]
+  [[ "$output" == *"$first_path"* ]]
+}
+
+@test "a failing sha256sum hashing a patched file's upstream copy exits 2, not drift" {
+  # Fails only a path under the cloned upstream tree (what diff_shared_files
+  # hashes at this call site), not the fork's own copy (what check_manifest
+  # hashes for the same manifest entry): without this call site's own guard,
+  # the failure is reported as drift instead of exit 2, and check_manifest's
+  # unrelated guard on the fork's copy never runs to catch it.
+  local fork_hash mock_bin="$WORK/mock-sha256sum-upstream-bin"
+  fork_hash="$(sha256sum "$FORK_DIR/handshake_server.go" | cut -d' ' -f1)"
+  printf 'patched\thandshake_server.go\t%s\t%s\ttest: pretend deliberate patch\n' \
+    "$fork_hash" "$(sha256sum "$UPSTREAM_FIXTURE/handshake_server.go" | cut -d' ' -f1)" \
+    >>"$FORK_DIR/upstream-manifest.sha256"
+  mkdir -p "$mock_bin"
+  cat >"$mock_bin/sha256sum" <<AWKEOF
+#!/usr/bin/env bash
+case "\$1" in
+*/src/crypto/tls/*)
+  echo "mock: sha256sum is broken" >&2
+  exit 1
+  ;;
+esac
+exec $(type -P sha256sum) "\$@"
+AWKEOF
+  chmod +x "$mock_bin/sha256sum"
+  PATH="$mock_bin:$PATH" run run_check
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"could not hash"* ]]
+  [[ "$output" == *"handshake_server.go"* ]]
+}
+
+# gawk's `-v var=value` runs backslash-escape processing on value; an
+# unrecognized escape (`\.`) is silently dropped, so a literal backslash in
+# a filename can collapse onto a different, recorded manifest path. mawk
+# does not collapse it, so the two awks disagree unless the comparison
+# treats the path as a literal string throughout (see manifest_type).
 @test "an unrecorded file named with a backslash under gawk exits 4, not silently matched" {
   command -v gawk >/dev/null 2>&1 || skip "gawk not installed"
   local gawk_bin="$WORK/gawk-only-bin" t
