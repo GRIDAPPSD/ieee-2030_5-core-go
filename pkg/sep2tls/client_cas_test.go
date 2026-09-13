@@ -216,5 +216,5 @@ func assertPoolContains(t *testing.T, pool *x509.CertPool, cn string) {
 			}
 		}
 	}
-	t.Errorf("pool does not contain CA with CN=%q (have %d subjects)", cn, len(pool.Subjects()))
+	t.Errorf("pool does not contain CA with CN=%q (have %d subjects)", cn, len(pool.Subjects())) //nolint:staticcheck // SA1019: stable across Go 1.21+ for our use
 }

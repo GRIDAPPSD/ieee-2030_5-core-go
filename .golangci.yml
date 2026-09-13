@@ -14,10 +14,26 @@ issues:
 linters:
   settings:
     staticcheck:
-      # Disable quick-fix style suggestions (QF*). These are subjective:
-      # explicit forms are often clearer than the suggested transforms,
-      # especially for embedded-field selectors that document intent.
+      # golangci-lint v2.12.2's built-in default staticcheck checks list is
+      # "all" minus these six ST codes: confirmed empirically by running
+      # `golangci-lint run --no-config --enable-only staticcheck` (built-in
+      # defaults) beside an explicit `checks: [all, -ST1000, -ST1003,
+      # -ST1016, -ST1020, -ST1021, -ST1022]` against the same probe file and
+      # observing identical output, while `checks: [all]` alone additionally
+      # reports all six.
+      #
+      # Disable quick-fix style suggestions (QF*) on top of that default.
+      # These are subjective: explicit forms are often clearer than the
+      # suggested transforms, especially for embedded-field selectors that
+      # document intent.
       checks:
+        - all
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
         - -QF1001  # De Morgan's law (explicit form is clearer)
         - -QF1003  # tagged switch (style preference)
         - -QF1006  # lift into loop condition (style preference)
