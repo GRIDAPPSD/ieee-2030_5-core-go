@@ -126,6 +126,35 @@ run_check() {
   [ "$status" -eq 2 ]
 }
 
+@test "a SIGTERM during the upstream clone exits at once instead of continuing" {
+  local sig_bin="$WORK/sigterm-git-bin" marker="$WORK/sigterm-clone-started" pid status
+  mkdir -p "$sig_bin"
+  cat >"$sig_bin/git" <<GITEOF
+#!/usr/bin/env bash
+if [ "\$1" = "clone" ]; then
+  dest="\${!#}"
+  : >"$marker"
+  sleep 5
+  mkdir -p "\$dest"
+  exit 0
+fi
+echo "mock git: unhandled args: \$*" >&2
+exit 1
+GITEOF
+  chmod +x "$sig_bin/git"
+  (cd "$REPO" && PATH="$sig_bin:$PATH" bash "$FORK_DIR/check-upstream.sh") &
+  pid=$!
+  for _ in $(seq 1 50); do
+    [ -f "$marker" ] && break
+    sleep 0.1
+  done
+  [ -f "$marker" ]
+  kill -TERM "$pid"
+  status=0
+  wait "$pid" || status=$?
+  [ "$status" -eq 143 ]
+}
+
 @test "a shared file that drifts from the fixture exits 1" {
   printf '\n// test-only marker\n' >>"$FORK_DIR/alert.go"
   run run_check

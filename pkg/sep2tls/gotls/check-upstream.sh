@@ -208,7 +208,16 @@ diff_shared_files() {
   local work norm rc=0 f ptype upstream_file diff_rc
   local -a missing_from_fork=()
   work="$(mktemp -d)"
-  trap 'rm -rf "$work"' EXIT INT TERM
+  # A trap set for INT or TERM runs its command and then, by default,
+  # resumes the script rather than terminating it: without an explicit
+  # exit, a signal delivered while $work is in use is swallowed, the run
+  # continues against the now-removed directory, and the exit code
+  # reflects whatever that continuation happens to hit (including 0)
+  # instead of the interruption. Separate traps that exit immediately
+  # after cleanup, with the conventional 128+signal codes, close that.
+  trap 'rm -rf "$work"' EXIT
+  trap 'rm -rf "$work"; exit 130' INT
+  trap 'rm -rf "$work"; exit 143' TERM
 
   local clone_err
   clone_err="$(mktemp)"
