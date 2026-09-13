@@ -97,9 +97,10 @@ func Noop(_ context.Context, _ *x509.Certificate, _ sep2.Notification) {}
 // callers can wire the listener and defer dispatcher selection.
 //
 // Logger, if non-nil, receives diagnostic messages from the receiver
-// (currently: dispatcher panic recovery). A nil Logger is silent. Refused
-// TLS handshakes are logged through the standard log package, where
-// net/http logs its own server errors.
+// (dispatcher panic recovery, no-verified-peer-cert, and refused TLS
+// handshakes). A nil Logger leaves refused-handshake lines on the standard
+// log package, where net/http logs its own server errors, and leaves the
+// other two diagnostics silent.
 type Config struct {
 	CertFile   string
 	KeyFile    string
@@ -201,6 +202,12 @@ func (r *Receiver) Start() error {
 			}
 			return ctx
 		},
+	}
+	// r.logger, when set, is also where the receiver's other diagnostics go
+	// (no-verified-peer-cert, dispatcher panic); bridge it into ErrorLog so a
+	// refused handshake reaches the same sink instead of only log.Default().
+	if r.logger != nil {
+		srv.ErrorLog = slog.NewLogLogger(r.logger.Handler(), slog.LevelWarn)
 	}
 	// net/http does not run or log the handshake for a *gotls.Conn, so the
 	// wrapper logs refused handshakes where net/http logs its own errors.
