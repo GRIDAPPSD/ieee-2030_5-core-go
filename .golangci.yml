@@ -1,11 +1,11 @@
 version: "2"
 
 # Exclude vendored Go stdlib crypto/tls fork and vendored pion CCM code from lint.
-# These are intentionally kept close to upstream — see VENDORED.md.
+# These are intentionally kept close to upstream: see VENDORED.md.
 run:
   build-tags: []
 
-# Show all issues — golangci-lint defaults cap output at 50 per linter.
+# Show all issues: golangci-lint defaults cap output at 50 per linter.
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
@@ -13,7 +13,7 @@ issues:
 linters:
   settings:
     staticcheck:
-      # Disable quick-fix style suggestions (QF*). These are subjective —
+      # Disable quick-fix style suggestions (QF*). These are subjective:
       # explicit forms are often clearer than the suggested transforms,
       # especially for embedded-field selectors that document intent.
       checks:
