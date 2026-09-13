@@ -200,7 +200,7 @@ scan_for_unrecorded() {
 # upstream side has moved; 0 otherwise. Exits 2 directly on an
 # environment failure (network, checkout, or normalization).
 diff_shared_files() {
-  local work norm rc=0 f ptype upstream_file
+  local work norm rc=0 f ptype upstream_file diff_rc
   local -a missing_from_fork=()
   work="$(mktemp -d)"
   trap 'rm -rf "$work"' EXIT INT TERM
@@ -307,7 +307,18 @@ diff_shared_files() {
       echo "error: internal: normalized copy of $f not found (this is a script bug, not missing input)" >&2
       exit 2
     fi
-    diff -u "$work/go/src/crypto/tls/$f" "$norm/$f" || rc=1
+    # diff -u exits 1 for "differs" and 2 for its own trouble (permissions,
+    # a file it cannot read); only the former is drift. Capturing the exit
+    # code explicitly, rather than folding any nonzero into rc=1, keeps a
+    # broken diff from being reported as content drift.
+    diff_rc=0
+    diff -u "$work/go/src/crypto/tls/$f" "$norm/$f" || diff_rc=$?
+    if [ "$diff_rc" -eq 2 ]; then
+      echo "error: could not compare $f against upstream (diff exited 2)" >&2
+      exit 2
+    elif [ "$diff_rc" -ne 0 ]; then
+      rc=1
+    fi
   done
 
   rm -rf "$work"

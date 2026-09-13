@@ -385,6 +385,20 @@ SHAEOF
   [[ "$output" == *"$first_path"* ]]
 }
 
+@test "a diff that exits 2 comparing a shared file is an environment failure, not drift" {
+  local broken_diff_bin="$WORK/broken-diff-bin"
+  mkdir -p "$broken_diff_bin"
+  cat >"$broken_diff_bin/diff" <<'DIFFEOF'
+#!/usr/bin/env bash
+echo "mock: diff is broken" >&2
+exit 2
+DIFFEOF
+  chmod +x "$broken_diff_bin/diff"
+  PATH="$broken_diff_bin:$PATH" run run_check
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"could not compare"* ]]
+}
+
 @test "a failing sha256sum hashing a patched file's upstream copy exits 2, not drift" {
   # Fails only a path under the cloned upstream tree (what diff_shared_files
   # hashes at this call site), not the fork's own copy (what check_manifest
