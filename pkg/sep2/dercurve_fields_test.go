@@ -34,22 +34,24 @@ func decodeDERCurveDoc(t *testing.T) sep2.DERCurve {
 	return c
 }
 
+// TestDERCurveZeroValueEmitsRequiredElements pins the zero value byte for
+// byte. CurveData is still absent: encoding/xml emits one element per slice
+// entry, so a curve with no points has nothing to emit whatever the tag says.
 func TestDERCurveZeroValueEmitsRequiredElements(t *testing.T) {
 	data, err := xml.Marshal(sep2.DERCurve{})
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	got := string(data)
-	for _, want := range []string{
-		"<creationTime>0</creationTime>",
-		"<curveType>0</curveType>",
-		"<xMultiplier>0</xMultiplier>",
-		"<yMultiplier>0</yMultiplier>",
-		"<yRefType>0</yRefType>",
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("zero-value DERCurve lacks %s\nXML: %s", want, got)
-		}
+	const want = `<DERCurve xmlns="urn:ieee:std:2030.5:ns">` +
+		`<mRID></mRID>` +
+		`<creationTime>0</creationTime>` +
+		`<curveType>0</curveType>` +
+		`<xMultiplier>0</xMultiplier>` +
+		`<yMultiplier>0</yMultiplier>` +
+		`<yRefType>0</yRefType>` +
+		`</DERCurve>`
+	if got := string(data); got != want {
+		t.Errorf("zero-value DERCurve:\n got %s\nwant %s", got, want)
 	}
 }
 
@@ -91,32 +93,25 @@ func TestDERCurveRequiredElementsSurviveDecodeEncode(t *testing.T) {
 }
 
 // TestDERCurveWireOrder asserts the sep.xsd DERCurve sequence for every
-// element the struct models. The two chains leave out CurveData against
-// curveType, which the struct emits in the opposite order to sep.xsd; the
-// schema gate pins that as a known failure.
+// element the struct models.
 func TestDERCurveWireOrder(t *testing.T) {
 	data, err := xml.Marshal(decodeDERCurveDoc(t))
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	xmlStr := string(data)
 
-	assertOrder(t, xmlStr, []string{
+	assertOrder(t, string(data), []string{
 		"<mRID>",
 		"<description>",
 		"<creationTime>",
 		"<CurveData>",
+		"<curveType>",
 		"<rampDecTms>",
 		"<rampIncTms>",
 		"<rampPT1Tms>",
 		"<xMultiplier>",
 		"<yMultiplier>",
 		"<yRefType>",
-	})
-	assertOrder(t, xmlStr, []string{
-		"<creationTime>",
-		"<curveType>",
-		"<rampDecTms>",
 	})
 }
 
