@@ -37,6 +37,11 @@
 #        path. Add it to FILES or record it in upstream-manifest.sha256.
 #   So 5 (1|4) means both drift and an unrecorded file were found in the
 #   same run.
+#   130 and 143 are 128+SIGINT and 128+SIGTERM: the run was interrupted
+#     while cloning upstream and exited at once instead of continuing.
+#     Read either as "interrupted," never as a combination of the drift
+#     and unrecorded bits above; nothing here bitwise-ORs a signal number
+#     with 1 or 4.
 set -euo pipefail
 
 UPSTREAM_TAG="go1.22.0"
