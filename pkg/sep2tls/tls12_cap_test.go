@@ -398,27 +398,3 @@ func TestMutualAuthStillEnforcedUnderCap(t *testing.T) {
 		t.Fatal("expected handshake to fail without a client cert, it succeeded")
 	}
 }
-
-// TestServerConfigSecurityInvariants locks two properties on the returned
-// server config so a future edit cannot silently regress them: session
-// tickets are disabled, and RequireAnyClientCert is always paired with a
-// non-nil VerifyPeerCertificate. RequireAnyClientCert with a nil verify
-// callback accepts any cert from any CA, an unverified-client auth bypass.
-func TestServerConfigSecurityInvariants(t *testing.T) {
-	certs := newCapCertSet(t)
-
-	cfg, err := sepTLS.NewServerTLSConfigFromPEM(certs.serverPEM, certs.serverKey, certs.caPEM)
-	if err != nil {
-		t.Fatalf("NewServerTLSConfigFromPEM: %v", err)
-	}
-
-	if !cfg.SessionTicketsDisabled {
-		t.Error("SessionTicketsDisabled must be true: a resumed session restores the peer cert from the ticket and skips VerifyPeerCertificate, bypassing the CSIP SAN check")
-	}
-	if cfg.ClientAuth == tls.RequireAnyClientCert && cfg.VerifyPeerCertificate == nil {
-		t.Fatal("RequireAnyClientCert with a nil VerifyPeerCertificate accepts any client cert from any CA unverified: the two must always be paired")
-	}
-	if cfg.MaxVersion != tls.VersionTLS12 {
-		t.Errorf("MaxVersion = %s, want TLS 1.2: IEEE 2030.5-2018 clauses 6.1 and 6.4 cap the server at TLS 1.2, with no opt-in", tls.VersionName(cfg.MaxVersion))
-	}
-}

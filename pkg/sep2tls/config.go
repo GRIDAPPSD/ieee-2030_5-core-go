@@ -56,7 +56,7 @@ func NewServerTLSConfigWithExtraCAs(certFile, keyFile, caFile string, extraCAFil
 		// not a weakening: the full chain walk (signature, expiry, basic
 		// constraints, key usage, trust anchor) runs in VerifyPeerCertificate
 		// below via VerifyPeerCertWithHardwareModuleSAN, after the HMN OID
-		// is acknowledged. See internal/tls/verify.go and tests
+		// is acknowledged. See pkg/sep2tls/verify.go and tests
 		// TestVerifyRejectsCertSignedByDifferentCA, TestMutualTLSHandshake.
 		ClientAuth: tls.RequireAnyClientCert,
 		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
@@ -70,7 +70,9 @@ func NewServerTLSConfigWithExtraCAs(certFile, keyFile, caFile string, extraCAFil
 		CipherSuites: []uint16{
 			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 		},
-		CurvePreferences:       []tls.CurveID{tls.CurveP256},
+		CurvePreferences: []tls.CurveID{tls.CurveP256},
+		// Tickets off: a resumed session skips VerifyPeerCertificate above,
+		// bypassing the HardwareModuleName SAN check.
 		SessionTicketsDisabled: true,
 	}, nil
 }
@@ -131,7 +133,9 @@ func NewServerTLSConfigFromPEM(certPEM, keyPEM, caPEM []byte) (*tls.Config, erro
 		CipherSuites: []uint16{
 			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 		},
-		CurvePreferences:       []tls.CurveID{tls.CurveP256},
+		CurvePreferences: []tls.CurveID{tls.CurveP256},
+		// Tickets off: a resumed session skips VerifyPeerCertificate above,
+		// bypassing the HardwareModuleName SAN check.
 		SessionTicketsDisabled: true,
 	}, nil
 }

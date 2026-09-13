@@ -56,7 +56,7 @@ func NewCCMServerConfigWithExtraCAs(certFile, keyFile, caFile string, extraCAFil
 		// not a weakening: the full chain walk (signature, expiry, basic
 		// constraints, key usage, trust anchor) runs in VerifyPeerCertificate
 		// below via VerifyPeerCertWithHardwareModuleSAN, after the HMN OID
-		// is acknowledged. See internal/tls/verify.go and tests
+		// is acknowledged. See pkg/sep2tls/verify.go and tests
 		// TestVerifyRejectsCertSignedByDifferentCA, TestMutualTLSHandshake.
 		ClientAuth: gotls.RequireAnyClientCert,
 		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
@@ -73,7 +73,9 @@ func NewCCMServerConfigWithExtraCAs(certFile, keyFile, caFile string, extraCAFil
 			gotls.TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8,
 			0xC02B, // TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 (fallback)
 		},
-		CurvePreferences:       []gotls.CurveID{gotls.CurveP256},
+		CurvePreferences: []gotls.CurveID{gotls.CurveP256},
+		// Tickets off: a resumed session skips VerifyPeerCertificate above,
+		// bypassing the HardwareModuleName SAN check.
 		SessionTicketsDisabled: true,
 	}, nil
 }
