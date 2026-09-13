@@ -39,16 +39,17 @@ against each candidate release's copy of the same file.
 
 Diff line counts below are the added-plus-removed content lines `diff -u`
 reports, not counting the `---`/`+++` file-header line pair it prints once
-per differing file. Given a raw `diff -u` run saved to `out`, the exact
-command is:
+per differing file; a wholly blank added or removed line counts as one
+content line. Given a raw `diff -u` run saved to `out`, the exact command
+is:
 
 ```
-grep -Ec '^[+-][^+-]' out
+grep -Ec '^[+-]([^+-]|$)' out
 ```
 
 | Candidate | Commit | Diff lines | Files differing |
 |---|---|---|---|
-| go1.21.13 (latest Go 1.21.x) | `8bba868de983dd7bf55fcd121495ba8d6e2734e7` | 209 | 10 of 20 |
+| go1.21.13 (latest Go 1.21.x) | `8bba868de983dd7bf55fcd121495ba8d6e2734e7` | 221 | 10 of 20 |
 | **go1.22.0** | `a10e42f219abb9c5bc4e7d86d9464700a42c7d57` | **0** | 0 of 20 |
 | go1.22.12 (latest Go 1.22.x) | `5817e650946aaa0ac28956de96b3f9aa1de4b299` | 4 | 2 of 20 |
 
@@ -56,7 +57,7 @@ Go 1.22.0 is a byte-for-byte match, after `gofmt`, on every one of the 20
 shared files.
 
 Before trusting the zero: the same procedure run against go1.21.13 produced
-209 changed lines and a nonzero exit. Both tags carry the same 22 non-test
+221 changed lines and a nonzero exit. Both tags carry the same 22 non-test
 files under `src/crypto/tls` (confirmed by listing both checkouts); the
 difference is in file content, not file layout. The check can fail; it did,
 against the wrong base.
@@ -149,7 +150,7 @@ Exit codes:
 | Exit | Meaning |
 |---|---|
 | 0 | Clean: every shared file matches upstream (or a recorded patch whose upstream side still matches its recorded base hash), every manifest entry matches its recorded hash, no unrecorded file. |
-| 2 | Environment: a required tool is missing, the script was not run from the repository root, the upstream clone/checkout could not be produced as recorded (bad tag, commit mismatch, sparse-checkout failure, network failure, an upstream file absent after checkout), or a `patched` manifest entry has no recorded `upstream_sha256`. This is a tooling or setup failure, not evidence of drift, and is never combined with the bits below: it always ends the run by itself. |
+| 2 | Environment: a required tool is missing, the script was not run from the repository root, the upstream clone/checkout could not be produced as recorded (bad tag, commit mismatch, sparse-checkout failure, network failure, an upstream file absent after checkout), the file walk under `pkg/sep2tls/gotls` could not be completed, or a `patched` manifest entry has no recorded `upstream_sha256`. This is a tooling or setup failure, not evidence of drift, and is never combined with the bits below: it always ends the run by itself. |
 | any other nonzero | A bitwise OR of: **1** (drift: a shared file differs from upstream with no recorded patch, a manifest entry's hash no longer matches its recorded content, an expected shared file is missing, a `patched` file's recorded `upstream_sha256` no longer matches upstream, or a manifest line is malformed) and **4** (unrecorded: a file or symlink exists under `pkg/sep2tls/gotls` that this script cannot classify; add it to the `FILES` list in `check-upstream.sh` if it is meant to track an upstream file, or record it in `upstream-manifest.sha256` if it is fork-only). So exit 5 means both drift and an unrecorded file were found in the same run; neither overwrites the other. |
 
 A nonzero exit prints one or more messages on stderr naming which check
@@ -159,7 +160,7 @@ combined exit code (5) means more than one message is present.
 
 ## Recording a deliberate change
 
-Two situations call for a manifest update rather than a code change.
+Three situations call for a manifest update rather than a code change.
 `upstream-manifest.sha256`'s header documents the exact column format
 (`type<TAB>path<TAB>sha256<TAB>upstream_sha256<TAB>note`).
 
@@ -168,6 +169,13 @@ Two situations call for a manifest update rather than a code change.
   for the `sha256` column, `-` for `upstream_sha256` (fork-only files have
   no upstream counterpart), and a short note of why the file exists.
   Without this, `check-upstream.sh` reports it as unrecorded (exit 4).
+- **An edit to an existing fork-only file** (for example, PR #143 editing
+  `cipher_suites_ccm.go`): re-run `sha256sum` on the changed file and
+  replace the `sha256` column on its existing `fork-only` line. Do not add
+  a new line and do not touch `upstream_sha256` (still `-`); this is a
+  manifest hash update, not a new-file registration, and needs no CVE or
+  release note. Without it, `check-upstream.sh` reports the file as
+  drifted (exit 1) against its old hash.
 - **A hand-ported fix to a shared file** (see the security-release
   procedure below): after making the change, add or update a `patched`
   line for that file with its current `sha256sum` in the `sha256` column,
