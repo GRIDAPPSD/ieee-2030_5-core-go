@@ -154,6 +154,14 @@ run_check() {
   [[ "$output" == *"unrecorded: unrecorded.go"* ]]
 }
 
+@test "an unrecorded file nested below the top level is scanned, not skipped by a shallow walk" {
+  mkdir -p "$FORK_DIR/stubs/deep"
+  printf 'package boring\n' >"$FORK_DIR/stubs/deep/nested.go"
+  run run_check
+  [ "$status" -eq 4 ]
+  [[ "$output" == *"unrecorded: stubs/deep/nested.go"* ]]
+}
+
 @test "a symlink under FORK_DIR is scanned, not skipped by -type f" {
   ln -s alert.go "$FORK_DIR/evil-link.go"
   run run_check
