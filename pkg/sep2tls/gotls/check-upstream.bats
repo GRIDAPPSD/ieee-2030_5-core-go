@@ -132,6 +132,14 @@ run_check() {
   [ "$status" -eq 1 ]
 }
 
+@test "a shared file deleted from the fork is reported as drift, not an internal error" {
+  rm "$FORK_DIR/alert.go"
+  run run_check
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"drift: alert.go is listed as shared but is missing from the fork"* ]]
+  [[ "$output" != *"internal:"* ]]
+}
+
 @test "an edited fork-only file exits 1 via the manifest check" {
   sed -i 's/keyLen: 16,/keyLen: 32,/' "$FORK_DIR/cipher_suites_ccm.go"
   run run_check

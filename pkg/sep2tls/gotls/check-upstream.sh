@@ -201,6 +201,7 @@ scan_for_unrecorded() {
 # environment failure (network, checkout, or normalization).
 diff_shared_files() {
   local work norm rc=0 f ptype upstream_file
+  local -a missing_from_fork=()
   work="$(mktemp -d)"
   trap 'rm -rf "$work"' EXIT INT TERM
 
@@ -268,6 +269,12 @@ diff_shared_files() {
     if [ ! -f "$FORK_DIR/$f" ]; then
       echo "drift: $f is listed as shared but is missing from the fork" >&2
       rc=1
+      # Recorded here so the second pass below can skip it too: that pass
+      # never got a $norm/$f (the sed normalization above was never reached
+      # for a file with no fork copy), and without this list it mistakes an
+      # already-reported missing file for its own internal invariant
+      # failure (exit 2) instead of returning the drift already found.
+      missing_from_fork+=("$f")
       continue
     fi
     if ! sed -e 's/^package gotls$/package tls/' \
@@ -293,6 +300,9 @@ diff_shared_files() {
       exit 2
     fi
     [ "$ptype" = "patched" ] && continue
+    if [ "${#missing_from_fork[@]}" -gt 0 ] && in_array "$f" "${missing_from_fork[@]}"; then
+      continue
+    fi
     if [ ! -f "$norm/$f" ]; then
       echo "error: internal: normalized copy of $f not found (this is a script bug, not missing input)" >&2
       exit 2
