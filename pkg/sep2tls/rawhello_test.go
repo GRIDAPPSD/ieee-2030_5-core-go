@@ -3,6 +3,8 @@ package sep2tls_test
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/binary"
 	"net"
 	"testing"
@@ -135,6 +137,73 @@ func (r *recordingConn) Read(p []byte) (int, error) {
 		r.buf.Write(p[:n])
 	}
 	return n, err
+}
+
+// recordAndHandshake performs a stdlib TLS handshake against addr, trusting
+// caPEM and presenting the devicePEM/deviceKeyPEM client identity, over a
+// recordingConn so the raw ServerHello.random is recoverable afterward. It
+// serves both the standard-library and CCM listener test suites (core-go
+// #143), since a plain stdlib client is what inspects the wire either way.
+// maxVer of 0 leaves the client's default (highest mutually supported).
+func recordAndHandshake(t *testing.T, addr string, caPEM, devicePEM, deviceKeyPEM []byte, minVer, maxVer uint16) (uint16, [32]byte) {
+	t.Helper()
+
+	caPool := x509.NewCertPool()
+	if !caPool.AppendCertsFromPEM(caPEM) {
+		t.Fatal("failed to parse CA cert into pool")
+	}
+	deviceCert, err := tls.X509KeyPair(devicePEM, deviceKeyPEM)
+	if err != nil {
+		t.Fatalf("X509KeyPair (device cert): %v", err)
+	}
+
+	rawConn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("net.Dial: %v", err)
+	}
+	defer func() { _ = rawConn.Close() }()
+
+	rec := &recordingConn{Conn: rawConn, buf: new(bytes.Buffer)}
+	tlsConn := tls.Client(rec, &tls.Config{
+		RootCAs: caPool,
+		// tls.Client (unlike tls.Dial) never derives ServerName from the
+		// address, and the cert covers 127.0.0.1 as a SAN.
+		ServerName:       "127.0.0.1",
+		Certificates:     []tls.Certificate{deviceCert},
+		MinVersion:       minVer,
+		MaxVersion:       maxVer,
+		CurvePreferences: []tls.CurveID{tls.CurveP256},
+	})
+	defer func() { _ = tlsConn.Close() }()
+
+	if err := tlsConn.Handshake(); err != nil {
+		t.Fatalf("Handshake: %v", err)
+	}
+
+	return tlsConn.ConnectionState().Version, firstServerHelloRandom(t, rec.buf.Bytes())
+}
+
+// assertLegacyVersionNegotiatesTLS12 dials addr with a raw ClientHello whose
+// legacy_version is legacyVersion and no supported_versions extension, and
+// asserts the server answers with a TLS 1.2 ServerHello per RFC 8446 section
+// 4.2.1 rather than an alert. Shared by the standard-library and CCM
+// listener suites (core-go #125 amended criterion 3.4).
+func assertLegacyVersionNegotiatesTLS12(t *testing.T, addr string, legacyVersion uint16) {
+	t.Helper()
+
+	hello := buildRawClientHelloNoSupportedVersions(legacyVersion)
+	ct, payload := dialRawAndReadFirstRecord(t, addr, hello)
+
+	if ct == 21 {
+		t.Fatalf("server sent alert level=%d desc=%d instead of a TLS 1.2 ServerHello", payload[0], payload[1])
+	}
+	if ct != 22 || len(payload) < 6 || payload[0] != 0x02 {
+		t.Fatalf("expected a ServerHello handshake record, got content type %d payload %x", ct, payload)
+	}
+	negotiated := uint16(payload[4])<<8 | uint16(payload[5])
+	if negotiated != 0x0303 {
+		t.Errorf("ServerHello.legacy_version = 0x%04x, want TLS 1.2 (0x0303)", negotiated)
+	}
 }
 
 // firstServerHelloRandom scans recorded raw bytes for the first Handshake

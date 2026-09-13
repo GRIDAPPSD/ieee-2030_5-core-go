@@ -1,7 +1,6 @@
 package sep2tls_test
 
 import (
-	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"io"
@@ -284,7 +283,7 @@ func TestStdCapNoDowngradeSentinel(t *testing.T) {
 		addr, _, shutdown := startCapRawListener(t, serverTLSCfg)
 		defer shutdown()
 
-		version, random := recordAndHandshake(t, addr, certs, tls.VersionTLS12, 0) // MaxVersion 0: client's default, TLS 1.3
+		version, random := recordAndHandshake(t, addr, certs.caPEM, certs.devicePEM, certs.deviceKey, tls.VersionTLS12, 0) // MaxVersion 0: client's default, TLS 1.3
 		if version != tls.VersionTLS12 {
 			t.Fatalf("negotiated version = %s, want TLS 1.2: the sentinel check only means something if the server was actually forced down to 1.2", tls.VersionName(version))
 		}
@@ -303,7 +302,7 @@ func TestStdCapNoDowngradeSentinel(t *testing.T) {
 		defer shutdown()
 
 		// A 1.2-only client forces the downgrade path against the 1.3-capable server.
-		version, random := recordAndHandshake(t, addr, certs, tls.VersionTLS12, tls.VersionTLS12)
+		version, random := recordAndHandshake(t, addr, certs.caPEM, certs.devicePEM, certs.deviceKey, tls.VersionTLS12, tls.VersionTLS12)
 		if version != tls.VersionTLS12 {
 			t.Fatalf("negotiated version = %s, want TLS 1.2", tls.VersionName(version))
 		}
@@ -311,48 +310,6 @@ func TestStdCapNoDowngradeSentinel(t *testing.T) {
 			t.Fatalf("control did not observe the downgrade sentinel (got %x): the detector cannot prove a negative", got)
 		}
 	})
-}
-
-// recordAndHandshake performs a stdlib TLS handshake over a recordingConn so
-// the raw ServerHello.random bytes are recoverable afterward, then returns
-// the negotiated version alongside them. maxVer of 0 leaves the client's
-// default (highest mutually supported).
-func recordAndHandshake(t *testing.T, addr string, certs capCertSet, minVer, maxVer uint16) (uint16, [32]byte) {
-	t.Helper()
-
-	caPool := x509.NewCertPool()
-	if !caPool.AppendCertsFromPEM(certs.caPEM) {
-		t.Fatal("failed to parse CA cert into pool")
-	}
-	deviceCert, err := tls.X509KeyPair(certs.devicePEM, certs.deviceKey)
-	if err != nil {
-		t.Fatalf("X509KeyPair (device cert): %v", err)
-	}
-
-	rawConn, err := net.Dial("tcp", addr)
-	if err != nil {
-		t.Fatalf("net.Dial: %v", err)
-	}
-	defer func() { _ = rawConn.Close() }()
-
-	rec := &recordingConn{Conn: rawConn, buf: new(bytes.Buffer)}
-	tlsConn := tls.Client(rec, &tls.Config{
-		RootCAs: caPool,
-		// tls.Client (unlike tls.Dial) never derives ServerName from the
-		// address, and the cert covers 127.0.0.1 as a SAN.
-		ServerName:       "127.0.0.1",
-		Certificates:     []tls.Certificate{deviceCert},
-		MinVersion:       minVer,
-		MaxVersion:       maxVer,
-		CurvePreferences: []tls.CurveID{tls.CurveP256},
-	})
-	defer func() { _ = tlsConn.Close() }()
-
-	if err := tlsConn.Handshake(); err != nil {
-		t.Fatalf("Handshake: %v", err)
-	}
-
-	return tlsConn.ConnectionState().Version, firstServerHelloRandom(t, rec.buf.Bytes())
 }
 
 // TestStdCapLegacyVersionNegotiatesTLS12 is core-go #125 amended criterion
@@ -370,19 +327,7 @@ func TestStdCapLegacyVersionNegotiatesTLS12(t *testing.T) {
 	addr, _, shutdown := startCapRawListener(t, serverTLSCfg)
 	defer shutdown()
 
-	hello := buildRawClientHelloNoSupportedVersions(0x0304)
-	ct, payload := dialRawAndReadFirstRecord(t, addr, hello)
-
-	if ct == 21 {
-		t.Fatalf("server sent alert level=%d desc=%d instead of a TLS 1.2 ServerHello", payload[0], payload[1])
-	}
-	if ct != 22 || len(payload) < 6 || payload[0] != 0x02 {
-		t.Fatalf("expected a ServerHello handshake record, got content type %d payload %x", ct, payload)
-	}
-	negotiated := uint16(payload[4])<<8 | uint16(payload[5])
-	if negotiated != 0x0303 {
-		t.Errorf("ServerHello.legacy_version = 0x%04x, want TLS 1.2 (0x0303)", negotiated)
-	}
+	assertLegacyVersionNegotiatesTLS12(t, addr, 0x0304)
 }
 
 // TestMutualAuthStillEnforcedUnderCap proves the TLS 1.2 cap did not open an

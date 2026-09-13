@@ -1,7 +1,6 @@
 package sep2tls_test
 
 import (
-	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"net"
@@ -82,12 +81,11 @@ func writeCCMTempFile(t *testing.T, dir, name string, content []byte) string {
 }
 
 // startCCMTestListener stands up a raw gotls listener using cfg, mirroring
-// the production wiring in pkg/sep2srv/server.go's wrapMTLS (EnableCCM
-// branch) and pkg/sep2client/notify/receiver.go. Each accepted connection is
-// handshaken; a handshake error is sent to errs if non-nil, so tests can
-// assert on the server-side refusal reason (errs may be nil to swallow it,
-// matching the negative mutual-auth tests below, which assert on the
-// dial-side error instead).
+// the production wiring in pkg/sep2client/notify/receiver.go. Each accepted
+// connection is handshaken; a handshake error is sent to errs if non-nil, so
+// tests can assert on the server-side refusal reason (errs may be nil to
+// swallow it, matching the negative mutual-auth tests below, which assert on
+// the dial-side error instead).
 func startCCMTestListener(t *testing.T, cfg *gotls.Config, errs chan error) (addr string, shutdown func()) {
 	t.Helper()
 
@@ -337,7 +335,7 @@ func TestCCMCapNoDowngradeSentinel(t *testing.T) {
 		addr, shutdown := startCCMTestListener(t, cfg, nil)
 		defer shutdown()
 
-		version, random := recordAndHandshakeCCM(t, addr, files, tls.VersionTLS12, 0)
+		version, random := recordAndHandshake(t, addr, files.caPEM, files.devicePEM, files.deviceKey, tls.VersionTLS12, 0)
 		if version != tls.VersionTLS12 {
 			t.Fatalf("negotiated version = %s, want TLS 1.2: the sentinel check only means something if the server was actually forced down to 1.2", tls.VersionName(version))
 		}
@@ -353,7 +351,7 @@ func TestCCMCapNoDowngradeSentinel(t *testing.T) {
 		defer shutdown()
 
 		// A 1.2-only client forces the downgrade path against the 1.3-capable server.
-		version, random := recordAndHandshakeCCM(t, addr, files, tls.VersionTLS12, tls.VersionTLS12)
+		version, random := recordAndHandshake(t, addr, files.caPEM, files.devicePEM, files.deviceKey, tls.VersionTLS12, tls.VersionTLS12)
 		if version != tls.VersionTLS12 {
 			t.Fatalf("negotiated version = %s, want TLS 1.2", tls.VersionName(version))
 		}
@@ -361,49 +359,6 @@ func TestCCMCapNoDowngradeSentinel(t *testing.T) {
 			t.Fatalf("control did not observe the downgrade sentinel (got %x): the detector cannot prove a negative", got)
 		}
 	})
-}
-
-// recordAndHandshakeCCM is the CCM-listener counterpart of recordAndHandshake
-// (tls12_cap_test.go): a plain stdlib client over a recordingConn, so the raw
-// ServerHello.random is recoverable after the handshake completes. Returns
-// the negotiated version alongside it. maxVer of 0 leaves the client's
-// default (highest mutually supported).
-func recordAndHandshakeCCM(t *testing.T, addr string, files ccmTestFiles, minVer, maxVer uint16) (uint16, [32]byte) {
-	t.Helper()
-
-	caPool := x509.NewCertPool()
-	if !caPool.AppendCertsFromPEM(files.caPEM) {
-		t.Fatal("failed to parse CA cert into pool")
-	}
-	deviceCert, err := tls.X509KeyPair(files.devicePEM, files.deviceKey)
-	if err != nil {
-		t.Fatalf("X509KeyPair (device cert): %v", err)
-	}
-
-	rawConn, err := net.Dial("tcp", addr)
-	if err != nil {
-		t.Fatalf("net.Dial: %v", err)
-	}
-	defer func() { _ = rawConn.Close() }()
-
-	rec := &recordingConn{Conn: rawConn, buf: new(bytes.Buffer)}
-	tlsConn := tls.Client(rec, &tls.Config{
-		RootCAs: caPool,
-		// tls.Client (unlike tls.Dial) never derives ServerName from the
-		// address, and the cert covers 127.0.0.1 as a SAN.
-		ServerName:       "127.0.0.1",
-		Certificates:     []tls.Certificate{deviceCert},
-		MinVersion:       minVer,
-		MaxVersion:       maxVer,
-		CurvePreferences: []tls.CurveID{tls.CurveP256},
-	})
-	defer func() { _ = tlsConn.Close() }()
-
-	if err := tlsConn.Handshake(); err != nil {
-		t.Fatalf("Handshake: %v", err)
-	}
-
-	return tlsConn.ConnectionState().Version, firstServerHelloRandom(t, rec.buf.Bytes())
 }
 
 // TestCCMCapLegacyVersionNegotiatesTLS12 is core-go #125 amended criterion
@@ -421,19 +376,7 @@ func TestCCMCapLegacyVersionNegotiatesTLS12(t *testing.T) {
 	addr, shutdown := startCCMTestListener(t, cfg, nil)
 	defer shutdown()
 
-	hello := buildRawClientHelloNoSupportedVersions(0x0304)
-	ct, payload := dialRawAndReadFirstRecord(t, addr, hello)
-
-	if ct == 21 {
-		t.Fatalf("server sent alert level=%d desc=%d instead of a TLS 1.2 ServerHello", payload[0], payload[1])
-	}
-	if ct != 22 || len(payload) < 6 || payload[0] != 0x02 {
-		t.Fatalf("expected a ServerHello handshake record, got content type %d payload %x", ct, payload)
-	}
-	negotiated := uint16(payload[4])<<8 | uint16(payload[5])
-	if negotiated != 0x0303 {
-		t.Errorf("ServerHello.legacy_version = 0x%04x, want TLS 1.2 (0x0303)", negotiated)
-	}
+	assertLegacyVersionNegotiatesTLS12(t, addr, 0x0304)
 }
 
 // TestMutualAuthStillEnforcedOnCCMPath proves the TLS 1.2 cap did not open
