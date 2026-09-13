@@ -339,7 +339,12 @@ func TestCCMListenerCloseReleasesGoroutines(t *testing.T) {
 			},
 		},
 		{
-			name: "handshake finishes after Close",
+			// Close() waits on l.wg before returning, so the server side of
+			// this connection has already been cancelled and torn down by
+			// the time this closure runs: a handshake begun here cannot
+			// complete. Named and asserted for that outcome, not the
+			// aspirational "finishes" this subtest was previously titled.
+			name: "handshake begun only after Close never completes",
 			beforeClose: func(t *testing.T, addr string, files ccmTestFiles, accepted <-chan struct{}) func(*testing.T) {
 				raw, err := net.Dial("tcp", addr)
 				if err != nil {
@@ -347,12 +352,14 @@ func TestCCMListenerCloseReleasesGoroutines(t *testing.T) {
 				}
 				waitAccepted(t, accepted)
 				return func(t *testing.T) {
-					conn := gotls.Client(raw, ccmClientConfig(t, files))
+					cfg := ccmClientConfig(t, files)
+					cfg.ServerName = "127.0.0.1"
+					conn := gotls.Client(raw, cfg)
 					defer func() { _ = conn.Close() }()
 					ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 					defer cancel()
-					if err := conn.HandshakeContext(ctx); err != nil {
-						return
+					if err := conn.HandshakeContext(ctx); err == nil {
+						t.Fatal("client handshake succeeded, want the already-closed server side to refuse it")
 					}
 					assertClosedByServer(t, conn)
 				}
