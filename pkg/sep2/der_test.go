@@ -11,17 +11,23 @@ import (
 func TestDERControlBaseCopy(t *testing.T) {
 	connected := true
 	maxW := sep2.PerCent(5000)
+	fixedW := sep2.SignedPerCent(-2500)
 	original := sep2.DERControlBase{
 		OpModConnect: &connected,
+		OpModFixedW:  &fixedW,
 		OpModMaxLimW: &maxW,
 	}
 
 	copied := original.Copy()
 	*copied.OpModConnect = false
+	*copied.OpModFixedW = -999
 	*copied.OpModMaxLimW = 999
 
 	if *original.OpModConnect != true {
 		t.Error("original OpModConnect mutated")
+	}
+	if *original.OpModFixedW != -2500 {
+		t.Error("original OpModFixedW mutated")
 	}
 	if *original.OpModMaxLimW != 5000 {
 		t.Error("original OpModMaxLimW mutated")
