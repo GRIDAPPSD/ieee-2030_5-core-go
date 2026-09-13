@@ -17,18 +17,39 @@ const KindOmitemptyRequired ProblemKind = "omitempty-required"
 // to be populated.
 const KindStructOrder ProblemKind = "struct-order"
 
-// KindIntegerWidth means a field's Go integer storage is WIDER than the XSD
-// numeric built-in its element or attribute bottoms out at. The Go type then
-// permits constructing a value the schema forbids, and the marshaller
-// serializes it without complaint: this is the storage-capacity counterpart
-// to KindLexical in validate.go, which catches an actual out-of-range VALUE
-// but only once one has been set. See #111.
+// KindIntegerWidth means a Go integer field can hold a value the XSD integer
+// built-in its element or attribute resolves to cannot: it is wider, signed
+// over an unsigned type, or unsigned at the full width of a signed one. The
+// marshaller would serialize such a value without complaint. See #111.
 const KindIntegerWidth ProblemKind = "integer-width"
+
+// KindIntegerUnresolved means a Go integer field is bound to an XSD type that
+// resolves to no built-in this gate knows, so its range cannot be compared.
+// Reporting it keeps the integer check from passing by skipping.
+const KindIntegerUnresolved ProblemKind = "integer-unresolved"
 
 // intWidth is the bit width and signedness of an integer type, Go or XSD.
 type intWidth struct {
 	bits   int
 	signed bool
+}
+
+func (w intWidth) String() string {
+	if w.signed {
+		return fmt.Sprintf("%d-bit signed", w.bits)
+	}
+	return fmt.Sprintf("%d-bit unsigned", w.bits)
+}
+
+// fitsIn reports whether every value of w is representable in x.
+func (w intWidth) fitsIn(x intWidth) bool {
+	switch {
+	case w.signed && !x.signed:
+		return false
+	case !w.signed && x.signed:
+		return w.bits < x.bits
+	}
+	return w.bits <= x.bits
 }
 
 // xsdIntWidths gives the width of every XSD built-in integer type this gate
@@ -44,12 +65,8 @@ var xsdIntWidths = map[string]intWidth{
 	"unsignedLong":  {64, false},
 }
 
-// goIntWidth reports t's bit width when t's underlying Kind is a plain
-// integer, so a named type over an integer (OneHourRange over int16,
-// HexBinary8 over uint8) is measured by its storage, not its declared name.
-// ok is false for anything else (string, float, struct, and so on), which is
-// how this check stays silent on non-numeric elements without a separate
-// exclusion list.
+// goIntWidth measures t by its underlying Kind, so a named type over an
+// integer (OneHourRange over int16) is judged by its storage.
 func goIntWidth(t reflect.Type) (w intWidth, ok bool) {
 	switch t.Kind() {
 	case reflect.Int8:
@@ -72,34 +89,76 @@ func goIntWidth(t reflect.Type) (w intWidth, ok bool) {
 	return intWidth{}, false
 }
 
-// checkIntegerWidth appends a KindIntegerWidth problem when f's Go storage is
-// wider than xsdType's resolved built-in. It is a no-op for a field whose Go
-// kind is not a plain integer, or whose XSD type does not bottom out at one
-// of the eight XSD integer built-ins (a hexBinary-, string-, or
-// decimal-typed field, for instance): both cases fall through with ok=false.
+// integerBase follows restriction bases and simpleContent extensions to the
+// built-in a type's value bottoms out at. It returns "" for a dangling name,
+// a cycle, element content, or a built-in outside isXSDBuiltin, and the chain
+// of names it walked either way.
+func (s *Schema) integerBase(typeName string) (builtin string, chain []string) {
+	seen := map[string]bool{}
+	for name := typeName; ; {
+		chain = append(chain, name)
+		if seen[name] {
+			return "", chain
+		}
+		seen[name] = true
+		if st, ok := s.simpleTypes[name]; ok {
+			name = st.Base
+			continue
+		}
+		if ct, ok := s.complexTypes[name]; ok && ct.SimpleContent {
+			name = ct.Base
+			continue
+		}
+		if isXSDBuiltin(name) {
+			return name, chain
+		}
+		return "", chain
+	}
+}
+
+// checkIntegerWidth reports a Go integer field whose range its XSD type
+// cannot hold, or whose XSD type cannot be resolved. A type resolving to a
+// non-integer built-in such as hexBinary is left to the lexical check.
 func (s *Schema) checkIntegerWidth(ps *Problems, typeName string, f reflect.StructField, elementName, xsdType, owner string) {
 	ft := f.Type
 	for ft.Kind() == reflect.Ptr {
 		ft = ft.Elem()
 	}
+	// encoding/xml repeats the element once per item, except for a byte slice
+	// or array, which it writes as character data.
+	if k := ft.Kind(); (k == reflect.Slice || k == reflect.Array) && ft.Elem().Kind() != reflect.Uint8 {
+		ft = ft.Elem()
+		for ft.Kind() == reflect.Ptr {
+			ft = ft.Elem()
+		}
+	}
 	gw, ok := goIntWidth(ft)
 	if !ok {
 		return
 	}
-	builtin, _ := s.resolveBuiltin(xsdType)
-	xw, ok := xsdIntWidths[builtin]
-	if !ok {
+	path := typeName + "." + f.Name
+	builtin, chain := s.integerBase(xsdType)
+	if builtin == "" {
+		*ps = append(*ps, Problem{
+			Kind: KindIntegerUnresolved,
+			Path: path,
+			Message: fmt.Sprintf("field %s is a %s Go integer but %q on %s (declared by %s) has type chain %s, "+
+				"which reaches no XSD built-in this gate knows, so its range cannot be checked",
+				f.Name, gw, elementName, typeName, owner, strings.Join(chain, " -> ")),
+		})
 		return
 	}
-	if gw.bits > xw.bits {
-		*ps = append(*ps, Problem{
-			Kind: KindIntegerWidth,
-			Path: typeName + "." + f.Name,
-			Message: fmt.Sprintf("field %s is a %d-bit Go integer but %q is xs:%s (%d-bit) on %s (declared by %s); "+
-				"the Go type permits a value outside the schema's range and the marshaller would serialize it",
-				f.Name, gw.bits, elementName, builtin, xw.bits, typeName, owner),
-		})
+	xw, isInt := xsdIntWidths[builtin]
+	if !isInt || gw.fitsIn(xw) {
+		return
 	}
+	*ps = append(*ps, Problem{
+		Kind: KindIntegerWidth,
+		Path: path,
+		Message: fmt.Sprintf("field %s is a %s Go integer but %q on %s (declared by %s) resolves %s, a %s XSD integer; "+
+			"the Go type permits a value outside the schema's range and the marshaller would serialize it",
+			f.Name, gw, elementName, typeName, owner, strings.Join(chain, " -> "), xw),
+	})
 }
 
 // CheckStruct validates a Go struct TYPE against a schema type, statically.
@@ -120,14 +179,16 @@ func (s *Schema) checkIntegerWidth(ps *Problems, typeName string, f reflect.Stru
 //   - Fields tagged ",attr" that the schema declares as elements, and fields
 //     tagged as elements that the schema declares as attributes.
 //   - Field names absent from the schema entirely.
+//   - Go integer fields (including pointers and slices of them) whose range
+//     the XSD integer type cannot hold, or whose XSD type does not resolve.
 //
 // Embedded structs are flattened in declaration position, matching how
 // encoding/xml lays them out.
 //
-// It does NOT check Go types against schema types beyond placement, so a
-// field bound to the right element name with an unrepresentable Go type is
-// not reported here. Marshalling that value and running Validate catches the
-// lexical consequence.
+// It does NOT compare non-integer Go types with schema types, nor integer
+// fields with facets such as minInclusive, so a field bound to the right
+// element name with an unrepresentable Go type can pass here. Marshalling a
+// value and running Validate catches the lexical consequence.
 func (s *Schema) CheckStruct(typeName string, t reflect.Type) (Problems, error) {
 	for t.Kind() == reflect.Ptr {
 		t = t.Elem()

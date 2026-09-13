@@ -444,6 +444,7 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 			typeName: "DERCapability",
 			zero:     sep2.DERCapability{},
 			wantStruct: []string{
+				"integer-unresolved DERCapability.RTGMaxA",
 				"omitempty-required DERCapability.ModesSupported",
 				"omitempty-required DERCapability.RTGMaxW",
 				"omitempty-required DERCapability.Type",
@@ -455,7 +456,9 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 			},
 			reason: "modesSupported, rtgMaxW and type are minOccurs=1 but tagged omitempty, " +
 				"so a zero-value DERCapability serializes with none of them. Fixing this means " +
-				"dropping omitempty and deciding each field's zero-value semantics.",
+				"dropping omitempty and deciding each field's zero-value semantics. Separately, " +
+				"rtgMaxA is modelled as *int32 while the schema types it CurrentRMS, a complex " +
+				"type carrying multiplier and value, so the integer check cannot resolve it.",
 		},
 		{
 			typeName: "DERSettings",
@@ -532,6 +535,7 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 			typeName: "FlowReservationRequest",
 			zero:     sep2.FlowReservationRequest{},
 			wantStruct: []string{
+				"integer-unresolved FlowReservationRequest.RequestStatus",
 				"omitempty-required FlowReservationRequest.EnergyRequested",
 				"omitempty-required FlowReservationRequest.IntervalRequested",
 				"omitempty-required FlowReservationRequest.MRID",
@@ -548,7 +552,10 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 			reason: "every element the schema requires beyond creationTime is tagged omitempty, " +
 				"so a request a client POSTs without them round-trips as a document carrying " +
 				"only creationTime. The handler fills none of them either: POST /edev/{id}/frq " +
-				"stamps href and creationTime and stores whatever else the client sent.",
+				"stamps href and creationTime and stores whatever else the client sent. " +
+				"Separately, RequestStatus is modelled as *uint8 while the schema's RequestStatus " +
+				"element is a complex type carrying dateTime and requestStatus, so the integer " +
+				"check cannot resolve it.",
 		},
 		{
 			typeName: "FlowReservationResponse",
@@ -789,13 +796,22 @@ func TestSchemaGateDetectsScalarForComplexType(t *testing.T) {
 // Integer width
 // ---------------------------------------------------------------------------
 
-// TestSchemaGateCatchesOversizedIntegerWidth pins the gate's ability to catch
-// #111's defect class: a Go integer field wider than
-// the XSD numeric base its element bottoms out at, which permits constructing
-// a value the schema forbids and the marshaller then serializes without
-// complaint. wideRandomizableEvent is the exact pre-fix shape (randomizeStart
-// and randomizeDuration as *int32 against OneHourRangeType, which extends
-// Int16 / xs:short).
+// integerProblemLines keeps only the integer-range lines, so a fixture that
+// also trips unrelated struct problems pins just the check under test.
+func integerProblemLines(ps xsdgate.Problems) []string {
+	var out []string
+	for _, line := range ps.Summary() {
+		if strings.HasPrefix(line, string(xsdgate.KindIntegerWidth)+" ") ||
+			strings.HasPrefix(line, string(xsdgate.KindIntegerUnresolved)+" ") {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// TestSchemaGateCatchesOversizedIntegerWidth pins the gate against #111's
+// defect on the real schema: randomizeStart and randomizeDuration as *int32
+// against OneHourRangeType, which sep.xsd bases on Int16.
 func TestSchemaGateCatchesOversizedIntegerWidth(t *testing.T) {
 	type wideRandomizableEvent struct {
 		sep2.Event
@@ -803,23 +819,22 @@ func TestSchemaGateCatchesOversizedIntegerWidth(t *testing.T) {
 		RandomizeStart    *int32 `xml:"randomizeStart,omitempty"`
 	}
 
-	got := xsdgate.CollectStructProblems(t, "RandomizableEvent", wideRandomizableEvent{}).Summary()
+	ps := xsdgate.CollectStructProblems(t, "RandomizableEvent", wideRandomizableEvent{})
 	want := []string{
 		"integer-width RandomizableEvent.RandomizeDuration",
 		"integer-width RandomizableEvent.RandomizeStart",
 	}
-	assertPinned(t, "struct-definition", "RandomizableEvent(oversized-fixture)", got, want)
+	assertPinned(t, "struct-definition", "RandomizableEvent(oversized-fixture)", integerProblemLines(ps), want)
+	if t.Failed() {
+		t.Logf("all struct problems for the fixture:\n%s", ps.Error())
+	}
 }
 
-// TestSchemaGateRandomizableEventFieldsAreNotOversized is the forward-looking
-// half of the check above: the actual sep2.RandomizableEvent must report ZERO
-// integer-width problems now that RandomizeDuration and RandomizeStart are
-// OneHourRange (int16), matching OneHourRangeType's Int16/xs:short base.
+// TestSchemaGateRandomizableEventFieldsAreNotOversized is the other half: the
+// real sep2.RandomizableEvent reports no integer problem of either kind.
 func TestSchemaGateRandomizableEventFieldsAreNotOversized(t *testing.T) {
-	got := xsdgate.CollectStructProblems(t, "RandomizableEvent", sep2.RandomizableEvent{}).Summary()
-	for _, p := range got {
-		if strings.HasPrefix(p, "integer-width") {
-			t.Errorf("sep2.RandomizableEvent has an integer-width problem: %s", p)
-		}
+	ps := xsdgate.CollectStructProblems(t, "RandomizableEvent", sep2.RandomizableEvent{})
+	if got := integerProblemLines(ps); len(got) > 0 {
+		t.Errorf("sep2.RandomizableEvent has integer problems: %v\n%s", got, ps.Error())
 	}
 }
