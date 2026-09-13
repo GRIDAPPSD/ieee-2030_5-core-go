@@ -23,5 +23,8 @@ linters:
         - -QF1008  # remove embedded field from selector (explicit is safer)
   exclusions:
     paths:
-      - pkg/sep2tls/gotls
-      - pkg/sep2tls/ccm
+      # Anchored to the directory boundary: golangci-lint v2 matches each
+      # entry as an unanchored regex against the relative path, and the
+      # unanchored form also matched ccmserver.go and ccm_tls13_test.go.
+      - ^pkg/sep2tls/gotls/
+      - ^pkg/sep2tls/ccm/
