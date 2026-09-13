@@ -25,7 +25,7 @@ setup() {
   for f in "$FORK_DIR"/*.go; do
     base="$(basename "$f")"
     case "$base" in
-    cipher_suites_ccm.go | ccm_check_test.go | ccm_raw_test.go) continue ;;
+    cipher_suites_ccm.go | cipher_suites_ccm_order_test.go | ccm_check_test.go | ccm_raw_test.go) continue ;;
     esac
     sed -e 's/^package gotls$/package tls/' \
       -e 's#github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls/stubs/fipstls#crypto/internal/boring/fipstls#' \
