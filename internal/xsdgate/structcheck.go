@@ -175,7 +175,8 @@ type descentKey struct {
 // checkChildIntegers applies the integer check to the struct modelling a
 // child element, at every depth, against the type the schema gives that
 // element. An integer it cannot pair with a declaration is reported as
-// unresolved, so the descent never passes by skipping.
+// unresolved, except a character-data integer in a child struct or a tagged
+// embedded struct, both of which this check does not reach.
 func (s *Schema) checkChildIntegers(ps *Problems, path, nodePath string, ft reflect.Type, xsdType string, active map[descentKey]bool) error {
 	t := elementValueType(ft)
 	if t.Kind() != reflect.Struct {
