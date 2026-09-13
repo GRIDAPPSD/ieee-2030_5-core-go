@@ -107,8 +107,9 @@ func TestGetNamespaceDefaultsTo2018(t *testing.T) {
 }
 
 func TestGetNamespaceFromMiddlewareContext(t *testing.T) {
-	// NamespaceMiddleware injects Namespace2013 into the context when the
-	// client sends a 2013 Accept header; GetNamespace must recover it.
+	// NamespaceMiddleware injects Namespace2013 into the context only for
+	// the explicit 2013 selector, level=-S0 (IEEE 2030.5-2013); GetNamespace
+	// must recover it.
 	var capturedMode encoding.NamespaceMode
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedMode = encoding.GetNamespace(r.Context())
@@ -117,7 +118,7 @@ func TestGetNamespaceFromMiddlewareContext(t *testing.T) {
 
 	wrapped := encoding.NamespaceMiddleware(inner)
 	req := httptest.NewRequest("GET", "/dcap", nil)
-	req.Header.Set("Accept", "application/sep+xml; level=-S1")
+	req.Header.Set("Accept", "application/sep+xml; level=-S0")
 	w := httptest.NewRecorder()
 	wrapped.ServeHTTP(w, req)
 

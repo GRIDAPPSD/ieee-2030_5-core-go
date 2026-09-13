@@ -121,10 +121,7 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 		{
 			// A POPULATED LogEvent, because the zero value leaves details and
 			// extendedData absent (both are omitempty) and the marshalled
-			// check then has nothing to inspect for either. extendedData is
-			// the one that matters: sep.xsd types it UInt32 while the Go field
-			// is a *int64, so a negative value marshals to a document the
-			// schema rejects. The gate catches that lexically, which is why a
+			// check then has nothing to inspect for either, which is why a
 			// populated fixture is the entry and not the zero value.
 			typeName: "LogEvent",
 			v:        populatedLogEvent(),
@@ -231,7 +228,7 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 // the standard's terms; keeping it short means the fixture is not itself the
 // thing that is wrong.
 func populatedLogEvent() sep2.LogEvent {
-	extendedData := int64(9007)
+	extendedData := uint32(9007)
 	return sep2.LogEvent{
 		Resource:        sep2.Resource{Href: "/edev/1/lel/00000000001604963587"},
 		CreatedDateTime: 1604963587,
@@ -264,8 +261,8 @@ func respondableFixtures() map[string]any {
 	rr := sep2.HexBinary8(0x07)
 	category := sep2.DeviceCategoryType(0x0080)
 
-	base := func() sep2.RandomizableEvent {
-		var e sep2.RandomizableEvent
+	baseEvent := func() sep2.Event {
+		var e sep2.Event
 		e.ReplyTo = replyTo
 		e.ResponseRequired = &rr
 		e.MRID = "0102030405060708090A0B0C0D0E0F10"
@@ -274,6 +271,12 @@ func respondableFixtures() map[string]any {
 		e.EventStatus = &sep2.EventStatus{CurrentStatus: 1, DateTime: 1500000000}
 		e.Interval = &sep2.DateTimeInterval{Duration: 3600, Start: 1500000000}
 		return e
+	}
+	// base is for the two types the schema actually derives from
+	// RandomizableEvent (DERControl, EndDeviceControl). FlowReservationResponse
+	// and TextMessage derive from Event directly (#107) and use baseEvent.
+	base := func() sep2.RandomizableEvent {
+		return sep2.RandomizableEvent{Event: baseEvent()}
 	}
 
 	derc := sep2.DERControl{RandomizableEvent: base()}
@@ -284,10 +287,10 @@ func respondableFixtures() map[string]any {
 	edc.Href = "/drp/0/edc/1"
 	edc.DeviceCategory = &category
 
-	frr := sep2.FlowReservationResponse{RandomizableEvent: base()}
+	frr := sep2.FlowReservationResponse{Event: baseEvent()}
 	frr.Href = "/edev/1/frp/1"
 
-	tm := sep2.TextMessage{RandomizableEvent: base()}
+	tm := sep2.TextMessage{Event: baseEvent()}
 	tm.Href = "/msg/0/txt/1"
 
 	return map[string]any{
@@ -438,6 +441,7 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 			typeName: "DERCapability",
 			zero:     sep2.DERCapability{},
 			wantStruct: []string{
+				"integer-unresolved DERCapability.RTGMaxA",
 				"omitempty-required DERCapability.ModesSupported",
 				"omitempty-required DERCapability.RTGMaxW",
 				"omitempty-required DERCapability.Type",
@@ -449,7 +453,9 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 			},
 			reason: "modesSupported, rtgMaxW and type are minOccurs=1 but tagged omitempty, " +
 				"so a zero-value DERCapability serializes with none of them. Fixing this means " +
-				"dropping omitempty and deciding each field's zero-value semantics.",
+				"dropping omitempty and deciding each field's zero-value semantics. Separately, " +
+				"rtgMaxA is modelled as *int32 while the schema types it CurrentRMS, a complex " +
+				"type carrying multiplier and value, so the integer check cannot resolve it (#151).",
 		},
 		{
 			typeName: "DERSettings",
@@ -526,6 +532,7 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 			typeName: "FlowReservationRequest",
 			zero:     sep2.FlowReservationRequest{},
 			wantStruct: []string{
+				"integer-unresolved FlowReservationRequest.RequestStatus",
 				"omitempty-required FlowReservationRequest.EnergyRequested",
 				"omitempty-required FlowReservationRequest.IntervalRequested",
 				"omitempty-required FlowReservationRequest.MRID",
@@ -542,7 +549,10 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 			reason: "every element the schema requires beyond creationTime is tagged omitempty, " +
 				"so a request a client POSTs without them round-trips as a document carrying " +
 				"only creationTime. The handler fills none of them either: POST /edev/{id}/frq " +
-				"stamps href and creationTime and stores whatever else the client sent.",
+				"stamps href and creationTime and stores whatever else the client sent. " +
+				"Separately, RequestStatus is modelled as *uint8 while the schema's RequestStatus " +
+				"element is a complex type carrying dateTime and requestStatus, so the integer " +
+				"check cannot resolve it (#152).",
 		},
 		{
 			typeName: "FlowReservationResponse",
@@ -554,8 +564,6 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 				"omitempty-required FlowReservationResponse.MRID",
 				"omitempty-required FlowReservationResponse.PowerAvailable",
 				"omitempty-required FlowReservationResponse.Subject",
-				"unknown-element FlowReservationResponse.RandomizeDuration",
-				"unknown-element FlowReservationResponse.RandomizeStart",
 			},
 			wantMarshal: []string{
 				"missing-element FlowReservationResponse/EventStatus",
@@ -565,10 +573,10 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 				"missing-element FlowReservationResponse/powerAvailable",
 				"missing-element FlowReservationResponse/subject",
 			},
-			reason: "one defect beyond the usual omitempty set, from the embedded " +
-				"RandomizableEvent: the schema derives FlowReservationResponse from Event, not " +
-				"RandomizableEvent, so randomizeStart and randomizeDuration are elements the " +
-				"schema does not declare here; a known gap, not fixed here. This entry used " +
+			reason: "the omitempty-required defects below remain (not fixed here). The " +
+				"embedding-versus-derivation defect is fixed: FlowReservationResponse now embeds " +
+				"Event directly rather than RandomizableEvent, so randomizeStart and " +
+				"randomizeDuration no longer reach the wire (#107). This entry used " +
 				"to also pin 'placement ReplyTo' and 'placement ResponseRequired'; both are " +
 				"now fixed and guarded by TestSchemaGateRejectsRespondableFieldsAsElements " +
 				"instead.",
@@ -580,19 +588,18 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 				"omitempty-required TextMessage.EventStatus",
 				"omitempty-required TextMessage.Interval",
 				"omitempty-required TextMessage.MRID",
-				"unknown-element TextMessage.RandomizeDuration",
-				"unknown-element TextMessage.RandomizeStart",
 			},
 			wantMarshal: []string{
 				"missing-element TextMessage/EventStatus",
 				"missing-element TextMessage/interval",
 				"missing-element TextMessage/mRID",
 			},
-			reason: "the same RandomizableEvent-versus-Event divergence as " +
-				"FlowReservationResponse (not fixed here): the schema derives TextMessage from " +
-				"Event. The missing EventStatus reflects that nothing on the TextMessage path " +
-				"ever constructs one. The two 'placement' entries this list used to carry are " +
-				"now fixed.",
+			reason: "the omitempty-required defects below remain (not fixed here). The missing " +
+				"EventStatus reflects that nothing on the TextMessage path ever constructs one. " +
+				"The embedding-versus-derivation defect is fixed: TextMessage now embeds Event " +
+				"directly rather than RandomizableEvent, so randomizeStart and randomizeDuration " +
+				"no longer reach the wire (#107). The two 'placement' entries this list used to " +
+				"carry are also fixed.",
 		},
 		{
 			typeName: "EndDevice",
@@ -780,4 +787,97 @@ func TestSchemaGateDetectsScalarForComplexType(t *testing.T) {
 		"missing-element DERStatus/stateOfChargeStatus/value",
 	}
 	assertPinned(t, "marshalled-output", "DERStatus(defective-fixture)", problems.Summary(), want)
+}
+
+// ---------------------------------------------------------------------------
+// Integer width
+// ---------------------------------------------------------------------------
+
+// integerProblemLines keeps only the integer-range lines, so a fixture that
+// also trips unrelated struct problems pins just the check under test.
+func integerProblemLines(ps xsdgate.Problems) []string {
+	var out []string
+	for _, line := range ps.Summary() {
+		if strings.HasPrefix(line, string(xsdgate.KindIntegerWidth)+" ") ||
+			strings.HasPrefix(line, string(xsdgate.KindIntegerUnresolved)+" ") {
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+// TestSchemaGateCatchesOversizedIntegerWidth pins the gate against #111's
+// defect on the real schema: randomizeStart and randomizeDuration as *int32
+// against OneHourRangeType, which sep.xsd bases on Int16.
+func TestSchemaGateCatchesOversizedIntegerWidth(t *testing.T) {
+	type wideRandomizableEvent struct {
+		sep2.Event
+		RandomizeDuration *int32 `xml:"randomizeDuration,omitempty"`
+		RandomizeStart    *int32 `xml:"randomizeStart,omitempty"`
+	}
+
+	ps := xsdgate.CollectStructProblems(t, "RandomizableEvent", wideRandomizableEvent{})
+	want := []string{
+		"integer-width RandomizableEvent.RandomizeDuration",
+		"integer-width RandomizableEvent.RandomizeStart",
+	}
+	assertPinned(t, "struct-definition", "RandomizableEvent(oversized-fixture)", integerProblemLines(ps), want)
+	if t.Failed() {
+		t.Logf("all struct problems for the fixture:\n%s", ps.Error())
+	}
+}
+
+// TestSchemaGateControlIntegerPins pins the integer lines of the two control
+// resources whose respondable struct lane keeps only placement lines, so a
+// mismatch inside a child element such as DERControlBase is asserted both ways.
+func TestSchemaGateControlIntegerPins(t *testing.T) {
+	const curveRef = "the schema types this element DERCurveLink, a link carrying an href; " +
+		"the Go field is an int32 curve ref by design (see the DERControlBase doc comment) (#153)"
+	type pin struct{ line, reason string }
+	cases := []struct {
+		typeName string
+		v        any
+		pins     []pin
+	}{
+		{
+			typeName: "DERControl",
+			v:        sep2.DERControl{},
+			pins: []pin{
+				{"integer-unresolved DERControl.DERControlBase.OpModFixedVar.Multiplier",
+					"the schema types opModFixedVar FixedVar, which declares refType and value but no multiplier; the Go field reuses ReactivePower (#153)"},
+				{"integer-unresolved DERControl.DERControlBase.OpModFreqDroop",
+					"the schema types this element FreqDroopType, a complex type of droop parameters; the Go field is a single uint16 (#153)"},
+				{"integer-unresolved DERControl.DERControlBase.OpModFreqWatt", curveRef},
+				{"integer-unresolved DERControl.DERControlBase.OpModHFRTMustTrip", curveRef},
+				{"integer-unresolved DERControl.DERControlBase.OpModHVRTMomentaryCessation", curveRef},
+				{"integer-unresolved DERControl.DERControlBase.OpModHVRTMustTrip", curveRef},
+				{"integer-unresolved DERControl.DERControlBase.OpModLFRTMustTrip", curveRef},
+				{"integer-unresolved DERControl.DERControlBase.OpModLVRTMomentaryCessation", curveRef},
+				{"integer-unresolved DERControl.DERControlBase.OpModLVRTMustTrip", curveRef},
+				{"integer-unresolved DERControl.DERControlBase.OpModVoltVar", curveRef},
+				{"integer-unresolved DERControl.DERControlBase.OpModVoltWatt", curveRef},
+			},
+		},
+		{typeName: "EndDeviceControl", v: sep2.EndDeviceControl{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.typeName, func(t *testing.T) {
+			var want []string
+			for _, p := range tc.pins {
+				t.Logf("KNOWN-FAILING, not fixed in this change: %s: %s", p.line, p.reason)
+				want = append(want, p.line)
+			}
+			ps := xsdgate.CollectStructProblems(t, tc.typeName, tc.v)
+			assertPinned(t, "struct-definition integer", tc.typeName, integerProblemLines(ps), want)
+		})
+	}
+}
+
+// TestSchemaGateRandomizableEventFieldsAreNotOversized is the other half: the
+// real sep2.RandomizableEvent reports no integer problem of either kind.
+func TestSchemaGateRandomizableEventFieldsAreNotOversized(t *testing.T) {
+	ps := xsdgate.CollectStructProblems(t, "RandomizableEvent", sep2.RandomizableEvent{})
+	if got := integerProblemLines(ps); len(got) > 0 {
+		t.Errorf("sep2.RandomizableEvent has integer problems: %v\n%s", got, ps.Error())
+	}
 }
