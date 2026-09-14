@@ -581,10 +581,23 @@ type DERCurveList struct {
 	DERCurve []DERCurve `xml:"DERCurve,omitempty"`
 }
 
-// DER curve type constants.
+// DER curve type constants (DERCurveType, UInt8). Values 15-255 are
+// reserved: DERCurve.CurveType decodes and re-encodes them unchanged,
+// since the type carries no custom decode validation.
 const (
-	CurveTypeOpModVoltVar  uint8 = 0
-	CurveTypeOpModFreqWatt uint8 = 1
-	CurveTypeOpModWattPF   uint8 = 2
-	CurveTypeOpModVoltWatt uint8 = 3
+	CurveTypeOpModFreqWatt               uint8 = 0
+	CurveTypeOpModHFRTMayTrip            uint8 = 1
+	CurveTypeOpModHFRTMustTrip           uint8 = 2
+	CurveTypeOpModHVRTMayTrip            uint8 = 3
+	CurveTypeOpModHVRTMomentaryCessation uint8 = 4
+	CurveTypeOpModHVRTMustTrip           uint8 = 5
+	CurveTypeOpModLFRTMayTrip            uint8 = 6
+	CurveTypeOpModLFRTMustTrip           uint8 = 7
+	CurveTypeOpModLVRTMayTrip            uint8 = 8
+	CurveTypeOpModLVRTMomentaryCessation uint8 = 9
+	CurveTypeOpModLVRTMustTrip           uint8 = 10
+	CurveTypeOpModVoltVar                uint8 = 11
+	CurveTypeOpModVoltWatt               uint8 = 12
+	CurveTypeOpModWattPF                 uint8 = 13
+	CurveTypeOpModWattVar                uint8 = 14
 )
