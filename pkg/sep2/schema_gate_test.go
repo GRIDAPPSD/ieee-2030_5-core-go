@@ -145,6 +145,24 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 			},
 		},
 		{
+			// The zero-value DERCapability entry below leaves rtgMaxV and
+			// rtgMaxVA nil, so only this fixture puts them through the
+			// marshalled check (#55). rtgMaxA stays nil because its Go type
+			// cannot produce the CurrentRMS the schema requires (#151).
+			typeName: "DERCapability",
+			v: sep2.DERCapability{
+				Resource:             sep2.Resource{Href: "/edev/1/der/1/dercap"},
+				ModesSupported:       func() *sep2.DERControlType { v := sep2.DERControlType(0x0800); return &v }(),
+				RTGMaxChargeRateW:    &sep2.ActivePower{Multiplier: 3, Value: 5},
+				RTGMaxDischargeRateW: &sep2.ActivePower{Multiplier: 3, Value: 5},
+				RTGMaxV:              &sep2.VoltageRMS{Multiplier: -1, Value: 2400},
+				RTGMaxVA:             &sep2.ApparentPower{Multiplier: 0, Value: 65000},
+				RTGMaxVar:            &sep2.ReactivePower{Multiplier: 3, Value: 4},
+				RTGMaxW:              &sep2.ActivePower{Multiplier: 3, Value: 6},
+				Type:                 func() *uint8 { v := uint8(4); return &v }(),
+			},
+		},
+		{
 			typeName: "Registration",
 			v: sep2.Registration{
 				Resource:           sep2.Resource{Href: "/edev/1/rg"},
@@ -458,6 +476,19 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 				"type carrying multiplier and value, so the integer check cannot resolve it (#151).",
 		},
 		{
+			// The struct is in sequence order with no omitempty on a required
+			// element (#56), so a reorder or a re-added omitempty adds a line here.
+			typeName:   "DERCurve",
+			zero:       sep2.DERCurve{},
+			wantStruct: nil,
+			wantMarshal: []string{
+				"missing-element DERCurve/CurveData",
+			},
+			reason: "CurveData is minOccurs=1, but encoding/xml emits one element per slice " +
+				"entry, so a curve with no points has nothing to emit. A served curve must " +
+				"carry at least one point; no struct tag can supply one.",
+		},
+		{
 			typeName: "DERSettings",
 			zero:     sep2.DERSettings{},
 			wantStruct: []string{
@@ -631,6 +662,31 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 	}
 }
 
+// TestSchemaGatePopulatedDERCurve covers what the zero-value DERCurve entry
+// cannot: with no CurveData the placement of CurveData never reaches the
+// wire, and the multipliers and yRefType are only ever checked at 0.
+func TestSchemaGatePopulatedDERCurve(t *testing.T) {
+	ramp := uint16(600)
+	curve := sep2.DERCurve{
+		Resource:     sep2.Resource{Href: "/derp/0/dc/3"},
+		MRID:         "0102030405060708090A0B0C0D0E0F10",
+		Description:  "volt-var",
+		CreationTime: 1341446380,
+		CurveType:    11,
+		CurveData:    []sep2.CurveData{{XValue: 99, YValue: 50}},
+		RampDecTms:   &ramp,
+		XMultiplier:  -1,
+		YMultiplier:  2,
+		YRefType:     3,
+	}
+
+	problems, data := xsdgate.CollectProblems(t, "DERCurve", curve)
+	assertPinned(t, "marshalled-output", "DERCurve(populated)", problems.Summary(), nil)
+	if t.Failed() {
+		t.Logf("XML:\n%s", data)
+	}
+}
+
 // assertPinned compares an observed problem set against the pinned one and
 // explains, in the failure message, which direction the drift went and what
 // to do about it. A pinned expectation that fails without telling the reader
@@ -701,7 +757,7 @@ func TestSchemaGateCoversKnownResources(t *testing.T) {
 	// either address. That is no longer true, so this server now serves them
 	// and they are in scope.
 	required := []string{
-		"DERCapability", "DERSettings", "DERStatus",
+		"DERCapability", "DERCurve", "DERSettings", "DERStatus",
 		"MirrorUsagePoint", "MirrorMeterReading", "Registration",
 		"EndDevice", "Reading", "ReadingType",
 		"DERControl", "EndDeviceControl", "FlowReservationResponse", "TextMessage",
@@ -710,10 +766,10 @@ func TestSchemaGateCoversKnownResources(t *testing.T) {
 
 	covered := map[string]bool{
 		"Registration": true, "Reading": true, "ReadingType": true,
-		"MirrorMeterReading": true, "DERCapability": true, "DERSettings": true,
-		"DERStatus": true, "MirrorUsagePoint": true, "UsagePoint": true,
-		"EndDevice": true, "DERControl": true, "EndDeviceControl": true,
-		"FlowReservationResponse": true, "TextMessage": true,
+		"MirrorMeterReading": true, "DERCapability": true, "DERCurve": true,
+		"DERSettings": true, "DERStatus": true, "MirrorUsagePoint": true,
+		"UsagePoint": true, "EndDevice": true, "DERControl": true,
+		"EndDeviceControl": true, "FlowReservationResponse": true, "TextMessage": true,
 		"LogEvent": true, "LogEventList": true,
 	}
 
@@ -724,7 +780,7 @@ func TestSchemaGateCoversKnownResources(t *testing.T) {
 	// defect once reached an interop run. Resources listed here must have a
 	// populated fixture in TestSchemaGatePopulatedResources.
 	populated := []string{
-		"Registration", "Reading", "ReadingType", "MirrorMeterReading", "MirrorUsagePoint", "DERStatus",
+		"Registration", "Reading", "ReadingType", "MirrorMeterReading", "MirrorUsagePoint", "DERStatus", "DERCapability",
 		"DERControl", "EndDeviceControl", "FlowReservationResponse", "TextMessage",
 		"LogEvent", "LogEventList",
 	}

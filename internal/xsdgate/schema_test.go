@@ -157,6 +157,46 @@ func TestKnownSchemaFacts(t *testing.T) {
 		}
 	})
 
+	t.Run("DERCurve required elements in sequence", func(t *testing.T) {
+		els, err := s.EffectiveElements("DERCurve")
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertSequence(t, "DERCurve", els, []seqWant{
+			{name: "mRID", required: true},
+			{name: "creationTime", typ: "TimeType", required: true},
+			{name: "CurveData", required: true},
+			{name: "curveType", required: true},
+			{name: "xMultiplier", typ: "PowerOfTenMultiplierType", required: true},
+			{name: "yMultiplier", typ: "PowerOfTenMultiplierType", required: true},
+			{name: "yRefType", typ: "DERUnitRefType", required: true},
+		})
+	})
+
+	t.Run("DERCapability rtgMaxV and rtgMaxVA in sequence", func(t *testing.T) {
+		els, err := s.EffectiveElements("DERCapability")
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertSequence(t, "DERCapability", els, []seqWant{
+			{name: "rtgMaxDischargeRateW"},
+			{name: "rtgMaxV", typ: "VoltageRMS"},
+			{name: "rtgMaxVA", typ: "ApparentPower"},
+			{name: "rtgMaxVar"},
+			{name: "rtgMaxW", required: true},
+		})
+		for _, typeName := range []string{"VoltageRMS", "ApparentPower"} {
+			fields, err := s.EffectiveElements(typeName)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertSequence(t, typeName, fields, []seqWant{
+				{name: "multiplier", typ: "PowerOfTenMultiplierType", required: true},
+				{name: "value", typ: "UInt16", required: true},
+			})
+		}
+	})
+
 	t.Run("DERCapability modesSupported is required", func(t *testing.T) {
 		els, err := s.EffectiveElements("DERCapability")
 		if err != nil {
@@ -201,4 +241,41 @@ func TestKnownSchemaFacts(t *testing.T) {
 			t.Errorf("HexBinary32 maxLength = %d octets, want 4", st.MaxLength)
 		}
 	})
+}
+
+// seqWant is one element assertSequence expects; typ "" leaves the declared
+// type unchecked.
+type seqWant struct {
+	name, typ string
+	required  bool
+}
+
+// assertSequence fails for each wanted element that is undeclared, has the
+// wrong minOccurs or type, or sits out of the listed order in els.
+func assertSequence(t *testing.T, typeName string, els []xsdgate.Element, want []seqWant) {
+	t.Helper()
+	pos := make(map[string]int, len(els))
+	for i, e := range els {
+		pos[e.Name] = i
+	}
+	last, lastName := -1, ""
+	for _, w := range want {
+		i, ok := pos[w.name]
+		if !ok {
+			t.Errorf("%s declares no %s element", typeName, w.name)
+			continue
+		}
+		e := els[i]
+		if e.Required != w.required {
+			t.Errorf("%s/%s required = %v, want %v", typeName, w.name, e.Required, w.required)
+		}
+		if w.typ != "" && e.Type != w.typ {
+			t.Errorf("%s/%s type = %q, want %q", typeName, w.name, e.Type, w.typ)
+		}
+		if i < last {
+			t.Errorf("%s/%s is at sequence position %d, before %s at %d", typeName, w.name, i, lastName, last)
+			continue
+		}
+		last, lastName = i, w.name
+	}
 }
