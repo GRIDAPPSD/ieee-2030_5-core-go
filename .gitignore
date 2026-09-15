@@ -66,3 +66,6 @@ tmp/
 # from committed files (GRIDAPPSD/ieee-2030_5-server-go#214). See
 # plan-4-property-based-testing/plan.md.
 testdata/rapid/
+
+# Log files
+*.log
