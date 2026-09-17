@@ -6,9 +6,10 @@
 [![Release](https://img.shields.io/github/v/release/GRIDAPPSD/ieee-2030_5-core-go)](https://github.com/GRIDAPPSD/ieee-2030_5-core-go/releases/latest)
 [![License](https://img.shields.io/badge/license-Battelle%20BSD-blue)](LICENSE)
 
-Shared Go library for the IEEE 2030.5 (SEP2) server and client implementations
-at PNNL. Both the reference server (`ieee-2030_5-server`) and the client
-simulator (`ieee-2030_5-client`) import this module.
+Shared Go library for the IEEE 2030.5 (SEP2) family at PNNL. Three
+repositories import this module: the reference server (`ieee-2030_5-server-go`),
+the client and inverter simulator (`ieee-2030_5-client-go`), and the bridge to
+the GridAPPS-D platform (`gridappsd-ieee-2030_5-go`).
 
 ## What this is
 
@@ -95,22 +96,27 @@ never appears in a log or a build artifact.
 
 ## Importing this module
 
-This module follows the server and client repositories into production together.
-During the pre-1.0 period, consumers reference it via a `replace` directive
-in their `go.mod`:
+Consumers `go get` this module at a tagged version and pin it by exact
+version in their own `go.mod`. No consumer carries a `replace` directive in
+normal use:
 
 ```
-require gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core v0.0.0
-
-replace gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core => ../ieee-2030_5-core
+go get github.com/GRIDAPPSD/ieee-2030_5-core-go@vX.Y.Z
 ```
 
-Adjust the relative path to match your local checkout layout.
+For local development against an unreleased change, point your own consumer
+checkout at this one with a temporary `replace` directive, and remove it
+before committing:
+
+```
+replace github.com/GRIDAPPSD/ieee-2030_5-core-go => ../ieee-2030_5-core-go
+```
 
 ## Related repositories
 
-- `gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-server`: reference IEEE 2030.5 server
-- `gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-client`: client simulator
+- `github.com/GRIDAPPSD/ieee-2030_5-server-go`: reference IEEE 2030.5 server
+- `github.com/GRIDAPPSD/ieee-2030_5-client-go`: client and inverter simulator
+- `github.com/GRIDAPPSD/gridappsd-ieee-2030_5-go`: bridge to the GridAPPS-D platform
 
 ## License
 
