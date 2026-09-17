@@ -14,10 +14,11 @@ Module path: `github.com/GRIDAPPSD/ieee-2030_5-core-go`
 
 Core is the shared IEEE 2030.5 protocol layer at the base of the family. It is
 the only module here with internal consumers: the server, the client and the
-bridge all import it, and none of them imports each other. That makes core's
-releases the ones that move other people's work, and it makes section 9's
-downstream-impact requirement the load-bearing part of a core release rather
-than a formality.
+bridge all import it. The bridge also imports the server module directly, so
+it is not independent of the other two the way the server and client are of
+each other. That makes core's releases the ones that move other people's
+work, and it makes section 9's downstream-impact requirement the load-bearing
+part of a core release rather than a formality.
 
 Release shape: a Go library. There is no build artifact and no tag-driven
 release workflow. A release is a tag plus `gh release create`, cut by hand
