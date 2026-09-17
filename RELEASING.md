@@ -12,12 +12,11 @@ this repository's own facts, as does subsection 17.6 inside the shared section
 
 Module path: `github.com/GRIDAPPSD/ieee-2030_5-core-go`
 
-Core is the shared IEEE 2030.5 protocol layer at the base of the family. It is
-the only module here with internal consumers: the server, the client and the
-bridge all import it, and none of them imports each other. That makes core's
-releases the ones that move other people's work, and it makes section 9's
-downstream-impact requirement the load-bearing part of a core release rather
-than a formality.
+Core is the shared IEEE 2030.5 protocol layer at the base of the family. The
+server, the client, and the bridge all import it, and the bridge also imports
+the server module directly. That makes core's releases the ones that move
+other people's work, and it makes section 9's downstream-impact requirement
+the load-bearing part of a core release rather than a formality.
 
 Release shape: a Go library. There is no build artifact and no tag-driven
 release workflow. A release is a tag plus `gh release create`, cut by hand
@@ -367,6 +366,9 @@ Three repositories import core:
 - `ieee-2030_5-client-go`, the DER client and inverter simulator;
 - `gridappsd-ieee-2030_5-go`, the bridge to the GridAPPS-D platform.
 
+The bridge also imports `ieee-2030_5-server-go` directly, so a core release
+can reach the bridge by two paths.
+
 Section 9 is therefore never a formality here. Every core release names all
 three by name and says, for each, whether it references the changed surface
 and how that was determined.
@@ -579,10 +581,10 @@ working as intended. Section 8's check, run before publishing and reported
 with both numbers, is what makes answering such a flag a two-minute job
 instead of an investigation.
 
-**Two packages are slated to move to server-go** (`pkg/store` and
-`pkg/sep2srv`) under the target layering. When that happens, the parts of this
-document that describe them move with the code. Do not let a release note
-assert the current home of a package without checking it.
+**Two packages moved to server-go** (`pkg/store` and `pkg/sep2srv`) under the
+target layering; see the README's Relocated packages table for where each one
+lives now. Do not let a release note assert the current home of a package
+without checking it there.
 
 ## 17. Independent verification of the range before tagging
 

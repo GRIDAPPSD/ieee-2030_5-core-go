@@ -3,20 +3,19 @@
 [![Build, vet, and test](https://github.com/GRIDAPPSD/ieee-2030_5-core-go/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/GRIDAPPSD/ieee-2030_5-core-go/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/GRIDAPPSD/ieee-2030_5-core-go/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/GRIDAPPSD/ieee-2030_5-core-go/actions/workflows/github-code-scanning/codeql)
 [![Go 1.26.3](https://img.shields.io/badge/go-1.26.3-00ADD8?logo=go)](https://go.dev)
-[![Release v0.7.0](https://img.shields.io/badge/release-v0.7.0-blue)](https://github.com/GRIDAPPSD/ieee-2030_5-core-go/releases/latest)
+[![Release](https://img.shields.io/github/v/release/GRIDAPPSD/ieee-2030_5-core-go)](https://github.com/GRIDAPPSD/ieee-2030_5-core-go/releases/latest)
 [![License](https://img.shields.io/badge/license-Battelle%20BSD-blue)](LICENSE)
 
-Shared Go library for the IEEE 2030.5 (SEP2) server and client implementations
-at PNNL. Both the reference server (`ieee-2030_5-server`) and the client
-simulator (`ieee-2030_5-client`) import this module.
+Shared Go library for the IEEE 2030.5 (SEP2) family at PNNL. Three
+repositories import this module: the reference server (`ieee-2030_5-server-go`),
+the client and inverter simulator (`ieee-2030_5-client-go`), and the bridge to
+the GridAPPS-D platform (`gridappsd-ieee-2030_5-go`).
 
 ## What this is
 
 This module houses the packages that are common to both the server and the
 client: the SEP2 type tree, the XML codec, the TLS stack, the certificate
-utilities, the store interfaces and their in-memory implementation, the
-server-side HTTP handlers and list-paging helpers, the server-assembly scaffold,
-and the inbound notification receiver.
+utilities, and the inbound notification receiver.
 
 ## Packages
 
@@ -26,17 +25,25 @@ and the inbound notification receiver.
 | `pkg/sep2/encoding` | XML encoder/decoder, namespace constants, and response-body helpers |
 | `pkg/sep2cert` | SEP2 X.509 certificate generation, OID definitions, and PEM I/O |
 | `pkg/sep2client/notify` | Inbound HTTPS notification receiver for CSIP subscription/notification flows |
-| `pkg/sep2srv/assembly` | Server-assembly scaffold: `BuildProtocolRouter`, `Stores`, `RouterConfig`, `AuthPolicy` |
-| `pkg/sep2srv/handlers/*` | Per-function-set HTTP handlers (configuration, dcap, DER, device info, end device, flow reservation, FSA, list, log event, messaging, metering, power status, registration, self device, time, singleton, subscription) |
-| `pkg/sep2srv/paging` | List paging helpers (`AllResults`, cursor extraction) |
 | `pkg/sep2tls` | SEP2 TLS stack: CCM AEAD cipher, custom Go TLS fork that registers the CCM-8 suite, peer identity, and verification |
 | `pkg/sep2tls/ccm` | RFC 3610 CCM AEAD implementation |
-| `pkg/store` | Store interfaces (end device, subscription) |
-| `pkg/store/memory` | In-memory store implementation with persistence hooks |
 
 The `crypto/tls` fork under `pkg/sep2tls/gotls` records its upstream Go base,
 the deliberate changes against it, and the repeatable diff command in
 `pkg/sep2tls/gotls/UPSTREAM.md`.
+
+### Relocated packages
+
+These packages moved to `ieee-2030_5-server-go` and are no longer part of
+this module.
+
+| Former import path | Now at |
+|---|---|
+| `pkg/sep2srv/assembly` | `github.com/GRIDAPPSD/ieee-2030_5-server-go/pkg/sep2srv/assembly` |
+| `pkg/sep2srv/handlers/*` | `github.com/GRIDAPPSD/ieee-2030_5-server-go/pkg/sep2srv/handlers/*` |
+| `pkg/sep2srv/paging` | `github.com/GRIDAPPSD/ieee-2030_5-server-go/pkg/sep2srv/paging` |
+| `pkg/store` | `github.com/GRIDAPPSD/ieee-2030_5-server-go/pkg/store` |
+| `pkg/store/memory` | `github.com/GRIDAPPSD/ieee-2030_5-server-go/pkg/store/memory` |
 
 ## Build and test
 
@@ -89,22 +96,27 @@ never appears in a log or a build artifact.
 
 ## Importing this module
 
-This module follows the server and client repositories into production together.
-During the pre-1.0 period, consumers reference it via a `replace` directive
-in their `go.mod`:
+Consumers `go get` this module at a tagged version and pin it by exact
+version in their own `go.mod`. No consumer carries a `replace` directive in
+normal use:
 
 ```
-require gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core v0.0.0
-
-replace gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-core => ../ieee-2030_5-core
+go get github.com/GRIDAPPSD/ieee-2030_5-core-go@vX.Y.Z
 ```
 
-Adjust the relative path to match your local checkout layout.
+For local development against an unreleased change, point your own consumer
+checkout at this one with a temporary `replace` directive, and remove it
+before committing:
+
+```
+replace github.com/GRIDAPPSD/ieee-2030_5-core-go => ../ieee-2030_5-core-go
+```
 
 ## Related repositories
 
-- `gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-server`: reference IEEE 2030.5 server
-- `gitlab.pnnl.gov/arista/ieee-2030_5/ieee-2030_5-client`: client simulator
+- `github.com/GRIDAPPSD/ieee-2030_5-server-go`: reference IEEE 2030.5 server
+- `github.com/GRIDAPPSD/ieee-2030_5-client-go`: client and inverter simulator
+- `github.com/GRIDAPPSD/gridappsd-ieee-2030_5-go`: bridge to the GridAPPS-D platform
 
 ## License
 
