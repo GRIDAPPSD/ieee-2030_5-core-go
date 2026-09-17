@@ -14,9 +14,7 @@ simulator (`ieee-2030_5-client`) import this module.
 
 This module houses the packages that are common to both the server and the
 client: the SEP2 type tree, the XML codec, the TLS stack, the certificate
-utilities, the store interfaces and their in-memory implementation, the
-server-side HTTP handlers and list-paging helpers, the server-assembly scaffold,
-and the inbound notification receiver.
+utilities, and the inbound notification receiver.
 
 ## Packages
 
@@ -26,17 +24,25 @@ and the inbound notification receiver.
 | `pkg/sep2/encoding` | XML encoder/decoder, namespace constants, and response-body helpers |
 | `pkg/sep2cert` | SEP2 X.509 certificate generation, OID definitions, and PEM I/O |
 | `pkg/sep2client/notify` | Inbound HTTPS notification receiver for CSIP subscription/notification flows |
-| `pkg/sep2srv/assembly` | Server-assembly scaffold: `BuildProtocolRouter`, `Stores`, `RouterConfig`, `AuthPolicy` |
-| `pkg/sep2srv/handlers/*` | Per-function-set HTTP handlers (configuration, dcap, DER, device info, end device, flow reservation, FSA, list, log event, messaging, metering, power status, registration, self device, time, singleton, subscription) |
-| `pkg/sep2srv/paging` | List paging helpers (`AllResults`, cursor extraction) |
 | `pkg/sep2tls` | SEP2 TLS stack: CCM AEAD cipher, custom Go TLS fork that registers the CCM-8 suite, peer identity, and verification |
 | `pkg/sep2tls/ccm` | RFC 3610 CCM AEAD implementation |
-| `pkg/store` | Store interfaces (end device, subscription) |
-| `pkg/store/memory` | In-memory store implementation with persistence hooks |
 
 The `crypto/tls` fork under `pkg/sep2tls/gotls` records its upstream Go base,
 the deliberate changes against it, and the repeatable diff command in
 `pkg/sep2tls/gotls/UPSTREAM.md`.
+
+### Relocated packages
+
+These packages moved to `ieee-2030_5-server-go` and are no longer part of
+this module.
+
+| Former import path | Now at |
+|---|---|
+| `pkg/sep2srv/assembly` | `github.com/GRIDAPPSD/ieee-2030_5-server-go/pkg/sep2srv/assembly` |
+| `pkg/sep2srv/handlers/*` | `github.com/GRIDAPPSD/ieee-2030_5-server-go/pkg/sep2srv/handlers/*` |
+| `pkg/sep2srv/paging` | `github.com/GRIDAPPSD/ieee-2030_5-server-go/pkg/sep2srv/paging` |
+| `pkg/store` | `github.com/GRIDAPPSD/ieee-2030_5-server-go/pkg/store` |
+| `pkg/store/memory` | `github.com/GRIDAPPSD/ieee-2030_5-server-go/pkg/store/memory` |
 
 ## Build and test
 
