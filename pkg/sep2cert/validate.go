@@ -14,14 +14,15 @@ import (
 // each with the certificate's subject and serial number; it never
 // includes key material.
 var (
-	ErrCAKeyMismatch   = errors.New("CA private key does not match CA certificate public key")
-	ErrCANotCA         = errors.New("certificate is not a CA (IsCA or BasicConstraintsValid is false)")
-	ErrCAKeyUsage      = errors.New("CA certificate lacks the certificate-signing key usage")
-	ErrCAExtKeyUsage   = errors.New("CA certificate's extended key usage excludes client authentication")
-	ErrCANotYetValid   = errors.New("CA certificate is not yet valid")
-	ErrCAExpired       = errors.New("CA certificate has expired")
-	ErrCACurve         = errors.New("CA private key is not on the P-256 curve")
-	ErrCANotSelfSigned = errors.New("CA certificate is not self-signed")
+	ErrCAKeyMismatch       = errors.New("CA private key does not match CA certificate public key")
+	ErrCANotCA             = errors.New("certificate is not a CA (IsCA or BasicConstraintsValid is false)")
+	ErrCAKeyUsage          = errors.New("CA certificate lacks the certificate-signing key usage")
+	ErrCAExtKeyUsage       = errors.New("CA certificate's extended key usage excludes client authentication")
+	ErrCACriticalExtension = errors.New("CA certificate carries a critical extension this package does not recognize")
+	ErrCANotYetValid       = errors.New("CA certificate is not yet valid")
+	ErrCAExpired           = errors.New("CA certificate has expired")
+	ErrCACurve             = errors.New("CA private key is not on the P-256 curve")
+	ErrCANotSelfSigned     = errors.New("CA certificate is not self-signed")
 )
 
 // ValidateCAOptions tunes the checks ValidateCA performs. The zero value
@@ -86,6 +87,12 @@ func validateCA(cert *x509.Certificate, key *ecdsa.PrivateKey, opts ValidateCAOp
 	}
 	if cert.KeyUsage&x509.KeyUsageCertSign == 0 {
 		return ErrCAKeyUsage
+	}
+	// Verify already refuses a chain carrying an unhandled critical
+	// extension (crypto/x509/verify.go); catch it here instead of
+	// deferring the refusal to a leaf's verify walk.
+	if len(cert.UnhandledCriticalExtensions) > 0 {
+		return ErrCACriticalExtension
 	}
 	// UnknownExtKeyUsage holds OIDs x509 does not recognize; without it here,
 	// a CA whose EKU lists only a vendor OID parses with ExtKeyUsage empty,

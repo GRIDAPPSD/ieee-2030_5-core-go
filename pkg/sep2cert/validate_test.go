@@ -155,6 +155,20 @@ func TestValidateCAAcceptsExtKeyUsageAny(t *testing.T) {
 	}
 }
 
+func TestValidateCARejectsUnhandledCriticalExtension(t *testing.T) {
+	tmpl := caTemplate()
+	tmpl.ExtraExtensions = []pkix.Extension{{
+		Id:       asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 99999, 7},
+		Critical: true,
+		Value:    []byte{0x05, 0x00}, // ASN.1 NULL
+	}}
+	cert, key := selfSign(t, tmpl, elliptic.P256())
+	err := sep2cert.ValidateCA(cert, key, validateOpts())
+	if !errors.Is(err, sep2cert.ErrCACriticalExtension) {
+		t.Fatalf("ValidateCA on a CA with an unhandled critical extension: got %v, want ErrCACriticalExtension", err)
+	}
+}
+
 func TestValidateCARejectsCurve(t *testing.T) {
 	cert, key := selfSign(t, caTemplate(), elliptic.P384())
 	err := sep2cert.ValidateCA(cert, key, validateOpts())
