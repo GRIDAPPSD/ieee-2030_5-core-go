@@ -368,7 +368,7 @@ func TestLoadCAAcceptsGenuineCA(t *testing.T) {
 		t.Fatalf("write key: %v", err)
 	}
 
-	gotCert, gotKey, err := sep2cert.LoadCA(certFile, keyFile)
+	gotCert, gotKey, err := sep2cert.LoadCA(certFile, keyFile, validateOpts())
 	if err != nil {
 		t.Fatalf("LoadCA on a genuine CA: %v", err)
 	}
@@ -394,7 +394,7 @@ func TestLoadCARefusesNonCA(t *testing.T) {
 		t.Fatalf("write key: %v", err)
 	}
 
-	_, _, err := sep2cert.LoadCA(certFile, keyFile)
+	_, _, err := sep2cert.LoadCA(certFile, keyFile, validateOpts())
 	if !errors.Is(err, sep2cert.ErrCANotCA) {
 		t.Fatalf("LoadCA on a non-CA cert file: got %v, want ErrCANotCA", err)
 	}

@@ -73,10 +73,13 @@ func ParseKeyPEM(pemBytes []byte) (*ecdsa.PrivateKey, error) {
 }
 
 // LoadCA loads a CA certificate and private key from PEM files and
-// validates that the pair can serve as an issuing CA, with
-// ValidateCA's strict default options. A refusal names both file paths
-// alongside the validation failure.
-func LoadCA(certFile, keyFile string) (*x509.Certificate, *ecdsa.PrivateKey, error) {
+// validates that the pair can serve as an issuing CA. With no opts, it
+// applies ValidateCA's strict default options (time.Now(), no
+// self-signed requirement, no minimum-remaining margin). Passing opts
+// overrides them; the variadic form keeps a caller with no opinion on
+// the clock, most commonly a test, source-compatible. A refusal names
+// both file paths alongside the validation failure.
+func LoadCA(certFile, keyFile string, opts ...ValidateCAOptions) (*x509.Certificate, *ecdsa.PrivateKey, error) {
 	certPEM, err := os.ReadFile(certFile)
 	if err != nil {
 		return nil, nil, fmt.Errorf("read CA cert: %w", err)
@@ -86,7 +89,11 @@ func LoadCA(certFile, keyFile string) (*x509.Certificate, *ecdsa.PrivateKey, err
 		return nil, nil, fmt.Errorf("read CA key: %w", err)
 	}
 
-	cert, key, err := ParseCAPair(certPEM, keyPEM, ValidateCAOptions{})
+	var opt ValidateCAOptions
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
+	cert, key, err := ParseCAPair(certPEM, keyPEM, opt)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%s / %s: %w", certFile, keyFile, err)
 	}
