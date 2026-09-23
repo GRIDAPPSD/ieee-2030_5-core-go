@@ -608,6 +608,51 @@ func TestLoadCARefusesMultipleOptions(t *testing.T) {
 	}
 }
 
+// TestLoadCANamesWhichFileFailedToRead covers LoadCA's two file-read
+// error paths separately, so a swap of the two messages (a missing cert
+// file reporting "read CA key" or vice versa) fails: the message is what
+// tells an operator which file to look at.
+func TestLoadCANamesWhichFileFailedToRead(t *testing.T) {
+	dir := t.TempDir()
+	cert, key := selfSign(t, caTemplate(), elliptic.P256())
+
+	t.Run("missing cert file", func(t *testing.T) {
+		certFile := filepath.Join(dir, "missing-ca.pem")
+		keyFile := filepath.Join(dir, "present-ca-key.pem")
+		if err := os.WriteFile(keyFile, encodeKeyForTest(t, key), 0o600); err != nil {
+			t.Fatalf("write key: %v", err)
+		}
+		_, _, err := sep2cert.LoadCA(certFile, keyFile, validateOpts())
+		if err == nil {
+			t.Fatal("LoadCA with a missing cert file: want error, got nil")
+		}
+		if !strings.Contains(err.Error(), "read CA cert") {
+			t.Errorf("LoadCA with a missing cert file: got %q, want it to name the cert read", err)
+		}
+		if strings.Contains(err.Error(), "read CA key") {
+			t.Errorf("LoadCA with a missing cert file: got %q, names the key read instead", err)
+		}
+	})
+
+	t.Run("missing key file", func(t *testing.T) {
+		certFile := filepath.Join(dir, "present-ca.pem")
+		keyFile := filepath.Join(dir, "missing-ca-key.pem")
+		if err := os.WriteFile(certFile, encodeCertForTest(t, cert), 0o600); err != nil {
+			t.Fatalf("write cert: %v", err)
+		}
+		_, _, err := sep2cert.LoadCA(certFile, keyFile, validateOpts())
+		if err == nil {
+			t.Fatal("LoadCA with a missing key file: want error, got nil")
+		}
+		if !strings.Contains(err.Error(), "read CA key") {
+			t.Errorf("LoadCA with a missing key file: got %q, want it to name the key read", err)
+		}
+		if strings.Contains(err.Error(), "read CA cert") {
+			t.Errorf("LoadCA with a missing key file: got %q, names the cert read instead", err)
+		}
+	})
+}
+
 // TestLoadCADefaultAllowsIntermediate and TestLoadCADefaultAppliesNoMinRemainingMargin
 // pin the two policy defaults pem.go's LoadCA pins by calling it with no
 // opts at all, the exact zero-value path both consumers reach. They use the
