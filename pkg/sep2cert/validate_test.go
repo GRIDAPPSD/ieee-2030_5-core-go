@@ -586,6 +586,28 @@ func TestLoadCAAppliesExplicitOptions(t *testing.T) {
 	}
 }
 
+// TestLoadCARefusesMultipleOptions is asserted both ways: a single option
+// value still applies (proven by TestLoadCAAppliesExplicitOptions above),
+// and a second value refuses with ErrLoadCATooManyOptions instead of the
+// first being applied and the second silently dropped.
+func TestLoadCARefusesMultipleOptions(t *testing.T) {
+	dir := t.TempDir()
+	cert, key := selfSign(t, caTemplate(), elliptic.P256())
+	certFile := filepath.Join(dir, "ca.pem")
+	keyFile := filepath.Join(dir, "ca-key.pem")
+	if err := os.WriteFile(certFile, encodeCertForTest(t, cert), 0o600); err != nil {
+		t.Fatalf("write cert: %v", err)
+	}
+	if err := os.WriteFile(keyFile, encodeKeyForTest(t, key), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+
+	_, _, err := sep2cert.LoadCA(certFile, keyFile, validateOpts(), validateOpts())
+	if !errors.Is(err, sep2cert.ErrLoadCATooManyOptions) {
+		t.Fatalf("LoadCA with two option values: got %v, want ErrLoadCATooManyOptions", err)
+	}
+}
+
 // TestLoadCADefaultAllowsIntermediate and TestLoadCADefaultAppliesNoMinRemainingMargin
 // pin the two policy defaults pem.go's LoadCA pins by calling it with no
 // opts at all, the exact zero-value path both consumers reach. They use the
