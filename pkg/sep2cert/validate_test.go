@@ -79,6 +79,31 @@ func encodeKeyForTest(t *testing.T, key *ecdsa.PrivateKey) []byte {
 	return pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der})
 }
 
+func TestValidateCARejectsNilCertificate(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	err = sep2cert.ValidateCA(nil, key, validateOpts())
+	if err == nil {
+		t.Fatal("ValidateCA with a nil certificate: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "certificate is nil") {
+		t.Errorf("ValidateCA with a nil certificate: got %q, want it to name the nil certificate", err)
+	}
+}
+
+func TestValidateCARejectsNilKey(t *testing.T) {
+	cert, _ := selfSign(t, caTemplate(), elliptic.P256())
+	err := sep2cert.ValidateCA(cert, nil, validateOpts())
+	if err == nil {
+		t.Fatal("ValidateCA with a nil key: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "private key is nil") {
+		t.Errorf("ValidateCA with a nil key: got %q, want it to name the nil key", err)
+	}
+}
+
 func TestValidateCAAcceptsGenuineCA(t *testing.T) {
 	cert, key := selfSign(t, caTemplate(), elliptic.P256())
 	if err := sep2cert.ValidateCA(cert, key, validateOpts()); err != nil {
@@ -429,6 +454,52 @@ func TestParseCAPairRejectsExpired(t *testing.T) {
 	_, _, err := sep2cert.ParseCAPair(certPEM, keyPEM, validateOpts())
 	if !errors.Is(err, sep2cert.ErrCAExpired) {
 		t.Fatalf("ParseCAPair on an expired CA: got %v, want ErrCAExpired", err)
+	}
+}
+
+func TestParseCAPairRejectsMalformedCertPEM(t *testing.T) {
+	_, key := selfSign(t, caTemplate(), elliptic.P256())
+	keyPEM := encodeKeyForTest(t, key)
+
+	_, _, err := sep2cert.ParseCAPair([]byte("not PEM data"), keyPEM, validateOpts())
+	if err == nil {
+		t.Fatal("ParseCAPair with malformed certificate PEM: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "parse CA cert") {
+		t.Errorf("ParseCAPair with malformed certificate PEM: got %q, want it to name the certificate file", err)
+	}
+}
+
+func TestParseCAPairRejectsMalformedKeyPEM(t *testing.T) {
+	cert, _ := selfSign(t, caTemplate(), elliptic.P256())
+	certPEM := encodeCertForTest(t, cert)
+
+	_, _, err := sep2cert.ParseCAPair(certPEM, []byte("not PEM data"), validateOpts())
+	if err == nil {
+		t.Fatal("ParseCAPair with malformed key PEM: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "parse CA key") {
+		t.Errorf("ParseCAPair with malformed key PEM: got %q, want it to name the key file", err)
+	}
+}
+
+// TestParseCAPairAcceptsGenerateCAOutput is the regression test for the
+// generator-to-validator round trip: caTemplate is a hand-written copy of
+// GenerateCA's shape, and nothing else in this file proves the copy is
+// accurate. GenerateCA also attaches a critical anyPolicy extension that
+// caTemplate omits, so this exercises a path caTemplate cannot.
+func TestParseCAPairAcceptsGenerateCAOutput(t *testing.T) {
+	certPEM, keyPEM, err := sep2cert.GenerateCA(sep2cert.CAOptions{
+		Organization: "Test Org",
+		CommonName:   "Generated Test CA",
+		ValidYears:   1,
+	})
+	if err != nil {
+		t.Fatalf("GenerateCA: %v", err)
+	}
+
+	if _, _, err := sep2cert.ParseCAPair(certPEM, keyPEM, sep2cert.ValidateCAOptions{}); err != nil {
+		t.Fatalf("ParseCAPair on GenerateCA's own output: %v", err)
 	}
 }
 
