@@ -482,3 +482,71 @@ func TestLoadCARefusesNonCA(t *testing.T) {
 		t.Errorf("LoadCA error %q does not name the file %q", err, certFile)
 	}
 }
+
+// TestLoadCADefaultAllowsIntermediate and TestLoadCADefaultAppliesNoMinRemainingMargin
+// pin the two policy defaults pem.go's LoadCA pins by calling it with no
+// opts at all, the exact zero-value path both consumers reach. They use the
+// real wall clock, not validateAnchor, because the point is the behavior of
+// ValidateCAOptions{}'s zero Now, not a fixed one.
+func TestLoadCADefaultAllowsIntermediate(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now()
+	rootTmpl := caTemplate()
+	rootTmpl.SerialNumber = big.NewInt(10)
+	rootTmpl.Subject = pkix.Name{CommonName: "Default Test Root"}
+	rootTmpl.NotBefore = now.Add(-time.Hour)
+	rootTmpl.NotAfter = now.Add(24 * time.Hour)
+	rootCert, rootKey := selfSign(t, rootTmpl, elliptic.P256())
+
+	interKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate intermediate key: %v", err)
+	}
+	interTmpl := caTemplate()
+	interTmpl.SerialNumber = big.NewInt(11)
+	interTmpl.Subject = pkix.Name{CommonName: "Default Test Intermediate"}
+	interTmpl.NotBefore = now.Add(-time.Hour)
+	interTmpl.NotAfter = now.Add(24 * time.Hour)
+	der, err := x509.CreateCertificate(rand.Reader, interTmpl, rootCert, &interKey.PublicKey, rootKey)
+	if err != nil {
+		t.Fatalf("create intermediate certificate: %v", err)
+	}
+	interCert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatalf("parse intermediate certificate: %v", err)
+	}
+
+	certFile := filepath.Join(dir, "ca.pem")
+	keyFile := filepath.Join(dir, "ca-key.pem")
+	if err := os.WriteFile(certFile, encodeCertForTest(t, interCert), 0o600); err != nil {
+		t.Fatalf("write cert: %v", err)
+	}
+	if err := os.WriteFile(keyFile, encodeKeyForTest(t, interKey), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+
+	if _, _, err := sep2cert.LoadCA(certFile, keyFile); err != nil {
+		t.Fatalf("LoadCA on an intermediate CA with no opts: %v", err)
+	}
+}
+
+func TestLoadCADefaultAppliesNoMinRemainingMargin(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now()
+	tmpl := caTemplate()
+	tmpl.NotBefore = now.Add(-time.Hour)
+	tmpl.NotAfter = now.Add(10 * 24 * time.Hour) // 10 days remaining: under the 30-day mutant, over zero
+	cert, key := selfSign(t, tmpl, elliptic.P256())
+	certFile := filepath.Join(dir, "ca.pem")
+	keyFile := filepath.Join(dir, "ca-key.pem")
+	if err := os.WriteFile(certFile, encodeCertForTest(t, cert), 0o600); err != nil {
+		t.Fatalf("write cert: %v", err)
+	}
+	if err := os.WriteFile(keyFile, encodeKeyForTest(t, key), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+
+	if _, _, err := sep2cert.LoadCA(certFile, keyFile); err != nil {
+		t.Fatalf("LoadCA on a CA 10 days from expiry with no opts: %v", err)
+	}
+}
