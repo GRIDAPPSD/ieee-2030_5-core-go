@@ -246,6 +246,82 @@ func TestValidateCARejectsMinRemaining(t *testing.T) {
 	}
 }
 
+// TestValidateCAAcceptsAtNotBefore and TestValidateCARejectsOneSecondBeforeNotBefore
+// pin the NotBefore boundary as inclusive: an implementation elsewhere on the
+// wire assumes a CA is usable at the exact instant its window opens. The
+// offset is one second, not one nanosecond: ASN.1 GeneralizedTime has
+// one-second resolution, so x509.CreateCertificate floors NotBefore/NotAfter
+// to the second, and a sub-second offset would silently round away.
+func TestValidateCAAcceptsAtNotBefore(t *testing.T) {
+	tmpl := caTemplate()
+	tmpl.NotBefore = validateAnchor
+	cert, key := selfSign(t, tmpl, elliptic.P256())
+	if err := sep2cert.ValidateCA(cert, key, validateOpts()); err != nil {
+		t.Fatalf("ValidateCA at exactly NotBefore: %v", err)
+	}
+}
+
+func TestValidateCARejectsOneSecondBeforeNotBefore(t *testing.T) {
+	tmpl := caTemplate()
+	tmpl.NotBefore = validateAnchor.Add(time.Second)
+	cert, key := selfSign(t, tmpl, elliptic.P256())
+	err := sep2cert.ValidateCA(cert, key, validateOpts())
+	if !errors.Is(err, sep2cert.ErrCANotYetValid) {
+		t.Fatalf("ValidateCA one second before NotBefore: got %v, want ErrCANotYetValid", err)
+	}
+}
+
+// TestValidateCAAcceptsAtNotAfter and TestValidateCARejectsOneSecondAfterNotAfter
+// pin the NotAfter boundary as inclusive, the same as NotBefore, at the same
+// one-second resolution.
+func TestValidateCAAcceptsAtNotAfter(t *testing.T) {
+	tmpl := caTemplate()
+	tmpl.NotAfter = validateAnchor
+	cert, key := selfSign(t, tmpl, elliptic.P256())
+	if err := sep2cert.ValidateCA(cert, key, validateOpts()); err != nil {
+		t.Fatalf("ValidateCA at exactly NotAfter: %v", err)
+	}
+}
+
+func TestValidateCARejectsOneSecondAfterNotAfter(t *testing.T) {
+	tmpl := caTemplate()
+	tmpl.NotAfter = validateAnchor.Add(-time.Second)
+	cert, key := selfSign(t, tmpl, elliptic.P256())
+	err := sep2cert.ValidateCA(cert, key, validateOpts())
+	if !errors.Is(err, sep2cert.ErrCAExpired) {
+		t.Fatalf("ValidateCA one second after NotAfter: got %v, want ErrCAExpired", err)
+	}
+}
+
+// TestValidateCAAcceptsAtExactMinRemaining and
+// TestValidateCARejectsOneSecondInsideMinRemaining pin the MinRemaining
+// boundary: exactly the margin remaining is accepted, one second less is
+// refused. MinRemaining is compared against a duration derived from
+// NotAfter, which is itself second-resolution once round-tripped through
+// the certificate encoding, so this boundary is also one second wide.
+func TestValidateCAAcceptsAtExactMinRemaining(t *testing.T) {
+	tmpl := caTemplate()
+	tmpl.NotAfter = validateAnchor.Add(24 * time.Hour)
+	cert, key := selfSign(t, tmpl, elliptic.P256())
+	opts := validateOpts()
+	opts.MinRemaining = 24 * time.Hour
+	if err := sep2cert.ValidateCA(cert, key, opts); err != nil {
+		t.Fatalf("ValidateCA with remaining validity exactly equal to MinRemaining: %v", err)
+	}
+}
+
+func TestValidateCARejectsOneSecondInsideMinRemaining(t *testing.T) {
+	tmpl := caTemplate()
+	tmpl.NotAfter = validateAnchor.Add(24*time.Hour - time.Second)
+	cert, key := selfSign(t, tmpl, elliptic.P256())
+	opts := validateOpts()
+	opts.MinRemaining = 24 * time.Hour
+	err := sep2cert.ValidateCA(cert, key, opts)
+	if !errors.Is(err, sep2cert.ErrCAExpiringSoon) {
+		t.Fatalf("ValidateCA one second inside MinRemaining: got %v, want ErrCAExpiringSoon", err)
+	}
+}
+
 // TestValidateCAAcceptsIntermediateByDefault is asserted both ways: the
 // same intermediate CA passes with RequireSelfSigned off and is refused
 // with it on, so the option is proven to change the outcome rather than
