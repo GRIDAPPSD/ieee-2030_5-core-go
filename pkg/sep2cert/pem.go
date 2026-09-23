@@ -72,7 +72,10 @@ func ParseKeyPEM(pemBytes []byte) (*ecdsa.PrivateKey, error) {
 	return ecKey, nil
 }
 
-// LoadCA loads a CA certificate and private key from PEM files.
+// LoadCA loads a CA certificate and private key from PEM files and
+// validates that the pair can serve as an issuing CA, with
+// ValidateCA's strict default options. A refusal names both file paths
+// alongside the validation failure.
 func LoadCA(certFile, keyFile string) (*x509.Certificate, *ecdsa.PrivateKey, error) {
 	certPEM, err := os.ReadFile(certFile)
 	if err != nil {
@@ -83,13 +86,9 @@ func LoadCA(certFile, keyFile string) (*x509.Certificate, *ecdsa.PrivateKey, err
 		return nil, nil, fmt.Errorf("read CA key: %w", err)
 	}
 
-	cert, err := ParseCertificatePEM(certPEM)
+	cert, key, err := ParseCAPair(certPEM, keyPEM, ValidateCAOptions{})
 	if err != nil {
-		return nil, nil, fmt.Errorf("parse CA cert: %w", err)
-	}
-	key, err := ParseKeyPEM(keyPEM)
-	if err != nil {
-		return nil, nil, fmt.Errorf("parse CA key: %w", err)
+		return nil, nil, fmt.Errorf("%s / %s: %w", certFile, keyFile, err)
 	}
 
 	return cert, key, nil
