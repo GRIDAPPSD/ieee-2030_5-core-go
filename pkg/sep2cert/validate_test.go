@@ -233,8 +233,12 @@ func TestValidateCARejectsMinRemaining(t *testing.T) {
 
 	withMargin := validateOpts()
 	withMargin.MinRemaining = 24 * time.Hour
-	if err := sep2cert.ValidateCA(cert, key, withMargin); !errors.Is(err, sep2cert.ErrCAExpired) {
-		t.Fatalf("ValidateCA within MinRemaining of expiry: got %v, want ErrCAExpired", err)
+	err := sep2cert.ValidateCA(cert, key, withMargin)
+	if !errors.Is(err, sep2cert.ErrCAExpiringSoon) {
+		t.Fatalf("ValidateCA within MinRemaining of expiry: got %v, want ErrCAExpiringSoon", err)
+	}
+	if strings.Contains(err.Error(), "has expired") {
+		t.Errorf("ValidateCA within MinRemaining of expiry claims the CA has expired, but it has not: %v", err)
 	}
 
 	if err := sep2cert.ValidateCA(cert, key, validateOpts()); err != nil {

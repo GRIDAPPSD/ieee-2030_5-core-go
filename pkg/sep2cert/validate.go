@@ -22,6 +22,7 @@ var (
 	ErrCACriticalExtension = errors.New("CA certificate carries a critical extension this package does not recognize")
 	ErrCANotYetValid       = errors.New("CA certificate is not yet valid")
 	ErrCAExpired           = errors.New("CA certificate has expired")
+	ErrCAExpiringSoon      = errors.New("CA certificate expires within the required minimum remaining validity")
 	ErrCACurve             = errors.New("CA private key is not on the P-256 curve")
 	ErrCANotSelfSigned     = errors.New("CA certificate is not self-signed")
 )
@@ -126,7 +127,7 @@ func validateCA(cert *x509.Certificate, key *ecdsa.PrivateKey, opts ValidateCAOp
 		return ErrCAExpired
 	}
 	if opts.MinRemaining > 0 && cert.NotAfter.Sub(now) < opts.MinRemaining {
-		return ErrCAExpired
+		return ErrCAExpiringSoon
 	}
 
 	if opts.RequireSelfSigned {
