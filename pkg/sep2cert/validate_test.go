@@ -133,6 +133,34 @@ func TestValidateCARejectsNonCA(t *testing.T) {
 	}
 }
 
+// TestValidateCARejectsBasicConstraintsInvalidWithIsCATrue covers the
+// half of the IsCA/BasicConstraintsValid check a parsed certificate can
+// never separate: ValidateCA takes a *x509.Certificate directly, so a
+// hand-built value can set IsCA true while leaving BasicConstraintsValid
+// false, which no certificate produced by CreateCertificate or
+// ParseCertificate can do.
+func TestValidateCARejectsBasicConstraintsInvalidWithIsCATrue(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	cert := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "Hand-built Non-CA"},
+		NotBefore:             validateAnchor.Add(-time.Hour),
+		NotAfter:              validateAnchor.Add(365 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
+		PublicKey:             &key.PublicKey,
+		IsCA:                  true,
+		BasicConstraintsValid: false,
+	}
+
+	err = sep2cert.ValidateCA(cert, key, validateOpts())
+	if !errors.Is(err, sep2cert.ErrCANotCA) {
+		t.Fatalf("ValidateCA with IsCA true but BasicConstraintsValid false: got %v, want ErrCANotCA", err)
+	}
+}
+
 func TestValidateCARejectsMissingKeyUsage(t *testing.T) {
 	tmpl := caTemplate()
 	tmpl.KeyUsage = x509.KeyUsageDigitalSignature
