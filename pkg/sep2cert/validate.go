@@ -15,6 +15,7 @@ import (
 // includes key material.
 var (
 	ErrCAKeyMismatch       = errors.New("CA private key does not match CA certificate public key")
+	ErrCAKeyType           = errors.New("CA certificate public key is not ECDSA")
 	ErrCANotCA             = errors.New("certificate is not a CA (IsCA or BasicConstraintsValid is false)")
 	ErrCAKeyUsage          = errors.New("CA certificate lacks the certificate-signing key usage")
 	ErrCAExtKeyUsage       = errors.New("CA certificate's extended key usage excludes client authentication")
@@ -76,7 +77,10 @@ func ValidateCA(cert *x509.Certificate, key *ecdsa.PrivateKey, opts ValidateCAOp
 
 func validateCA(cert *x509.Certificate, key *ecdsa.PrivateKey, opts ValidateCAOptions) error {
 	pub, ok := cert.PublicKey.(*ecdsa.PublicKey)
-	if !ok || !key.PublicKey.Equal(pub) {
+	if !ok {
+		return ErrCAKeyType
+	}
+	if !key.PublicKey.Equal(pub) {
 		return ErrCAKeyMismatch
 	}
 	if key.Curve != elliptic.P256() {

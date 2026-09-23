@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -166,6 +167,31 @@ func TestValidateCARejectsUnhandledCriticalExtension(t *testing.T) {
 	err := sep2cert.ValidateCA(cert, key, validateOpts())
 	if !errors.Is(err, sep2cert.ErrCACriticalExtension) {
 		t.Fatalf("ValidateCA on a CA with an unhandled critical extension: got %v, want ErrCACriticalExtension", err)
+	}
+}
+
+func TestValidateCARejectsNonECDSAPublicKey(t *testing.T) {
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate RSA key: %v", err)
+	}
+	tmpl := caTemplate()
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &rsaKey.PublicKey, rsaKey)
+	if err != nil {
+		t.Fatalf("create RSA CA certificate: %v", err)
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatalf("parse RSA CA certificate: %v", err)
+	}
+	ecKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate ECDSA key: %v", err)
+	}
+
+	err = sep2cert.ValidateCA(cert, ecKey, validateOpts())
+	if !errors.Is(err, sep2cert.ErrCAKeyType) {
+		t.Fatalf("ValidateCA on an RSA CA certificate: got %v, want ErrCAKeyType", err)
 	}
 }
 
