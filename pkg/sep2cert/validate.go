@@ -87,7 +87,11 @@ func validateCA(cert *x509.Certificate, key *ecdsa.PrivateKey, opts ValidateCAOp
 	if cert.KeyUsage&x509.KeyUsageCertSign == 0 {
 		return ErrCAKeyUsage
 	}
-	if len(cert.ExtKeyUsage) > 0 {
+	// UnknownExtKeyUsage holds OIDs x509 does not recognize; without it here,
+	// a CA whose EKU lists only a vendor OID parses with ExtKeyUsage empty,
+	// skips this block, and is accepted, deferring the refusal to a device's
+	// verify walk instead of catching it at load time.
+	if len(cert.ExtKeyUsage) > 0 || len(cert.UnknownExtKeyUsage) > 0 {
 		permitted := false
 		for _, eku := range cert.ExtKeyUsage {
 			if eku == x509.ExtKeyUsageClientAuth || eku == x509.ExtKeyUsageAny {

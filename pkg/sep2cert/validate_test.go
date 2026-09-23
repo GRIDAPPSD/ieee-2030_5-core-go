@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/pem"
 	"errors"
 	"math/big"
@@ -116,6 +117,16 @@ func TestValidateCARejectsMissingKeyUsage(t *testing.T) {
 	}
 }
 
+func TestValidateCARejectsExtKeyUsageWithOnlyUnknownOID(t *testing.T) {
+	tmpl := caTemplate()
+	tmpl.UnknownExtKeyUsage = []asn1.ObjectIdentifier{{1, 3, 6, 1, 4, 1, 311, 20, 2, 1}}
+	cert, key := selfSign(t, tmpl, elliptic.P256())
+	err := sep2cert.ValidateCA(cert, key, validateOpts())
+	if !errors.Is(err, sep2cert.ErrCAExtKeyUsage) {
+		t.Fatalf("ValidateCA on a CA whose EKU holds only an unrecognized OID: got %v, want ErrCAExtKeyUsage", err)
+	}
+}
+
 func TestValidateCARejectsExtKeyUsageExcludingClientAuth(t *testing.T) {
 	tmpl := caTemplate()
 	tmpl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
@@ -132,6 +143,15 @@ func TestValidateCAAcceptsExtKeyUsageIncludingClientAuth(t *testing.T) {
 	cert, key := selfSign(t, tmpl, elliptic.P256())
 	if err := sep2cert.ValidateCA(cert, key, validateOpts()); err != nil {
 		t.Fatalf("ValidateCA on an EKU list including ClientAuth: %v", err)
+	}
+}
+
+func TestValidateCAAcceptsExtKeyUsageAny(t *testing.T) {
+	tmpl := caTemplate()
+	tmpl.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageAny}
+	cert, key := selfSign(t, tmpl, elliptic.P256())
+	if err := sep2cert.ValidateCA(cert, key, validateOpts()); err != nil {
+		t.Fatalf("ValidateCA on an EKU list of anyExtendedKeyUsage: %v", err)
 	}
 }
 
