@@ -97,7 +97,7 @@ func validateCA(cert *x509.Certificate, key *ecdsa.PrivateKey, opts ValidateCAOp
 	// extension (crypto/x509/verify.go); catch it here instead of
 	// deferring the refusal to a leaf's verify walk.
 	if len(cert.UnhandledCriticalExtensions) > 0 {
-		return ErrCACriticalExtension
+		return fmt.Errorf("%w: %v", ErrCACriticalExtension, cert.UnhandledCriticalExtensions)
 	}
 	// UnknownExtKeyUsage holds OIDs x509 does not recognize; without it here,
 	// a CA whose EKU lists only a vendor OID parses with ExtKeyUsage empty,

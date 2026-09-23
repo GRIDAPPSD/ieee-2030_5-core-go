@@ -195,6 +195,28 @@ func TestValidateCARejectsUnhandledCriticalExtension(t *testing.T) {
 	}
 }
 
+// TestValidateCACriticalExtensionNamesTheOID checks that the refusal
+// carries the offending OID, since cert.UnhandledCriticalExtensions holds
+// it right where the refusal is made and the operator otherwise gets only
+// a category, not something to go look at.
+func TestValidateCACriticalExtensionNamesTheOID(t *testing.T) {
+	oid := asn1.ObjectIdentifier{1, 3, 6, 1, 4, 1, 99999, 7}
+	tmpl := caTemplate()
+	tmpl.ExtraExtensions = []pkix.Extension{{
+		Id:       oid,
+		Critical: true,
+		Value:    []byte{0x05, 0x00}, // ASN.1 NULL
+	}}
+	cert, key := selfSign(t, tmpl, elliptic.P256())
+	err := sep2cert.ValidateCA(cert, key, validateOpts())
+	if !errors.Is(err, sep2cert.ErrCACriticalExtension) {
+		t.Fatalf("ValidateCA on a CA with an unhandled critical extension: got %v, want ErrCACriticalExtension", err)
+	}
+	if !strings.Contains(err.Error(), oid.String()) {
+		t.Errorf("ValidateCA error %q does not name the offending OID %s", err, oid.String())
+	}
+}
+
 func TestValidateCARejectsNonECDSAPublicKey(t *testing.T) {
 	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
