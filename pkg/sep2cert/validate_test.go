@@ -554,6 +554,38 @@ func TestLoadCARefusesNonCA(t *testing.T) {
 	}
 }
 
+// TestLoadCAAppliesExplicitOptions proves LoadCA's variadic option reaches
+// ParseCAPair rather than being dropped. It cannot pass by wall-clock
+// coincidence: the same certificate loads with no opts and is refused only
+// when an explicit MinRemaining option is supplied, so the option itself is
+// what has to change the outcome.
+func TestLoadCAAppliesExplicitOptions(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now()
+	tmpl := caTemplate()
+	tmpl.NotBefore = now.Add(-time.Hour)
+	tmpl.NotAfter = now.Add(48 * time.Hour)
+	cert, key := selfSign(t, tmpl, elliptic.P256())
+	certFile := filepath.Join(dir, "ca.pem")
+	keyFile := filepath.Join(dir, "ca-key.pem")
+	if err := os.WriteFile(certFile, encodeCertForTest(t, cert), 0o600); err != nil {
+		t.Fatalf("write cert: %v", err)
+	}
+	if err := os.WriteFile(keyFile, encodeKeyForTest(t, key), 0o600); err != nil {
+		t.Fatalf("write key: %v", err)
+	}
+
+	if _, _, err := sep2cert.LoadCA(certFile, keyFile); err != nil {
+		t.Fatalf("LoadCA with no opts on a CA valid for 48h: %v", err)
+	}
+
+	opt := sep2cert.ValidateCAOptions{MinRemaining: 72 * time.Hour}
+	_, _, err := sep2cert.LoadCA(certFile, keyFile, opt)
+	if !errors.Is(err, sep2cert.ErrCAExpiringSoon) {
+		t.Fatalf("LoadCA with an explicit MinRemaining option: got %v, want ErrCAExpiringSoon", err)
+	}
+}
+
 // TestLoadCADefaultAllowsIntermediate and TestLoadCADefaultAppliesNoMinRemainingMargin
 // pin the two policy defaults pem.go's LoadCA pins by calling it with no
 // opts at all, the exact zero-value path both consumers reach. They use the
