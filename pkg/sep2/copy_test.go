@@ -297,6 +297,26 @@ func TestFSACopyNil(t *testing.T) {
 	}
 }
 
+// TestFlowReservationRequestCopy covers the field #152 changed from *uint8
+// to the RequestStatus value type: a value copy of a struct with no pointer
+// or slice fields is independent by construction, and this test is what
+// would catch a regression back to a shared pointer.
+func TestFlowReservationRequestCopy(t *testing.T) {
+	req := sep2.FlowReservationRequest{
+		RequestStatus: sep2.RequestStatus{DateTime: 1604963587, RequestStatus: sep2.RequestStatusRequested},
+	}
+	copied := req.Copy()
+	copied.RequestStatus.DateTime = 0
+	copied.RequestStatus.RequestStatus = sep2.RequestStatusCancelled
+
+	if req.RequestStatus.DateTime != 1604963587 {
+		t.Error("original RequestStatus.DateTime mutated")
+	}
+	if req.RequestStatus.RequestStatus != sep2.RequestStatusRequested {
+		t.Error("original RequestStatus.RequestStatus mutated")
+	}
+}
+
 func TestEventStatusCopy(t *testing.T) {
 	supersededTime := int64(1234)
 	es := sep2.EventStatus{
