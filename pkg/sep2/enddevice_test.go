@@ -203,6 +203,44 @@ func TestEndDeviceSubscriptionListLink_OmittedWhenNil(t *testing.T) {
 	}
 }
 
+// TestEndDeviceFlowReservationLinksOmittedByteIdentical proves that leaving
+// both new flow reservation links nil (GRIDAPPSD/ieee-2030_5-core-go#177)
+// reproduces byte-for-byte what the pre-#177 struct produced for the same
+// populated fields: an omitempty insertion emits nothing on its own.
+// Sequence position is proven separately, by TestEndDeviceWireOrder, not by
+// this test. The golden string below was captured by marshalling this same
+// EndDevice against the struct as it existed at origin/main before #177
+// (base e7ad354).
+func TestEndDeviceFlowReservationLinksOmittedByteIdentical(t *testing.T) {
+	enabled := true
+	dev := sep2.EndDevice{
+		SubscribableResource: sep2.SubscribableResource{
+			Resource: sep2.Resource{Href: "/edev/1"},
+		},
+		ChangedTime:                    1604963587,
+		Enabled:                        &enabled,
+		LFDI:                           "3E4F45AB31EDFE5B67E343E5E4562E31984E23E5",
+		SFDI:                           "167261211391",
+		DERListLink:                    &sep2.ListLink{Href: "/edev/1/der"},
+		LogEventListLink:               &sep2.ListLink{Href: "/edev/1/lel"},
+		FunctionSetAssignmentsListLink: &sep2.ListLink{Href: "/edev/1/fsa"},
+		RegistrationLink:               &sep2.Link{Href: "/edev/1/rg"},
+		SubscriptionListLink:           &sep2.ListLink{Href: "/edev/1/sub"},
+		// FlowReservationRequestListLink and FlowReservationResponseListLink
+		// intentionally left nil.
+	}
+
+	const golden = `<EndDevice xmlns="urn:ieee:std:2030.5:ns" href="/edev/1"><DERListLink href="/edev/1/der"></DERListLink><lFDI>3E4F45AB31EDFE5B67E343E5E4562E31984E23E5</lFDI><LogEventListLink href="/edev/1/lel"></LogEventListLink><sFDI>167261211391</sFDI><changedTime>1604963587</changedTime><enabled>true</enabled><FunctionSetAssignmentsListLink href="/edev/1/fsa"></FunctionSetAssignmentsListLink><RegistrationLink href="/edev/1/rg"></RegistrationLink><SubscriptionListLink href="/edev/1/sub"></SubscriptionListLink></EndDevice>`
+
+	data, err := xml.Marshal(&dev)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if string(data) != golden {
+		t.Errorf("marshal with both flow reservation links nil is not byte-identical to pre-#177 output:\ngot:  %s\nwant: %s", data, golden)
+	}
+}
+
 // Copy() must deep-copy the SubscriptionListLink field
 // (GRIDAPPSD/ieee-2030_5-server-go#180) so downstream mutation doesn't
 // leak into the original (matches the pattern for the other *Link /
@@ -222,5 +260,43 @@ func TestEndDeviceCopy_SubscriptionListLink(t *testing.T) {
 	}
 	if original.SubscriptionListLink.All != 3 {
 		t.Errorf("original SubscriptionListLink.All mutated: %d", original.SubscriptionListLink.All)
+	}
+}
+
+// Copy() must deep-copy the FlowReservationRequestListLink and
+// FlowReservationResponseListLink fields (GRIDAPPSD/ieee-2030_5-core-go#177)
+// so downstream mutation doesn't leak into the original (matches the
+// pattern for the other *Link / *ListLink fields).
+func TestEndDeviceCopy_FlowReservationLinks(t *testing.T) {
+	original := sep2.EndDevice{
+		SFDI:                            "123",
+		FlowReservationRequestListLink:  &sep2.ListLink{Href: "/frq", All: 1},
+		FlowReservationResponseListLink: &sep2.ListLink{Href: "/frs", All: 2},
+	}
+
+	copied := original.Copy()
+	if copied.FlowReservationRequestListLink == original.FlowReservationRequestListLink {
+		t.Error("FlowReservationRequestListLink not deep-copied: same pointer as original")
+	}
+	if copied.FlowReservationResponseListLink == original.FlowReservationResponseListLink {
+		t.Error("FlowReservationResponseListLink not deep-copied: same pointer as original")
+	}
+
+	copied.FlowReservationRequestListLink.Href = "/frq-changed"
+	copied.FlowReservationRequestListLink.All = 99
+	copied.FlowReservationResponseListLink.Href = "/frs-changed"
+	copied.FlowReservationResponseListLink.All = 98
+
+	if original.FlowReservationRequestListLink.Href != "/frq" {
+		t.Errorf("original FlowReservationRequestListLink.Href mutated: %q", original.FlowReservationRequestListLink.Href)
+	}
+	if original.FlowReservationRequestListLink.All != 1 {
+		t.Errorf("original FlowReservationRequestListLink.All mutated: %d", original.FlowReservationRequestListLink.All)
+	}
+	if original.FlowReservationResponseListLink.Href != "/frs" {
+		t.Errorf("original FlowReservationResponseListLink.Href mutated: %q", original.FlowReservationResponseListLink.Href)
+	}
+	if original.FlowReservationResponseListLink.All != 2 {
+		t.Errorf("original FlowReservationResponseListLink.All mutated: %d", original.FlowReservationResponseListLink.All)
 	}
 }

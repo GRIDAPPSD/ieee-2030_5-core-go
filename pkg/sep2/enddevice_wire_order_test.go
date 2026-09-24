@@ -27,15 +27,17 @@ func TestEndDeviceWireOrder(t *testing.T) {
 		SubscribableResource: sep2.SubscribableResource{
 			Resource: sep2.Resource{Href: "/edev/1"},
 		},
-		ChangedTime:                    1604963587,
-		Enabled:                        &enabled,
-		LFDI:                           "3E4F45AB31EDFE5B67E343E5E4562E31984E23E5",
-		SFDI:                           "167261211391",
-		DERListLink:                    &sep2.ListLink{Href: "/edev/1/der"},
-		LogEventListLink:               &sep2.ListLink{Href: "/edev/1/lel"},
-		FunctionSetAssignmentsListLink: &sep2.ListLink{Href: "/edev/1/fsa"},
-		RegistrationLink:               &sep2.Link{Href: "/edev/1/rg"},
-		SubscriptionListLink:           &sep2.ListLink{Href: "/edev/1/sub"},
+		ChangedTime:                     1604963587,
+		Enabled:                         &enabled,
+		LFDI:                            "3E4F45AB31EDFE5B67E343E5E4562E31984E23E5",
+		SFDI:                            "167261211391",
+		DERListLink:                     &sep2.ListLink{Href: "/edev/1/der"},
+		LogEventListLink:                &sep2.ListLink{Href: "/edev/1/lel"},
+		FlowReservationRequestListLink:  &sep2.ListLink{Href: "/edev/1/frq"},
+		FlowReservationResponseListLink: &sep2.ListLink{Href: "/edev/1/frs"},
+		FunctionSetAssignmentsListLink:  &sep2.ListLink{Href: "/edev/1/fsa"},
+		RegistrationLink:                &sep2.Link{Href: "/edev/1/rg"},
+		SubscriptionListLink:            &sep2.ListLink{Href: "/edev/1/sub"},
 	}
 
 	data, err := xml.Marshal(&dev)
@@ -46,6 +48,7 @@ func TestEndDeviceWireOrder(t *testing.T) {
 
 	// AbstractDevice sequence (DERListLink, lFDI, LogEventListLink, sFDI)
 	// must precede EndDevice's own sequence (changedTime, enabled,
+	// FlowReservationRequestListLink, FlowReservationResponseListLink,
 	// FunctionSetAssignmentsListLink, RegistrationLink,
 	// SubscriptionListLink).
 	assertOrder(t, xmlStr, []string{
@@ -55,6 +58,8 @@ func TestEndDeviceWireOrder(t *testing.T) {
 		"<sFDI>",
 		"<changedTime>",
 		"<enabled>",
+		"<FlowReservationRequestListLink",
+		"<FlowReservationResponseListLink",
 		"<FunctionSetAssignmentsListLink",
 		"<RegistrationLink",
 		"<SubscriptionListLink",
