@@ -200,6 +200,31 @@ func TestDERAvailabilityCopy(t *testing.T) {
 	}
 }
 
+// TestDERAvailabilityCopyNewFields covers the two pointer fields added for
+// GRIDAPPSD/ieee-2030_5-core-go#179: each must be an independent pointer, not
+// an alias of the original, or a caller mutating the copy corrupts the
+// source.
+func TestDERAvailabilityCopyNewFields(t *testing.T) {
+	reserveCharge := sep2.PerCent(2500)
+	reserve := sep2.PerCent(7500)
+
+	avail := sep2.DERAvailability{
+		ReserveChargePercent: &reserveCharge,
+		ReservePercent:       &reserve,
+	}
+	copied := avail.Copy()
+
+	*copied.ReserveChargePercent = 0
+	*copied.ReservePercent = 0
+
+	if *avail.ReserveChargePercent != 2500 {
+		t.Error("original ReserveChargePercent mutated")
+	}
+	if *avail.ReservePercent != 7500 {
+		t.Error("original ReservePercent mutated")
+	}
+}
+
 func TestDERStatusCopy(t *testing.T) {
 	alarm := sep2.HexBinary32(0x01)
 	status := sep2.DERStatus{

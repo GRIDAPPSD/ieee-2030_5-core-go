@@ -188,3 +188,45 @@ func TestDERControlBaseWireOrder(t *testing.T) {
 		"<opModTargetW>",
 	})
 }
+
+// TestDERAvailabilityWireOrder asserts DERAvailability order against
+// sep.xsd's sequence: availabilityDuration, maxChargeDuration, readingTime,
+// reserveChargePercent, reservePercent, statVarAvail, statWAvail. This is
+// the 2018-schema subset of the type's fields; statVarAbsorbAvail and
+// statWAbsorbAvail are 2023-only and not modelled (der.go's doc comment).
+// Populates every field so a wrong insertion point for either new element
+// fails here rather than only being caught for the five pre-existing ones.
+func TestDERAvailabilityWireOrder(t *testing.T) {
+	dur := uint32(3600)
+	chargeDur := uint32(1800)
+	reserveCharge := sep2.PerCent(500)
+	reserve := sep2.PerCent(1000)
+	statVar := sep2.ReactivePower{Value: 200}
+	statW := sep2.ActivePower{Value: 400}
+
+	avail := sep2.DERAvailability{
+		AvailabilityDuration: &dur,
+		MaxChargeDuration:    &chargeDur,
+		ReadingTime:          1604963587,
+		ReserveChargePercent: &reserveCharge,
+		ReservePercent:       &reserve,
+		StatVarAvail:         &statVar,
+		StatWAvail:           &statW,
+	}
+
+	data, err := xml.Marshal(&avail)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	xmlStr := string(data)
+
+	assertOrder(t, xmlStr, []string{
+		"<availabilityDuration>",
+		"<maxChargeDuration>",
+		"<readingTime>",
+		"<reserveChargePercent>",
+		"<reservePercent>",
+		"<statVarAvail>",
+		"<statWAvail>",
+	})
+}

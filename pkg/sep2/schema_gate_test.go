@@ -66,6 +66,14 @@ func TestSchemaGateCleanResources(t *testing.T) {
 		// element rather than an attribute is invisible to a round trip.
 		{"LogEvent", sep2.LogEvent{}},
 		{"LogEventList", sep2.LogEventList{}},
+		// DERAvailability is gated here as of GRIDAPPSD/ieee-2030_5-core-go#179,
+		// which removed readingTime's omitempty (the type's one schema
+		// violation against the 2018 edition this gate pins, per
+		// schema/PROVENANCE.md) and added reserveChargePercent and
+		// reservePercent at their sequence positions. Gating it now catches
+		// both a regression of the omitempty fix and a future field landing
+		// at the wrong position.
+		{"DERAvailability", sep2.DERAvailability{}},
 	}
 
 	for _, tc := range tests {
@@ -226,6 +234,25 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 					Value:        &value,
 				},
 				ReadingType: &sep2.ReadingType{Uom: &uom},
+			},
+		},
+		{
+			// Populated for GRIDAPPSD/ieee-2030_5-core-go#179: the zero-value
+			// entry above leaves every optional field nil, so this is the only
+			// fixture that puts reserveChargePercent and reservePercent on
+			// the wire for lexical validation.
+			typeName: "DERAvailability",
+			v: sep2.DERAvailability{
+				SubscribableResource: sep2.SubscribableResource{
+					Resource: sep2.Resource{Href: "/edev/1/der/1/dera"},
+				},
+				AvailabilityDuration: func() *uint32 { v := uint32(3600); return &v }(),
+				MaxChargeDuration:    func() *uint32 { v := uint32(1800); return &v }(),
+				ReadingTime:          1604963587,
+				ReserveChargePercent: func() *sep2.PerCent { v := sep2.PerCent(500); return &v }(),
+				ReservePercent:       func() *sep2.PerCent { v := sep2.PerCent(1000); return &v }(),
+				StatVarAvail:         &sep2.ReactivePower{Multiplier: -1, Value: 200},
+				StatWAvail:           &sep2.ActivePower{Multiplier: -1, Value: 400},
 			},
 		},
 	}
@@ -757,7 +784,7 @@ func TestSchemaGateCoversKnownResources(t *testing.T) {
 	// either address. That is no longer true, so this server now serves them
 	// and they are in scope.
 	required := []string{
-		"DERCapability", "DERCurve", "DERSettings", "DERStatus",
+		"DERCapability", "DERCurve", "DERSettings", "DERStatus", "DERAvailability",
 		"MirrorUsagePoint", "MirrorMeterReading", "Registration",
 		"EndDevice", "Reading", "ReadingType",
 		"DERControl", "EndDeviceControl", "FlowReservationResponse", "TextMessage",
@@ -770,7 +797,7 @@ func TestSchemaGateCoversKnownResources(t *testing.T) {
 		"DERSettings": true, "DERStatus": true, "MirrorUsagePoint": true,
 		"UsagePoint": true, "EndDevice": true, "DERControl": true,
 		"EndDeviceControl": true, "FlowReservationResponse": true, "TextMessage": true,
-		"LogEvent": true, "LogEventList": true,
+		"LogEvent": true, "LogEventList": true, "DERAvailability": true,
 	}
 
 	// Appearing in the zero-value tables is NOT full coverage. A resource

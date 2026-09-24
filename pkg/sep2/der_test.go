@@ -421,6 +421,57 @@ func TestDERStatusMarshal(t *testing.T) {
 	}
 }
 
+// TestDERAvailabilityNewFieldsRoundTrip covers the two IEEE 2030.5-2018
+// elements added for GRIDAPPSD/ieee-2030_5-core-go#179, with populated (not
+// zero) values, so a dropped field fails on the round-tripped value rather
+// than passing because the zero value looks the same on both sides. The
+// 2023 absorption pair is not modelled; see der.go's DERAvailability doc
+// comment.
+func TestDERAvailabilityNewFieldsRoundTrip(t *testing.T) {
+	reserveCharge := sep2.PerCent(2500)
+	reserve := sep2.PerCent(7500)
+
+	avail := sep2.DERAvailability{
+		ReadingTime:          1604963587,
+		ReserveChargePercent: &reserveCharge,
+		ReservePercent:       &reserve,
+	}
+
+	data, err := xml.Marshal(&avail)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var parsed sep2.DERAvailability
+	if err := xml.Unmarshal(data, &parsed); err != nil {
+		t.Fatal(err)
+	}
+
+	if parsed.ReserveChargePercent == nil || *parsed.ReserveChargePercent != 2500 {
+		t.Errorf("ReserveChargePercent = %v, want 2500", parsed.ReserveChargePercent)
+	}
+	if parsed.ReservePercent == nil || *parsed.ReservePercent != 7500 {
+		t.Errorf("ReservePercent = %v, want 7500", parsed.ReservePercent)
+	}
+}
+
+// TestDERAvailabilityReadingTimeNoOmitempty asserts a zero readingTime still
+// serializes: the field is minOccurs=1 in sep.xsd, so a consumer must be able
+// to tell a fresh (zero-epoch) reading from an absent one.
+func TestDERAvailabilityReadingTimeNoOmitempty(t *testing.T) {
+	avail := sep2.DERAvailability{}
+
+	data, err := xml.Marshal(&avail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	xmlStr := string(data)
+
+	if !strings.Contains(xmlStr, "<readingTime>0</readingTime>") {
+		t.Errorf("zero-value DERAvailability did not emit readingTime\nXML: %s", xmlStr)
+	}
+}
+
 func TestDRLCMarshal(t *testing.T) {
 	drp := sep2.DemandResponseProgram{
 		SubscribableResource: sep2.SubscribableResource{
