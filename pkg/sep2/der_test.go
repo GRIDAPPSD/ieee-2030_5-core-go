@@ -421,22 +421,20 @@ func TestDERStatusMarshal(t *testing.T) {
 	}
 }
 
-// TestDERAvailabilityNewFieldsRoundTrip covers the four IEEE 2030.5-2023
+// TestDERAvailabilityNewFieldsRoundTrip covers the two IEEE 2030.5-2018
 // elements added for GRIDAPPSD/ieee-2030_5-core-go#179, with populated (not
 // zero) values, so a dropped field fails on the round-tripped value rather
-// than passing because the zero value looks the same on both sides.
+// than passing because the zero value looks the same on both sides. The
+// 2023 absorption pair is not modelled; see der.go's DERAvailability doc
+// comment.
 func TestDERAvailabilityNewFieldsRoundTrip(t *testing.T) {
 	reserveCharge := sep2.PerCent(2500)
 	reserve := sep2.PerCent(7500)
-	statVarAbsorb := sep2.UnsignedReactivePower{Multiplier: -1, Value: 150}
-	statWAbsorb := sep2.UnsignedActivePower{Multiplier: -1, Value: 250}
 
 	avail := sep2.DERAvailability{
 		ReadingTime:          1604963587,
 		ReserveChargePercent: &reserveCharge,
 		ReservePercent:       &reserve,
-		StatVarAbsorbAvail:   &statVarAbsorb,
-		StatWAbsorbAvail:     &statWAbsorb,
 	}
 
 	data, err := xml.Marshal(&avail)
@@ -454,12 +452,6 @@ func TestDERAvailabilityNewFieldsRoundTrip(t *testing.T) {
 	}
 	if parsed.ReservePercent == nil || *parsed.ReservePercent != 7500 {
 		t.Errorf("ReservePercent = %v, want 7500", parsed.ReservePercent)
-	}
-	if parsed.StatVarAbsorbAvail == nil || *parsed.StatVarAbsorbAvail != statVarAbsorb {
-		t.Errorf("StatVarAbsorbAvail = %v, want %v", parsed.StatVarAbsorbAvail, statVarAbsorb)
-	}
-	if parsed.StatWAbsorbAvail == nil || *parsed.StatWAbsorbAvail != statWAbsorb {
-		t.Errorf("StatWAbsorbAvail = %v, want %v", parsed.StatWAbsorbAvail, statWAbsorb)
 	}
 }
 

@@ -493,22 +493,25 @@ func (d DERStatus) Copy() DERStatus {
 
 // DERAvailability reports device availability. Field order follows
 // sep.xsd's DERAvailability sequence, confirmed against the alphabetical
-// attribute listing in IEEE 2030.5-2023 clause 10.10.4.4.5 (the same
-// listing carries all nine elements already in IEEE 2030.5-2018, so the
-// four added here are not new to the schema, only to this type). readingTime
-// is minOccurs=1 and carries no omitempty, unlike the other elements here.
+// attribute listing in IEEE 2030.5-2023 clause 10.10.4.4.5. readingTime is
+// minOccurs=1 and carries no omitempty, unlike the other elements here.
+//
+// The 2023 edition adds two more elements here, statVarAbsorbAvail and
+// statWAbsorbAvail, but this module's schema gate (schema/PROVENANCE.md)
+// pins the 2018 edition, Model Build 20180301, which does not declare them;
+// CI's schema-gated test fails with unknown-element for both. Adding that
+// pair is therefore a separate change gated on an edition decision, not on
+// this one.
 type DERAvailability struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns DERAvailability"`
 	SubscribableResource
-	AvailabilityDuration *uint32                `xml:"availabilityDuration,omitempty"`
-	MaxChargeDuration    *uint32                `xml:"maxChargeDuration,omitempty"`
-	ReadingTime          int64                  `xml:"readingTime"`
-	ReserveChargePercent *PerCent               `xml:"reserveChargePercent,omitempty"`
-	ReservePercent       *PerCent               `xml:"reservePercent,omitempty"`
-	StatVarAbsorbAvail   *UnsignedReactivePower `xml:"statVarAbsorbAvail,omitempty"`
-	StatVarAvail         *ReactivePower         `xml:"statVarAvail,omitempty"`
-	StatWAbsorbAvail     *UnsignedActivePower   `xml:"statWAbsorbAvail,omitempty"`
-	StatWAvail           *ActivePower           `xml:"statWAvail,omitempty"`
+	AvailabilityDuration *uint32        `xml:"availabilityDuration,omitempty"`
+	MaxChargeDuration    *uint32        `xml:"maxChargeDuration,omitempty"`
+	ReadingTime          int64          `xml:"readingTime"`
+	ReserveChargePercent *PerCent       `xml:"reserveChargePercent,omitempty"`
+	ReservePercent       *PerCent       `xml:"reservePercent,omitempty"`
+	StatVarAvail         *ReactivePower `xml:"statVarAvail,omitempty"`
+	StatWAvail           *ActivePower   `xml:"statWAvail,omitempty"`
 }
 
 // Copy returns an independent copy.
@@ -530,17 +533,9 @@ func (d DERAvailability) Copy() DERAvailability {
 		v := *d.ReservePercent
 		c.ReservePercent = &v
 	}
-	if d.StatVarAbsorbAvail != nil {
-		v := *d.StatVarAbsorbAvail
-		c.StatVarAbsorbAvail = &v
-	}
 	if d.StatVarAvail != nil {
 		v := *d.StatVarAvail
 		c.StatVarAvail = &v
-	}
-	if d.StatWAbsorbAvail != nil {
-		v := *d.StatWAbsorbAvail
-		c.StatWAbsorbAvail = &v
 	}
 	if d.StatWAvail != nil {
 		v := *d.StatWAvail

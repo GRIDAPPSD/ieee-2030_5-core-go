@@ -200,21 +200,17 @@ func TestDERAvailabilityCopy(t *testing.T) {
 	}
 }
 
-// TestDERAvailabilityCopyNewFields covers the four pointer fields added for
+// TestDERAvailabilityCopyNewFields covers the two pointer fields added for
 // GRIDAPPSD/ieee-2030_5-core-go#179: each must be an independent pointer, not
 // an alias of the original, or a caller mutating the copy corrupts the
 // source.
 func TestDERAvailabilityCopyNewFields(t *testing.T) {
 	reserveCharge := sep2.PerCent(2500)
 	reserve := sep2.PerCent(7500)
-	statVarAbsorb := sep2.UnsignedReactivePower{Value: 150}
-	statWAbsorb := sep2.UnsignedActivePower{Value: 250}
 
 	avail := sep2.DERAvailability{
 		ReserveChargePercent: &reserveCharge,
 		ReservePercent:       &reserve,
-		StatVarAbsorbAvail:   &statVarAbsorb,
-		StatWAbsorbAvail:     &statWAbsorb,
 	}
 	copied := avail.Copy()
 
@@ -224,29 +220,15 @@ func TestDERAvailabilityCopyNewFields(t *testing.T) {
 	if copied.ReservePercent == avail.ReservePercent {
 		t.Error("ReservePercent aliases the original pointer")
 	}
-	if copied.StatVarAbsorbAvail == avail.StatVarAbsorbAvail {
-		t.Error("StatVarAbsorbAvail aliases the original pointer")
-	}
-	if copied.StatWAbsorbAvail == avail.StatWAbsorbAvail {
-		t.Error("StatWAbsorbAvail aliases the original pointer")
-	}
 
 	*copied.ReserveChargePercent = 0
 	*copied.ReservePercent = 0
-	copied.StatVarAbsorbAvail.Value = 0
-	copied.StatWAbsorbAvail.Value = 0
 
 	if *avail.ReserveChargePercent != 2500 {
 		t.Error("original ReserveChargePercent mutated")
 	}
 	if *avail.ReservePercent != 7500 {
 		t.Error("original ReservePercent mutated")
-	}
-	if avail.StatVarAbsorbAvail.Value != 150 {
-		t.Error("original StatVarAbsorbAvail mutated")
-	}
-	if avail.StatWAbsorbAvail.Value != 250 {
-		t.Error("original StatWAbsorbAvail mutated")
 	}
 }
 

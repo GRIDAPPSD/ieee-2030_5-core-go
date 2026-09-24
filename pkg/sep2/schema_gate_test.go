@@ -68,9 +68,11 @@ func TestSchemaGateCleanResources(t *testing.T) {
 		{"LogEventList", sep2.LogEventList{}},
 		// DERAvailability is gated here as of GRIDAPPSD/ieee-2030_5-core-go#179,
 		// which removed readingTime's omitempty (the type's one schema
-		// violation) and added the four 2023 elements at their sequence
-		// positions. Gating it now catches both a regression of the omitempty
-		// fix and a future field landing at the wrong position.
+		// violation against the 2018 edition this gate pins, per
+		// schema/PROVENANCE.md) and added reserveChargePercent and
+		// reservePercent at their sequence positions. Gating it now catches
+		// both a regression of the omitempty fix and a future field landing
+		// at the wrong position.
 		{"DERAvailability", sep2.DERAvailability{}},
 	}
 
@@ -237,8 +239,8 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 		{
 			// Populated for GRIDAPPSD/ieee-2030_5-core-go#179: the zero-value
 			// entry above leaves every optional field nil, so this is the only
-			// fixture that puts the two new schema types, UnsignedActivePower
-			// and UnsignedReactivePower, on the wire for lexical validation.
+			// fixture that puts reserveChargePercent and reservePercent on
+			// the wire for lexical validation.
 			typeName: "DERAvailability",
 			v: sep2.DERAvailability{
 				SubscribableResource: sep2.SubscribableResource{
@@ -249,9 +251,7 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 				ReadingTime:          1604963587,
 				ReserveChargePercent: func() *sep2.PerCent { v := sep2.PerCent(500); return &v }(),
 				ReservePercent:       func() *sep2.PerCent { v := sep2.PerCent(1000); return &v }(),
-				StatVarAbsorbAvail:   &sep2.UnsignedReactivePower{Multiplier: -1, Value: 150},
 				StatVarAvail:         &sep2.ReactivePower{Multiplier: -1, Value: 200},
-				StatWAbsorbAvail:     &sep2.UnsignedActivePower{Multiplier: -1, Value: 250},
 				StatWAvail:           &sep2.ActivePower{Multiplier: -1, Value: 400},
 			},
 		},

@@ -33,22 +33,6 @@ type ApparentPower struct {
 	Value      uint16 `xml:"value"`
 }
 
-// UnsignedActivePower represents real power in watts where the schema
-// bounds the value non-negative (UInt16), unlike ActivePower's signed
-// Int16. IEEE 2030.5-2023 introduces it for the DERAvailability absorption
-// fields, where a negative reserve has no meaning.
-type UnsignedActivePower struct {
-	Multiplier int8   `xml:"multiplier"`
-	Value      uint16 `xml:"value"`
-}
-
-// UnsignedReactivePower mirrors UnsignedActivePower for reactive power in
-// var; see UnsignedActivePower's doc comment.
-type UnsignedReactivePower struct {
-	Multiplier int8   `xml:"multiplier"`
-	Value      uint16 `xml:"value"`
-}
-
 // VoltageRMS represents an rms voltage in volts. sep.xsd types its value
 // UInt16.
 type VoltageRMS struct {
