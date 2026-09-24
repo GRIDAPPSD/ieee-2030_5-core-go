@@ -590,27 +590,24 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 			typeName: "FlowReservationRequest",
 			zero:     sep2.FlowReservationRequest{},
 			wantStruct: []string{
-				"integer-unresolved FlowReservationRequest.RequestStatus",
 				"omitempty-required FlowReservationRequest.EnergyRequested",
 				"omitempty-required FlowReservationRequest.IntervalRequested",
 				"omitempty-required FlowReservationRequest.MRID",
 				"omitempty-required FlowReservationRequest.PowerRequested",
-				"omitempty-required FlowReservationRequest.RequestStatus",
 			},
 			wantMarshal: []string{
-				"missing-element FlowReservationRequest/RequestStatus",
 				"missing-element FlowReservationRequest/energyRequested",
 				"missing-element FlowReservationRequest/intervalRequested",
 				"missing-element FlowReservationRequest/mRID",
 				"missing-element FlowReservationRequest/powerRequested",
 			},
-			reason: "every element the schema requires beyond creationTime is tagged omitempty, " +
-				"so a request a client POSTs without them round-trips as a document carrying " +
-				"only creationTime. The handler fills none of them either: POST /edev/{id}/frq " +
-				"stamps href and creationTime and stores whatever else the client sent. " +
-				"Separately, RequestStatus is modelled as *uint8 while the schema's RequestStatus " +
-				"element is a complex type carrying dateTime and requestStatus, so the integer " +
-				"check cannot resolve it (#152).",
+			reason: "every element the schema requires beyond creationTime and RequestStatus is " +
+				"tagged omitempty, so a request a client POSTs without them round-trips as a " +
+				"document carrying only creationTime and RequestStatus. The handler fills none " +
+				"of them either: POST /edev/{id}/frq stamps href and creationTime and stores " +
+				"whatever else the client sent. RequestStatus is fixed (#152): it is now the " +
+				"complex type the schema declares, modelled as a value so the required element " +
+				"always serializes.",
 		},
 		{
 			typeName: "FlowReservationResponse",
