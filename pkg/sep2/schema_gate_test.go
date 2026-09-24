@@ -784,7 +784,7 @@ func TestSchemaGateCoversKnownResources(t *testing.T) {
 	// either address. That is no longer true, so this server now serves them
 	// and they are in scope.
 	required := []string{
-		"DERCapability", "DERCurve", "DERSettings", "DERStatus",
+		"DERCapability", "DERCurve", "DERSettings", "DERStatus", "DERAvailability",
 		"MirrorUsagePoint", "MirrorMeterReading", "Registration",
 		"EndDevice", "Reading", "ReadingType",
 		"DERControl", "EndDeviceControl", "FlowReservationResponse", "TextMessage",
@@ -797,7 +797,7 @@ func TestSchemaGateCoversKnownResources(t *testing.T) {
 		"DERSettings": true, "DERStatus": true, "MirrorUsagePoint": true,
 		"UsagePoint": true, "EndDevice": true, "DERControl": true,
 		"EndDeviceControl": true, "FlowReservationResponse": true, "TextMessage": true,
-		"LogEvent": true, "LogEventList": true,
+		"LogEvent": true, "LogEventList": true, "DERAvailability": true,
 	}
 
 	// Appearing in the zero-value tables is NOT full coverage. A resource

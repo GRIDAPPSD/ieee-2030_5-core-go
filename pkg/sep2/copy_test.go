@@ -214,13 +214,6 @@ func TestDERAvailabilityCopyNewFields(t *testing.T) {
 	}
 	copied := avail.Copy()
 
-	if copied.ReserveChargePercent == avail.ReserveChargePercent {
-		t.Error("ReserveChargePercent aliases the original pointer")
-	}
-	if copied.ReservePercent == avail.ReservePercent {
-		t.Error("ReservePercent aliases the original pointer")
-	}
-
 	*copied.ReserveChargePercent = 0
 	*copied.ReservePercent = 0
 

@@ -493,7 +493,7 @@ func (d DERStatus) Copy() DERStatus {
 
 // DERAvailability reports device availability. Field order follows
 // sep.xsd's DERAvailability sequence, confirmed against the alphabetical
-// attribute listing in IEEE 2030.5-2023 clause 10.10.4.4.5. readingTime is
+// attribute listing in IEEE 2030.5-2023 Annex B.23. readingTime is
 // minOccurs=1 and carries no omitempty, unlike the other elements here.
 //
 // The 2023 edition adds two more elements here, statVarAbsorbAvail and
