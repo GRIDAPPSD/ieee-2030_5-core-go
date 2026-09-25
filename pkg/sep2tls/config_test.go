@@ -1,8 +1,8 @@
 package sep2tls_test
 
 import (
+	"context"
 	"crypto/ecdsa"
-	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -13,8 +13,14 @@ import (
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2cert"
 	sepTLS "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls"
+	gotls "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls"
 )
 
+// TestMutualTLSHandshake proves the end-to-end wiring an http.Server /
+// http.Client pair needs on the fork: SetupCCMServer plus
+// CCMIdentityMiddleware to populate r.TLS on the server side, and a
+// DialTLSContext hook built from gotls.Dialer on the client side, since
+// neither happens automatically the way it does for a stdlib *tls.Conn.
 func TestMutualTLSHandshake(t *testing.T) {
 	// Generate CA, server cert, and device cert
 	caCertPEM, caKeyPEM, err := sep2cert.GenerateCA(sep2cert.CAOptions{
@@ -44,14 +50,14 @@ func TestMutualTLSHandshake(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create server TLS config
-	serverTLSCfg, err := sepTLS.NewServerTLSConfigFromPEM(serverCertPEM, serverKeyPEM, caCertPEM)
+	// Create server TLS config (CCM-8 only, fork)
+	serverTLSCfg, err := sepTLS.NewCCMServerConfigFromPEM(serverCertPEM, serverKeyPEM, caCertPEM)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	// Create client TLS config
-	clientTLSCfg, err := sepTLS.NewClientTLSConfigFromPEM(deviceCertPEM, deviceKeyPEM, caCertPEM)
+	// Create client TLS config (CCM-8 only, fork)
+	clientTLSCfg, err := sepTLS.NewCCMClientConfigFromPEM(deviceCertPEM, deviceKeyPEM, caCertPEM)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +69,7 @@ func TestMutualTLSHandshake(t *testing.T) {
 	}
 	defer func() { _ = listener.Close() }()
 
-	tlsListener := tls.NewListener(listener, serverTLSCfg)
+	tlsListener := gotls.NewListener(listener, serverTLSCfg)
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify we received the client certificate
@@ -79,14 +85,19 @@ func TestMutualTLSHandshake(t *testing.T) {
 		_, _ = fmt.Fprintf(w, "SFDI=%s LFDI=%s", sfdi, lfdi)
 	})
 
-	srv := &http.Server{Handler: handler}
+	srv := &http.Server{Handler: sepTLS.CCMIdentityMiddleware(handler)}
+	sepTLS.SetupCCMServer(srv)
 	go func() { _ = srv.Serve(tlsListener) }()
 	defer func() { _ = srv.Close() }()
 
-	// Make client request
+	// Make client request over the fork's dialer, wired as DialTLSContext:
+	// http.Transport.TLSClientConfig only accepts a *tls.Config, and stdlib
+	// crypto/tls cannot negotiate CCM-8 at all.
 	client := &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: clientTLSCfg,
+			DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				return (&gotls.Dialer{Config: clientTLSCfg}).DialContext(ctx, network, addr)
+			},
 		},
 	}
 
@@ -115,13 +126,19 @@ func TestMutualTLSHandshake(t *testing.T) {
 
 	t.Logf("mutual TLS response: %s", bodyStr)
 
-	// Verify negotiated cipher suite is GCM (our fallback)
-	if resp.TLS.CipherSuite != tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 {
-		t.Errorf("cipher suite = 0x%04x, want GCM 0x%04x",
-			resp.TLS.CipherSuite, tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256)
+	// net/http never populates resp.TLS for a DialTLSContext connection that
+	// is not a *crypto/tls.Conn (documented on NewCCMClientConfig), so the
+	// cipher suite is not readable from resp.TLS; it stays nil here. Risk
+	// area 2 (negotiated suite read from the connection state) is covered
+	// by ccm_tls12_cap_test.go's TestCCM8StillWorksUnderCap, which reads it
+	// from the dialed *gotls.Conn directly.
+	if resp.TLS != nil {
+		t.Errorf("resp.TLS = %+v, want nil: net/http does not recognize *gotls.Conn", resp.TLS)
 	}
 }
 
+// TestTLSRejectsNoClientCert proves the fork server config still enforces
+// mutual auth: a client presenting no certificate is refused at handshake.
 func TestTLSRejectsNoClientCert(t *testing.T) {
 	caCertPEM, caKeyPEM, _ := sep2cert.GenerateCA(sep2cert.CAOptions{
 		CommonName: "Test CA",
@@ -134,12 +151,12 @@ func TestTLSRejectsNoClientCert(t *testing.T) {
 		Hosts: []string{"127.0.0.1"},
 	})
 
-	serverTLSCfg, _ := sepTLS.NewServerTLSConfigFromPEM(serverCertPEM, serverKeyPEM, caCertPEM)
+	serverTLSCfg, _ := sepTLS.NewCCMServerConfigFromPEM(serverCertPEM, serverKeyPEM, caCertPEM)
 
 	listener, _ := net.Listen("tcp", "127.0.0.1:0")
 	defer func() { _ = listener.Close() }()
 
-	tlsListener := tls.NewListener(listener, serverTLSCfg)
+	tlsListener := gotls.NewListener(listener, serverTLSCfg)
 	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 	})}
@@ -149,8 +166,10 @@ func TestTLSRejectsNoClientCert(t *testing.T) {
 	// Client WITHOUT a certificate
 	client := &http.Client{
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
+			DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				//nolint:gosec // no client cert on purpose: exercises the mutual-auth-required rejection path
+				cfg := &gotls.Config{InsecureSkipVerify: true}
+				return (&gotls.Dialer{Config: cfg}).DialContext(ctx, network, addr)
 			},
 		},
 	}

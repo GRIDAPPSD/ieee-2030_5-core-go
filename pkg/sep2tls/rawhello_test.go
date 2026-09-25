@@ -3,12 +3,13 @@ package sep2tls_test
 import (
 	"bytes"
 	"crypto/rand"
-	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
 	"net"
 	"testing"
 	"time"
+
+	gotls "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls"
 )
 
 // downgradeCanaryTLS12 is the RFC 8446 section 4.1.3 sentinel a TLS 1.3-capable
@@ -139,12 +140,15 @@ func (r *recordingConn) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// recordAndHandshake performs a stdlib TLS handshake against addr, trusting
-// caPEM and presenting the devicePEM/deviceKeyPEM client identity, over a
-// recordingConn so the raw ServerHello.random is recoverable afterward. It
-// serves both the standard-library and CCM listener test suites (core-go
-// #143), since a plain stdlib client is what inspects the wire either way.
-// maxVer of 0 leaves the client's default (highest mutually supported).
+// recordAndHandshake performs a gotls (fork) handshake against addr,
+// trusting caPEM and presenting the devicePEM/deviceKeyPEM client identity,
+// offering CCM-8 (the only suite core's CCM server configs offer), over a
+// recordingConn so the raw ServerHello.random is recoverable afterward. Its
+// sole caller is the CCM listener suite (core-go #143): a stdlib
+// *crypto/tls.Client cannot negotiate CCM-8 at all (golang/go#27484), so it
+// cannot complete a handshake against a CCM-8-only server to read
+// ServerHello.random this way. maxVer of 0 leaves the client's default
+// (highest mutually supported).
 func recordAndHandshake(t *testing.T, addr string, caPEM, devicePEM, deviceKeyPEM []byte, minVer, maxVer uint16) (uint16, [32]byte) {
 	t.Helper()
 
@@ -152,7 +156,7 @@ func recordAndHandshake(t *testing.T, addr string, caPEM, devicePEM, deviceKeyPE
 	if !caPool.AppendCertsFromPEM(caPEM) {
 		t.Fatal("failed to parse CA cert into pool")
 	}
-	deviceCert, err := tls.X509KeyPair(devicePEM, deviceKeyPEM)
+	deviceCert, err := gotls.X509KeyPair(devicePEM, deviceKeyPEM)
 	if err != nil {
 		t.Fatalf("X509KeyPair (device cert): %v", err)
 	}
@@ -164,15 +168,18 @@ func recordAndHandshake(t *testing.T, addr string, caPEM, devicePEM, deviceKeyPE
 	defer func() { _ = rawConn.Close() }()
 
 	rec := &recordingConn{Conn: rawConn, buf: new(bytes.Buffer)}
-	tlsConn := tls.Client(rec, &tls.Config{
+	tlsConn := gotls.Client(rec, &gotls.Config{
 		RootCAs: caPool,
-		// tls.Client (unlike tls.Dial) never derives ServerName from the
+		// gotls.Client (unlike gotls.Dial) never derives ServerName from the
 		// address, and the cert covers 127.0.0.1 as a SAN.
-		ServerName:       "127.0.0.1",
-		Certificates:     []tls.Certificate{deviceCert},
-		MinVersion:       minVer,
-		MaxVersion:       maxVer,
-		CurvePreferences: []tls.CurveID{tls.CurveP256},
+		ServerName:   "127.0.0.1",
+		Certificates: []gotls.Certificate{deviceCert},
+		MinVersion:   minVer,
+		MaxVersion:   maxVer,
+		CipherSuites: []uint16{
+			gotls.TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8,
+		},
+		CurvePreferences: []gotls.CurveID{gotls.CurveP256},
 	})
 	defer func() { _ = tlsConn.Close() }()
 

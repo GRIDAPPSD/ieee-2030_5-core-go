@@ -147,10 +147,10 @@ func NewReceiver(cfg Config) (*Receiver, error) {
 		return nil, nil
 	}
 
-	// NewCCMServerConfig builds a gotls.Config with CCM-8 as the primary
-	// cipher, GCM as fallback, RequireAnyClientCert, and the
-	// HardwareModuleName-SAN-tolerant verify hook. This matches the posture
-	// of the production sep2tls CCM server configuration.
+	// NewCCMServerConfig builds a gotls.Config offering CCM-8 only, with
+	// RequireAnyClientCert and the HardwareModuleName-SAN-tolerant verify
+	// hook. This matches the posture of the production sep2tls CCM server
+	// configuration.
 	tlsCfg, err := sepTLS.NewCCMServerConfig(cfg.CertFile, cfg.KeyFile, cfg.CAFile)
 	if err != nil {
 		return nil, fmt.Errorf("notify receiver: build TLS config: %w", err)

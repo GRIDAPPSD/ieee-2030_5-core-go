@@ -12,9 +12,62 @@ import (
 	"testing"
 	"time"
 
+	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2cert"
 	sepTLS "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls"
 	gotls "github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2tls/gotls"
 )
+
+// capCertSet mints a CA, a server cert, and a device (client) cert, shared
+// by TestStdListenerLogsTLS13OnlyRefusal (as a plain stdlib config, unrelated
+// to sep2tls's own CCM-only constructors) and TestCCMListenerLogsTLS13OnlyRefusal.
+// Formerly lived in the now-removed tls12_cap_test.go, whose stdlib
+// GCM-serving tests were subsumed by this file and ccm_tls12_cap_test.go
+// once core stopped offering GCM under any name.
+type capCertSet struct {
+	caPEM     []byte
+	serverPEM []byte
+	serverKey []byte
+	devicePEM []byte
+	deviceKey []byte
+}
+
+func newCapCertSet(t *testing.T) capCertSet {
+	t.Helper()
+
+	caCertPEM, caKeyPEM, err := sep2cert.GenerateCA(sep2cert.CAOptions{
+		CommonName: "TLS12 Cap Test CA",
+		ValidYears: 1,
+	})
+	if err != nil {
+		t.Fatalf("GenerateCA: %v", err)
+	}
+	caCert, caKey := parseCACert(t, caCertPEM, caKeyPEM)
+
+	serverCertPEM, serverKeyPEM, err := sep2cert.GenerateServerCert(caCert, caKey, sep2cert.ServerCertOptions{
+		Hosts:      []string{"127.0.0.1", "localhost"},
+		CommonName: "TLS12 Cap Test Server",
+		ValidYears: 1,
+	})
+	if err != nil {
+		t.Fatalf("GenerateServerCert: %v", err)
+	}
+
+	deviceCertPEM, deviceKeyPEM, err := sep2cert.GenerateDeviceCert(caCert, caKey, sep2cert.DeviceCertOptions{
+		DeviceType:  sep2cert.DeviceTypeGeneric,
+		HWSerialNum: "TLS12-CAP-TEST-001",
+	})
+	if err != nil {
+		t.Fatalf("GenerateDeviceCert: %v", err)
+	}
+
+	return capCertSet{
+		caPEM:     caCertPEM,
+		serverPEM: serverCertPEM,
+		serverKey: serverKeyPEM,
+		devicePEM: deviceCertPEM,
+		deviceKey: deviceKeyPEM,
+	}
+}
 
 // syncLogBuf is an io.Writer safe for concurrent use by a *log.Logger and a
 // test goroutine, that signals on seen after every Write so a test can wait
@@ -60,12 +113,21 @@ func waitForLogLine(t *testing.T, logBuf *syncLogBuf, timeout time.Duration) str
 
 // TestStdListenerLogsTLS13OnlyRefusal is the control for
 // TestCCMListenerLogsTLS13OnlyRefusal: net/http's own *tls.Conn handling logs
-// a TLS 1.3-only client's refusal on the standard-library listener.
+// a TLS 1.3-only client's refusal on the standard-library listener. Core no
+// longer exports a *tls.Config constructor (crypto/tls cannot carry CCM-8),
+// so this control builds its own plain stdlib server config: what is under
+// test here is net/http's baseline logging behavior for *tls.Conn, not any
+// sep2tls constructor.
 func TestStdListenerLogsTLS13OnlyRefusal(t *testing.T) {
 	certs := newCapCertSet(t)
-	serverTLSCfg, err := sepTLS.NewServerTLSConfigFromPEM(certs.serverPEM, certs.serverKey, certs.caPEM)
+	serverCert, err := tls.X509KeyPair(certs.serverPEM, certs.serverKey)
 	if err != nil {
-		t.Fatalf("NewServerTLSConfigFromPEM: %v", err)
+		t.Fatalf("X509KeyPair (server cert): %v", err)
+	}
+	serverTLSCfg := &tls.Config{
+		Certificates: []tls.Certificate{serverCert},
+		MinVersion:   tls.VersionTLS12,
+		MaxVersion:   tls.VersionTLS12,
 	}
 
 	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
