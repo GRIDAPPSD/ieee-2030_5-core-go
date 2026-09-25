@@ -1,7 +1,6 @@
 package sep2tls_test
 
 import (
-	"crypto/tls"
 	"os"
 	"path/filepath"
 	"testing"
@@ -67,52 +66,12 @@ func newServerInvariantMaterials(t *testing.T) serverInvariantMaterials {
 // VerifyPeerCertificate accepts any cert from any CA, an unverified-client
 // auth bypass), and session tickets disabled (a resumed session skips
 // VerifyPeerCertificate, bypassing the HardwareModuleName SAN check).
+//
+// Core no longer exports a *tls.Config server constructor: crypto/tls
+// cannot carry CCM-8, and core does not offer GCM under any name, so every
+// server constructor here returns a *gotls.Config.
 func TestServerConfigSecurityInvariants(t *testing.T) {
 	m := newServerInvariantMaterials(t)
-
-	t.Run("standard-library constructors", func(t *testing.T) {
-		tests := []struct {
-			name string
-			cfg  func(t *testing.T) *tls.Config
-		}{
-			{"NewServerTLSConfig", func(t *testing.T) *tls.Config {
-				cfg, err := sepTLS.NewServerTLSConfig(m.certPath, m.keyPath, m.caPath)
-				if err != nil {
-					t.Fatalf("NewServerTLSConfig: %v", err)
-				}
-				return cfg
-			}},
-			{"NewServerTLSConfigWithExtraCAs", func(t *testing.T) *tls.Config {
-				cfg, err := sepTLS.NewServerTLSConfigWithExtraCAs(m.certPath, m.keyPath, m.caPath, nil)
-				if err != nil {
-					t.Fatalf("NewServerTLSConfigWithExtraCAs: %v", err)
-				}
-				return cfg
-			}},
-			{"NewServerTLSConfigFromPEM", func(t *testing.T) *tls.Config {
-				cfg, err := sepTLS.NewServerTLSConfigFromPEM(m.certPEM, m.keyPEM, m.caPEM)
-				if err != nil {
-					t.Fatalf("NewServerTLSConfigFromPEM: %v", err)
-				}
-				return cfg
-			}},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				cfg := tt.cfg(t)
-				if cfg.MaxVersion != tls.VersionTLS12 {
-					t.Errorf("MaxVersion = %s, want TLS 1.2: IEEE 2030.5-2018 clauses 6.1 and 6.4 cap the server at TLS 1.2, with no opt-in", tls.VersionName(cfg.MaxVersion))
-				}
-				if cfg.ClientAuth != tls.RequireAnyClientCert || cfg.VerifyPeerCertificate == nil {
-					t.Error("RequireAnyClientCert with a nil VerifyPeerCertificate accepts any client cert from any CA unverified: the two must always be paired")
-				}
-				if !cfg.SessionTicketsDisabled {
-					t.Error("SessionTicketsDisabled must be true: a resumed session restores the peer cert from the ticket and skips VerifyPeerCertificate, bypassing the CSIP SAN check")
-				}
-			})
-		}
-	})
 
 	t.Run("CCM constructors", func(t *testing.T) {
 		tests := []struct {
@@ -133,6 +92,13 @@ func TestServerConfigSecurityInvariants(t *testing.T) {
 				}
 				return cfg
 			}},
+			{"NewCCMServerConfigFromPEM", func(t *testing.T) *gotls.Config {
+				cfg, err := sepTLS.NewCCMServerConfigFromPEM(m.certPEM, m.keyPEM, m.caPEM)
+				if err != nil {
+					t.Fatalf("NewCCMServerConfigFromPEM: %v", err)
+				}
+				return cfg
+			}},
 		}
 
 		for _, tt := range tests {
@@ -146,6 +112,53 @@ func TestServerConfigSecurityInvariants(t *testing.T) {
 				}
 				if !cfg.SessionTicketsDisabled {
 					t.Error("SessionTicketsDisabled must be true: a resumed session restores the peer cert from the ticket and skips VerifyPeerCertificate, bypassing the CSIP SAN check")
+				}
+				for _, cs := range cfg.CipherSuites {
+					if cs != gotls.TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8 {
+						t.Errorf("CipherSuites contains 0x%04x, want CCM-8 (0x%04x) only: no exported constructor may offer GCM under any name", cs, gotls.TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8)
+					}
+				}
+			})
+		}
+	})
+
+	t.Run("CCM client constructors", func(t *testing.T) {
+		tests := []struct {
+			name string
+			cfg  func(t *testing.T) *gotls.Config
+		}{
+			{"NewCCMClientConfig", func(t *testing.T) *gotls.Config {
+				cfg, err := sepTLS.NewCCMClientConfig(m.certPath, m.keyPath, m.caPath)
+				if err != nil {
+					t.Fatalf("NewCCMClientConfig: %v", err)
+				}
+				return cfg
+			}},
+			{"NewCCMClientConfigFromPEM", func(t *testing.T) *gotls.Config {
+				cfg, err := sepTLS.NewCCMClientConfigFromPEM(m.certPEM, m.keyPEM, m.caPEM)
+				if err != nil {
+					t.Fatalf("NewCCMClientConfigFromPEM: %v", err)
+				}
+				return cfg
+			}},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				cfg := tt.cfg(t)
+				if cfg.MaxVersion != gotls.VersionTLS12 {
+					t.Errorf("MaxVersion = 0x%04x, want TLS 1.2 (0x%04x): same cap and reasoning as the server side", cfg.MaxVersion, gotls.VersionTLS12)
+				}
+				if cfg.MinVersion != gotls.VersionTLS12 {
+					t.Errorf("MinVersion = 0x%04x, want TLS 1.2 (0x%04x)", cfg.MinVersion, gotls.VersionTLS12)
+				}
+				for _, cs := range cfg.CipherSuites {
+					if cs != gotls.TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8 {
+						t.Errorf("CipherSuites contains 0x%04x, want CCM-8 (0x%04x) only: no exported constructor may offer GCM under any name", cs, gotls.TLS_ECDHE_ECDSA_WITH_AES_128_CCM_8)
+					}
+				}
+				if len(cfg.Certificates) == 0 {
+					t.Error("Certificates is empty: a client config with no presented cert cannot complete IEEE 2030.5 mutual TLS")
 				}
 			})
 		}

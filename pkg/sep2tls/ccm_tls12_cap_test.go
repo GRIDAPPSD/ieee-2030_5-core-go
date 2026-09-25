@@ -274,11 +274,11 @@ func TestCCMCapNegotiatesTLS12WithCCM8ForDualVersionClient(t *testing.T) {
 	}
 }
 
-// TestCCM8PreferredOverGCM is core-go #136 criterion 1: a TLS 1.2 client
-// offering both CCM-8 and the ECDHE-ECDSA AES-128-GCM suite negotiates
-// CCM-8. RED at 406baef: cipher_suites_ccm.go appended CCM-8 to the end of
-// the preference order, so pickCipherSuite reached GCM first.
-func TestCCM8PreferredOverGCM(t *testing.T) {
+// TestCCM8OfferedAlongsideGCMStillNegotiatesCCM8 is core-go #136 criterion 1,
+// re-scoped: a TLS 1.2 client offering both CCM-8 and the ECDHE-ECDSA
+// AES-128-GCM suite negotiates CCM-8, because the server no longer offers
+// GCM at all (it is not merely ranked below CCM-8 in the preference order).
+func TestCCM8OfferedAlongsideGCMStillNegotiatesCCM8(t *testing.T) {
 	files := newCCMTestFiles(t)
 	cfg := newCCMServerConfig(t, files)
 	addr, shutdown := startCCMTestListener(t, cfg, nil)
@@ -297,25 +297,33 @@ func TestCCM8PreferredOverGCM(t *testing.T) {
 	}
 }
 
-// TestGCMOnlyClientStillNegotiatesGCM is core-go #136 criterion 3: a client
-// offering only the GCM suite still negotiates it against the CCM
-// configuration. Not RED: unaffected by the preference-order fix, since
-// order only matters when more than one mutually offered suite exists.
-func TestGCMOnlyClientStillNegotiatesGCM(t *testing.T) {
+// TestGCMOnlyClientRefused is risk area 3 of the CCM-8-only change: a client
+// that offers only the GCM suite has no cipher suite in common with the
+// server and is refused, rather than served on a downgraded fallback the
+// way NewCCMServerConfig used to offer. RED before the GCM entry was
+// removed from newCCMServerConfigFromMaterial: this dial succeeded and
+// negotiated GCM (see the superseded TestGCMOnlyClientStillNegotiatesGCM in
+// core-go history).
+func TestGCMOnlyClientRefused(t *testing.T) {
 	files := newCCMTestFiles(t)
 	cfg := newCCMServerConfig(t, files)
-	addr, shutdown := startCCMTestListener(t, cfg, nil)
+	errs := make(chan error, 1)
+	addr, shutdown := startCCMTestListener(t, cfg, errs)
 	defer shutdown()
 
 	conn, err := dialCCM(t, addr, files, gotls.VersionTLS12, gotls.VersionTLS12, []uint16{0xC02B}, true)
-	if err != nil {
-		t.Fatalf("GCM-only client dial failed: %v", err)
+	if err == nil {
+		_ = conn.Close()
+		t.Fatal("expected a GCM-only client to be refused, the dial succeeded")
 	}
-	defer func() { _ = conn.Close() }()
 
-	state := conn.ConnectionState()
-	if state.CipherSuite != 0xC02B {
-		t.Errorf("cipher suite = 0x%04x, want GCM (0xC02B)", state.CipherSuite)
+	select {
+	case serverErr := <-errs:
+		if !strings.Contains(serverErr.Error(), "no cipher suite") {
+			t.Errorf("server-side handshake error = %q, want it to name the cipher suite mismatch", serverErr)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("expected a server-side handshake error, none was captured within 2s")
 	}
 }
 
