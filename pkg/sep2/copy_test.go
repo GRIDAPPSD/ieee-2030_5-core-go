@@ -119,6 +119,30 @@ func TestMirrorUsagePointCopy(t *testing.T) {
 	}
 }
 
+func TestMirrorMeterReadingCopyMirrorReadingSet(t *testing.T) {
+	val := int64(9)
+	mmr := sep2.MirrorMeterReading{
+		MRID: "MMR01",
+		MirrorReadingSet: []sep2.MirrorReadingSet{
+			{
+				MRID:       "SET-1",
+				TimePeriod: sep2.DateTimeInterval{Duration: 86400, Start: 1341579365},
+				Reading:    []sep2.Reading{{Value: &val}},
+			},
+		},
+	}
+	copied := mmr.Copy()
+	copied.MirrorReadingSet[0].MRID = "CHANGED"
+	*copied.MirrorReadingSet[0].Reading[0].Value = 99
+
+	if mmr.MirrorReadingSet[0].MRID != "SET-1" {
+		t.Error("original MirrorReadingSet slice mutated")
+	}
+	if *mmr.MirrorReadingSet[0].Reading[0].Value != 9 {
+		t.Error("original Reading within MirrorReadingSet mutated")
+	}
+}
+
 func TestDERCopy(t *testing.T) {
 	der := sep2.DER{
 		DERCapabilityLink:            &sep2.Link{Href: "/dercap"},

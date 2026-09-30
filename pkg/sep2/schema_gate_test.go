@@ -58,6 +58,11 @@ func TestSchemaGateCleanResources(t *testing.T) {
 		{"Reading", sep2.Reading{}},
 		{"ReadingType", sep2.ReadingType{}},
 		{"MirrorMeterReading", sep2.MirrorMeterReading{}},
+		// MirrorReadingSet is gated here for GRIDAPPSD/ieee-2030_5-core-go#192:
+		// it was absent from every table below, so a struct-order regression
+		// (timePeriod declared after Reading) and an omitempty added to the
+		// required mRID both marshalled clean with nothing to catch them.
+		{"MirrorReadingSet", sep2.MirrorReadingSet{}},
 		// LogEvent and its list are gated here because the function set is now
 		// on a client-reachable address: an EndDevice advertises the list and
 		// a device POSTs alarms into it, so the wire form is load-bearing. The
@@ -101,10 +106,15 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 	uom := uint8(38)
 	powerOfTen := int8(-3)
 	alarm := sep2.HexBinary32(0x01)
+	localID0 := sep2.HexBinary16(0x00)
+	localID1 := sep2.HexBinary16(0x01)
 
 	tests := []struct {
 		typeName string
-		v        any
+		// label overrides the subtest name when a second fixture reuses a
+		// typeName already covered above; empty means "use typeName".
+		label string
+		v     any
 	}{
 		{
 			// DERStatus is pinned as a known failure below, but only at its
@@ -237,6 +247,38 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 			},
 		},
 		{
+			// GRIDAPPSD/ieee-2030_5-core-go#192: the entry above never puts a
+			// MirrorReadingSet on the wire, so the marshalled check had no set
+			// to validate. TWO sets (unbounded per sep.xsd) with real Reading
+			// content, including localID, exercises the nested sequence
+			// (mRID, timePeriod, Reading) and the localID lexical form
+			// together, in the actual parent context a client posts them in.
+			typeName: "MirrorMeterReading",
+			label:    "MirrorMeterReading/MirrorReadingSet",
+			v: sep2.MirrorMeterReading{
+				MRID:           "0102030405060708090A0B0C0D0E0F11",
+				Description:    "site meter interval sets",
+				LastUpdateTime: 1500000000,
+				MirrorReadingSet: []sep2.MirrorReadingSet{
+					{
+						MRID:       "0102030405060708090A0B0C0D0E0F12",
+						TimePeriod: sep2.DateTimeInterval{Duration: 900, Start: 1500000000},
+						Reading: []sep2.Reading{
+							{Value: &value, LocalID: &localID0},
+							{Value: &value, LocalID: &localID1},
+						},
+					},
+					{
+						MRID:       "0102030405060708090A0B0C0D0E0F13",
+						TimePeriod: sep2.DateTimeInterval{Duration: 900, Start: 1500000900},
+						Reading: []sep2.Reading{
+							{Value: &value, LocalID: &localID0},
+						},
+					},
+				},
+			},
+		},
+		{
 			// Populated for GRIDAPPSD/ieee-2030_5-core-go#179: the zero-value
 			// entry above leaves every optional field nil, so this is the only
 			// fixture that puts reserveChargePercent and reservePercent on
@@ -258,7 +300,11 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		t.Run(tc.typeName, func(t *testing.T) {
+		name := tc.label
+		if name == "" {
+			name = tc.typeName
+		}
+		t.Run(name, func(t *testing.T) {
 			xsdgate.AssertValid(t, tc.typeName, tc.v)
 		})
 	}
