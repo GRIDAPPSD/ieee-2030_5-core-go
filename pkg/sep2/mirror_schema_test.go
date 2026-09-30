@@ -300,9 +300,13 @@ func TestMirrorMeterReadingElementOrderWithMirrorReadingSet(t *testing.T) {
 // regression guard for GRIDAPPSD/ieee-2030_5-core-go#191: encoding/xml
 // drops any element with no matching struct field, so a MirrorMeterReading
 // posted with a MirrorReadingSet (the CSIP aggregator's batch-post shape)
-// lost every contained Reading. Decodes a body modeled on the standard's
-// own POX example (mRID, timePeriod, then the Reading list) and asserts
-// the decoded values, then re-encodes and asserts nothing was lost.
+// lost every contained Reading. The fixture carries the example's own
+// localID children (Table C.15) and a SECOND MirrorReadingSet, since
+// sep.xsd allows maxOccurs="unbounded" and one set surviving does not show
+// a sibling would too. Decodes, asserts the decoded values, re-encodes,
+// then decodes the RE-ENCODED bytes again and asserts the per-set mRID and
+// timePeriod values on THAT struct, so the proof is a value carried through
+// a full round trip rather than a substring found in the wire bytes.
 func TestMirrorMeterReadingRoundTripPreservesMirrorReadingSet(t *testing.T) {
 	body := []byte(`<MirrorMeterReading xmlns="urn:ieee:std:2030.5:ns">
 		<mRID>0800006CC8</mRID>
@@ -312,8 +316,16 @@ func TestMirrorMeterReadingRoundTripPreservesMirrorReadingSet(t *testing.T) {
 				<duration>86400</duration>
 				<start>1341579365</start>
 			</timePeriod>
-			<Reading><value>9</value></Reading>
-			<Reading><value>11</value></Reading>
+			<Reading><value>9</value><localID>00</localID></Reading>
+			<Reading><value>11</value><localID>01</localID></Reading>
+		</MirrorReadingSet>
+		<MirrorReadingSet>
+			<mRID>0900006CC9</mRID>
+			<timePeriod>
+				<duration>3600</duration>
+				<start>1341665765</start>
+			</timePeriod>
+			<Reading><value>42</value><localID>00</localID></Reading>
 		</MirrorReadingSet>
 	</MirrorMeterReading>`)
 
@@ -321,26 +333,7 @@ func TestMirrorMeterReadingRoundTripPreservesMirrorReadingSet(t *testing.T) {
 	if err := xml.Unmarshal(body, &mmr); err != nil {
 		t.Fatal(err)
 	}
-
-	if len(mmr.MirrorReadingSet) != 1 {
-		t.Fatalf("decoded %d MirrorReadingSet elements, want 1", len(mmr.MirrorReadingSet))
-	}
-	rs := mmr.MirrorReadingSet[0]
-	if rs.MRID != "0900006CC8" {
-		t.Errorf("decoded MirrorReadingSet.MRID = %q, want %q", rs.MRID, "0900006CC8")
-	}
-	if rs.TimePeriod.Duration != 86400 || rs.TimePeriod.Start != 1341579365 {
-		t.Errorf("decoded MirrorReadingSet.TimePeriod = %+v, want {Duration:86400 Start:1341579365}", rs.TimePeriod)
-	}
-	if len(rs.Reading) != 2 {
-		t.Fatalf("decoded %d Reading elements in MirrorReadingSet, want 2", len(rs.Reading))
-	}
-	if rs.Reading[0].Value == nil || *rs.Reading[0].Value != 9 {
-		t.Errorf("decoded Reading[0].Value = %v, want 9", rs.Reading[0].Value)
-	}
-	if rs.Reading[1].Value == nil || *rs.Reading[1].Value != 11 {
-		t.Errorf("decoded Reading[1].Value = %v, want 11", rs.Reading[1].Value)
-	}
+	assertTwoMirrorReadingSets(t, "decoded", mmr)
 
 	out, err := xml.Marshal(&mmr)
 	if err != nil {
@@ -351,25 +344,145 @@ func TestMirrorMeterReadingRoundTripPreservesMirrorReadingSet(t *testing.T) {
 	// Reading declares its own XMLName with the namespace, so encoding/xml
 	// repeats xmlns="..." on every element instance: count the opening tag
 	// prefix, not a bare "<Reading>".
-	if strings.Count(reencoded, "<Reading ") != 2 {
-		t.Errorf("re-encoded body lost a Reading, want 2; body=%s", reencoded)
+	if strings.Count(reencoded, "<Reading ") != 3 {
+		t.Errorf("re-encoded body lost a Reading, want 3; body=%s", reencoded)
 	}
-	if !strings.Contains(reencoded, "<value>9</value>") {
-		t.Errorf("re-encoded body lost Reading value 9; body=%s", reencoded)
-	}
-	if !strings.Contains(reencoded, "<value>11</value>") {
-		t.Errorf("re-encoded body lost Reading value 11; body=%s", reencoded)
+	if strings.Count(reencoded, "<MirrorReadingSet") != 2 {
+		t.Errorf("re-encoded body lost a MirrorReadingSet, want 2; body=%s", reencoded)
 	}
 
-	rsStart := strings.Index(reencoded, "<MirrorReadingSet")
-	if rsStart == -1 {
+	firstStart := strings.Index(reencoded, "<MirrorReadingSet")
+	if firstStart == -1 {
 		t.Fatalf("re-encoded body missing <MirrorReadingSet>; body=%s", reencoded)
 	}
-	tpIdx := strings.Index(reencoded[rsStart:], "<timePeriod")
-	rIdx := strings.Index(reencoded[rsStart:], "<Reading ")
+	tpIdx := strings.Index(reencoded[firstStart:], "<timePeriod")
+	rIdx := strings.Index(reencoded[firstStart:], "<Reading ")
 	if tpIdx == -1 || rIdx == -1 || rIdx < tpIdx {
 		t.Fatalf("re-encoded MirrorReadingSet did not keep timePeriod before Reading, violates sep.xsd ReadingSetBase sequence order; body=%s",
 			reencoded)
+	}
+
+	// The strongest proof: decode what was just re-encoded and check the
+	// SET-LEVEL values on that fresh struct, not a substring of the bytes
+	// that produced it.
+	var reDecoded sep2.MirrorMeterReading
+	if err := xml.Unmarshal(out, &reDecoded); err != nil {
+		t.Fatalf("re-encoded body does not parse: %v; body=%s", err, reencoded)
+	}
+	assertTwoMirrorReadingSets(t, "re-encoded then re-decoded", reDecoded)
+}
+
+// assertTwoMirrorReadingSets asserts the two-MirrorReadingSet fixture's
+// field values, shared by the decode assertion and the round-trip
+// assertion in TestMirrorMeterReadingRoundTripPreservesMirrorReadingSet so
+// both stages are held to the same check.
+func assertTwoMirrorReadingSets(t *testing.T, stage string, mmr sep2.MirrorMeterReading) {
+	t.Helper()
+
+	if len(mmr.MirrorReadingSet) != 2 {
+		t.Fatalf("%s: %d MirrorReadingSet elements, want 2", stage, len(mmr.MirrorReadingSet))
+	}
+
+	set0 := mmr.MirrorReadingSet[0]
+	if set0.MRID != "0900006CC8" {
+		t.Errorf("%s: MirrorReadingSet[0].MRID = %q, want %q", stage, set0.MRID, "0900006CC8")
+	}
+	if set0.TimePeriod.Duration != 86400 || set0.TimePeriod.Start != 1341579365 {
+		t.Errorf("%s: MirrorReadingSet[0].TimePeriod = %+v, want {Duration:86400 Start:1341579365}", stage, set0.TimePeriod)
+	}
+	if len(set0.Reading) != 2 {
+		t.Fatalf("%s: %d Reading elements in MirrorReadingSet[0], want 2", stage, len(set0.Reading))
+	}
+	if set0.Reading[0].Value == nil || *set0.Reading[0].Value != 9 {
+		t.Errorf("%s: MirrorReadingSet[0].Reading[0].Value = %v, want 9", stage, set0.Reading[0].Value)
+	}
+	if set0.Reading[0].LocalID == nil || *set0.Reading[0].LocalID != 0x00 {
+		t.Errorf("%s: MirrorReadingSet[0].Reading[0].LocalID = %v, want 0x00", stage, set0.Reading[0].LocalID)
+	}
+	if set0.Reading[1].Value == nil || *set0.Reading[1].Value != 11 {
+		t.Errorf("%s: MirrorReadingSet[0].Reading[1].Value = %v, want 11", stage, set0.Reading[1].Value)
+	}
+	if set0.Reading[1].LocalID == nil || *set0.Reading[1].LocalID != 0x01 {
+		t.Errorf("%s: MirrorReadingSet[0].Reading[1].LocalID = %v, want 0x01", stage, set0.Reading[1].LocalID)
+	}
+
+	set1 := mmr.MirrorReadingSet[1]
+	if set1.MRID != "0900006CC9" {
+		t.Errorf("%s: MirrorReadingSet[1].MRID = %q, want %q", stage, set1.MRID, "0900006CC9")
+	}
+	if set1.TimePeriod.Duration != 3600 || set1.TimePeriod.Start != 1341665765 {
+		t.Errorf("%s: MirrorReadingSet[1].TimePeriod = %+v, want {Duration:3600 Start:1341665765}", stage, set1.TimePeriod)
+	}
+	if len(set1.Reading) != 1 {
+		t.Fatalf("%s: %d Reading elements in MirrorReadingSet[1], want 1", stage, len(set1.Reading))
+	}
+	if set1.Reading[0].Value == nil || *set1.Reading[0].Value != 42 {
+		t.Errorf("%s: MirrorReadingSet[1].Reading[0].Value = %v, want 42", stage, set1.Reading[0].Value)
+	}
+}
+
+// TestMirrorMeterReadingListRoundTripPreservesMirrorReadingSet is the list
+// half of #191/#192: MirrorMeterReadingList is the actual document a client
+// POSTs to a MirrorUsagePoint (section 10.11.3 rule d), so a MirrorReadingSet
+// surviving inside a lone MirrorMeterReading does not show it survives
+// inside the list wrapper a real POST uses.
+func TestMirrorMeterReadingListRoundTripPreservesMirrorReadingSet(t *testing.T) {
+	body := []byte(`<MirrorMeterReadingList xmlns="urn:ieee:std:2030.5:ns" all="1" results="1">
+		<MirrorMeterReading>
+			<mRID>0800006CC8</mRID>
+			<MirrorReadingSet>
+				<mRID>0900006CC8</mRID>
+				<timePeriod>
+					<duration>86400</duration>
+					<start>1341579365</start>
+				</timePeriod>
+				<Reading><value>9</value></Reading>
+				<Reading><value>11</value></Reading>
+			</MirrorReadingSet>
+		</MirrorMeterReading>
+	</MirrorMeterReadingList>`)
+
+	var list sep2.MirrorMeterReadingList
+	if err := xml.Unmarshal(body, &list); err != nil {
+		t.Fatal(err)
+	}
+	if len(list.MirrorMeterReading) != 1 {
+		t.Fatalf("decoded %d MirrorMeterReading elements, want 1", len(list.MirrorMeterReading))
+	}
+	if len(list.MirrorMeterReading[0].MirrorReadingSet) != 1 {
+		t.Fatalf("decoded %d MirrorReadingSet elements, want 1", len(list.MirrorMeterReading[0].MirrorReadingSet))
+	}
+	if len(list.MirrorMeterReading[0].MirrorReadingSet[0].Reading) != 2 {
+		t.Fatalf("decoded %d Reading elements, want 2", len(list.MirrorMeterReading[0].MirrorReadingSet[0].Reading))
+	}
+
+	out, err := xml.Marshal(&list)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var reDecoded sep2.MirrorMeterReadingList
+	if err := xml.Unmarshal(out, &reDecoded); err != nil {
+		t.Fatalf("re-encoded list does not parse: %v; body=%s", err, out)
+	}
+	if len(reDecoded.MirrorMeterReading) != 1 {
+		t.Fatalf("re-encoded list lost the MirrorMeterReading, want 1; body=%s", out)
+	}
+	if len(reDecoded.MirrorMeterReading[0].MirrorReadingSet) != 1 {
+		t.Fatalf("re-encoded list lost the MirrorReadingSet, want 1; body=%s", out)
+	}
+	rs := reDecoded.MirrorMeterReading[0].MirrorReadingSet[0]
+	if rs.MRID != "0900006CC8" {
+		t.Errorf("re-encoded list: MirrorReadingSet.MRID = %q, want %q; body=%s", rs.MRID, "0900006CC8", out)
+	}
+	if len(rs.Reading) != 2 {
+		t.Fatalf("re-encoded list lost a Reading, want 2; body=%s", out)
+	}
+	if rs.Reading[0].Value == nil || *rs.Reading[0].Value != 9 {
+		t.Errorf("re-encoded list: Reading[0].Value = %v, want 9; body=%s", rs.Reading[0].Value, out)
+	}
+	if rs.Reading[1].Value == nil || *rs.Reading[1].Value != 11 {
+		t.Errorf("re-encoded list: Reading[1].Value = %v, want 11; body=%s", rs.Reading[1].Value, out)
 	}
 }
 
