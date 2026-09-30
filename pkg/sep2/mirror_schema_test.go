@@ -253,6 +253,126 @@ func TestReadingElementOrder(t *testing.T) {
 	}
 }
 
+// TestMirrorMeterReadingElementOrderWithMirrorReadingSet asserts the SERVED
+// BYTES place MirrorReadingSet between lastUpdateTime and Reading, per its
+// sequence position 5 in MeterReadingBase -> IdentifiedObject (nextUpdateTime,
+// position 6, is not implemented). This is the sequence-order half of the
+// fix: MirrorReadingSet did not exist as a struct field before, so
+// encoding/xml dropped it and left no element to order-check.
+func TestMirrorMeterReadingElementOrderWithMirrorReadingSet(t *testing.T) {
+	val := int64(5000)
+	uom := sep2.UomWatts
+	mmr := sep2.MirrorMeterReading{
+		MRID:           "MMR01",
+		Description:    "Active Power",
+		LastUpdateTime: 1700000000,
+		MirrorReadingSet: []sep2.MirrorReadingSet{
+			{MRID: "SET-1", TimePeriod: sep2.DateTimeInterval{Duration: 900, Start: 1700000000}},
+		},
+		Reading:     &sep2.Reading{Value: &val},
+		ReadingType: &sep2.ReadingType{Uom: &uom},
+	}
+
+	data, err := xml.Marshal(&mmr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(data)
+
+	wantOrder := []string{"mRID", "description", "lastUpdateTime", "MirrorReadingSet", "Reading", "ReadingType"}
+	positions := make([]int, len(wantOrder))
+	for i, tag := range wantOrder {
+		idx := strings.Index(body, "<"+tag)
+		if idx == -1 {
+			t.Fatalf("served bytes missing <%s>; body=%s", tag, body)
+		}
+		positions[i] = idx
+	}
+	for i := 1; i < len(positions); i++ {
+		if positions[i] < positions[i-1] {
+			t.Fatalf("element %q (pos %d) appears before %q (pos %d), violates sep.xsd sequence order; body=%s",
+				wantOrder[i], positions[i], wantOrder[i-1], positions[i-1], body)
+		}
+	}
+}
+
+// TestMirrorMeterReadingRoundTripPreservesMirrorReadingSet is the
+// regression guard for GRIDAPPSD/ieee-2030_5-core-go#191: encoding/xml
+// drops any element with no matching struct field, so a MirrorMeterReading
+// posted with a MirrorReadingSet (the CSIP aggregator's batch-post shape)
+// lost every contained Reading. Decodes a body modeled on the standard's
+// own POX example (mRID, timePeriod, then the Reading list) and asserts
+// the decoded values, then re-encodes and asserts nothing was lost.
+func TestMirrorMeterReadingRoundTripPreservesMirrorReadingSet(t *testing.T) {
+	body := []byte(`<MirrorMeterReading xmlns="urn:ieee:std:2030.5:ns">
+		<mRID>0800006CC8</mRID>
+		<MirrorReadingSet>
+			<mRID>0900006CC8</mRID>
+			<timePeriod>
+				<duration>86400</duration>
+				<start>1341579365</start>
+			</timePeriod>
+			<Reading><value>9</value></Reading>
+			<Reading><value>11</value></Reading>
+		</MirrorReadingSet>
+	</MirrorMeterReading>`)
+
+	var mmr sep2.MirrorMeterReading
+	if err := xml.Unmarshal(body, &mmr); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(mmr.MirrorReadingSet) != 1 {
+		t.Fatalf("decoded %d MirrorReadingSet elements, want 1", len(mmr.MirrorReadingSet))
+	}
+	rs := mmr.MirrorReadingSet[0]
+	if rs.MRID != "0900006CC8" {
+		t.Errorf("decoded MirrorReadingSet.MRID = %q, want %q", rs.MRID, "0900006CC8")
+	}
+	if rs.TimePeriod.Duration != 86400 || rs.TimePeriod.Start != 1341579365 {
+		t.Errorf("decoded MirrorReadingSet.TimePeriod = %+v, want {Duration:86400 Start:1341579365}", rs.TimePeriod)
+	}
+	if len(rs.Reading) != 2 {
+		t.Fatalf("decoded %d Reading elements in MirrorReadingSet, want 2", len(rs.Reading))
+	}
+	if rs.Reading[0].Value == nil || *rs.Reading[0].Value != 9 {
+		t.Errorf("decoded Reading[0].Value = %v, want 9", rs.Reading[0].Value)
+	}
+	if rs.Reading[1].Value == nil || *rs.Reading[1].Value != 11 {
+		t.Errorf("decoded Reading[1].Value = %v, want 11", rs.Reading[1].Value)
+	}
+
+	out, err := xml.Marshal(&mmr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reencoded := string(out)
+
+	// Reading declares its own XMLName with the namespace, so encoding/xml
+	// repeats xmlns="..." on every element instance: count the opening tag
+	// prefix, not a bare "<Reading>".
+	if strings.Count(reencoded, "<Reading ") != 2 {
+		t.Errorf("re-encoded body lost a Reading, want 2; body=%s", reencoded)
+	}
+	if !strings.Contains(reencoded, "<value>9</value>") {
+		t.Errorf("re-encoded body lost Reading value 9; body=%s", reencoded)
+	}
+	if !strings.Contains(reencoded, "<value>11</value>") {
+		t.Errorf("re-encoded body lost Reading value 11; body=%s", reencoded)
+	}
+
+	rsStart := strings.Index(reencoded, "<MirrorReadingSet")
+	if rsStart == -1 {
+		t.Fatalf("re-encoded body missing <MirrorReadingSet>; body=%s", reencoded)
+	}
+	tpIdx := strings.Index(reencoded[rsStart:], "<timePeriod")
+	rIdx := strings.Index(reencoded[rsStart:], "<Reading ")
+	if tpIdx == -1 || rIdx == -1 || rIdx < tpIdx {
+		t.Fatalf("re-encoded MirrorReadingSet did not keep timePeriod before Reading, violates sep.xsd ReadingSetBase sequence order; body=%s",
+			reencoded)
+	}
+}
+
 // TestMirrorUsagePointNoMeterReadingListLink asserts the served bytes never
 // carry a MirrorMeterReadingListLink element. sep.xsd defines no such type
 // for MirrorUsagePoint (grep of the full schema element index returns zero
