@@ -154,20 +154,21 @@ type ReadingList struct {
 // maxNumberOfIntervals, numberOfConsumptionBlocks, numberOfTouTiers, phase,
 // powerOfTenMultiplier, subIntervalLength, supplyLimit,
 // tieredConsumptionBlocks, uom); their relative declaration order below
-// already matches their relative canonical positions (1, 3, 5, 6, 8, 12,
+// already matches their relative canonical positions (1, 3, 5, 6, 7, 8, 12,
 // 13, 17), so omitting the unimplemented optional fields does not disturb
 // order for a strict sequence-validating client.
 type ReadingType struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns ReadingType"`
 	Resource
-	AccumulationBehaviour *uint8 `xml:"accumulationBehaviour,omitempty"`
-	Commodity             *uint8 `xml:"commodity,omitempty"`
-	DataQualifier         *uint8 `xml:"dataQualifier,omitempty"`
-	FlowDirection         *uint8 `xml:"flowDirection,omitempty"`
-	Kind                  *uint8 `xml:"kind,omitempty"`
-	Phase                 *uint8 `xml:"phase,omitempty"`
-	PowerOfTenMultiplier  *int8  `xml:"powerOfTenMultiplier,omitempty"`
-	Uom                   *uint8 `xml:"uom,omitempty"`
+	AccumulationBehaviour *uint8  `xml:"accumulationBehaviour,omitempty"`
+	Commodity             *uint8  `xml:"commodity,omitempty"`
+	DataQualifier         *uint8  `xml:"dataQualifier,omitempty"`
+	FlowDirection         *uint8  `xml:"flowDirection,omitempty"`
+	IntervalLength        *uint32 `xml:"intervalLength,omitempty"`
+	Kind                  *uint8  `xml:"kind,omitempty"`
+	Phase                 *uint8  `xml:"phase,omitempty"`
+	PowerOfTenMultiplier  *int8   `xml:"powerOfTenMultiplier,omitempty"`
+	Uom                   *uint8  `xml:"uom,omitempty"`
 }
 
 // Copy returns an independent copy.
@@ -188,6 +189,10 @@ func (rt ReadingType) Copy() ReadingType {
 	if rt.FlowDirection != nil {
 		v := *rt.FlowDirection
 		c.FlowDirection = &v
+	}
+	if rt.IntervalLength != nil {
+		v := *rt.IntervalLength
+		c.IntervalLength = &v
 	}
 	if rt.Kind != nil {
 		v := *rt.Kind

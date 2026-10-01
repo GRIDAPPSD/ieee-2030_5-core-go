@@ -105,6 +105,7 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 	accum := uint8(9)
 	uom := uint8(38)
 	powerOfTen := int8(-3)
+	intervalLength := uint32(900)
 	alarm := sep2.HexBinary32(0x01)
 	localID0 := sep2.HexBinary16(0x00)
 	localID1 := sep2.HexBinary16(0x01)
@@ -201,6 +202,7 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 			typeName: "ReadingType",
 			v: sep2.ReadingType{
 				AccumulationBehaviour: &accum,
+				IntervalLength:        &intervalLength,
 				PowerOfTenMultiplier:  &powerOfTen,
 				Uom:                   &uom,
 			},
