@@ -71,3 +71,24 @@ func TestNotificationMarshal(t *testing.T) {
 		t.Error("missing status element")
 	}
 }
+
+func TestNotificationStatusValuesMatchStandard(t *testing.T) {
+	tests := []struct {
+		name string
+		got  uint8
+		want uint8
+	}{
+		{"Default Status", sep2.NotificationStatusDefault, 0},
+		{"Subscription canceled, no additional information", sep2.NotificationStatusCanceledNoInfo, 1},
+		{"Subscription canceled, resource moved", sep2.NotificationStatusCanceledMoved, 2},
+		{"Subscription canceled, resource definition changed", sep2.NotificationStatusCanceledDefinitionChanged, 3},
+		{"Subscription canceled, resource deleted", sep2.NotificationStatusCanceledDeleted, 4},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.got != tc.want {
+				t.Errorf("got %d, want %d", tc.got, tc.want)
+			}
+		})
+	}
+}
