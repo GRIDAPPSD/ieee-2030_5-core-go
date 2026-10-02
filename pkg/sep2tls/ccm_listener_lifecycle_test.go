@@ -491,20 +491,19 @@ func TestWrapCCMListenerNilLoggerUsesStandardLogger(t *testing.T) {
 }
 
 // TestCCMListenerClosesSilentPeerAfterHandshakeBound proves a peer that opens
-// the connection and never sends a ClientHello is closed once the handshake
-// bound elapses, rather than held indefinitely. Not parallel: it shrinks the
-// package-level handshake bound (export_test.go) for its duration.
+// the connection and never sends a ClientHello is closed once the configured
+// handshake bound elapses, rather than held until the 10s default.
 func TestCCMListenerClosesSilentPeerAfterHandshakeBound(t *testing.T) {
-	restore := sepTLS.SetCCMHandshakeTimeoutForTest(150 * time.Millisecond)
-	defer restore()
-
 	files := newCCMTestFiles(t)
 	cfg := newCCMServerConfig(t, files)
 	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Listen: %v", err)
 	}
-	wrapped := sepTLS.WrapCCMListener(gotls.NewListener(tcpListener, cfg), log.New(io.Discard, "", 0))
+	wrapped, err := sepTLS.WrapCCMListenerWithTimeout(gotls.NewListener(tcpListener, cfg), log.New(io.Discard, "", 0), 150*time.Millisecond)
+	if err != nil {
+		t.Fatalf("WrapCCMListenerWithTimeout: %v", err)
+	}
 	defer func() { _ = wrapped.Close() }()
 
 	silent, err := net.Dial("tcp", tcpListener.Addr().String())
@@ -513,10 +512,73 @@ func TestCCMListenerClosesSilentPeerAfterHandshakeBound(t *testing.T) {
 	}
 	defer func() { _ = silent.Close() }()
 
-	// assertClosedByServer's 2s window is well over the shrunk 150ms bound, so
-	// a mutant that removes the bound or lengthens it stays open past the
-	// window and fails here instead of passing silently.
+	// assertClosedByServer's 2s window is well over the 150ms bound and well
+	// under the 10s default, so a listener that ignores the configured value
+	// stays open past the window and fails here.
 	assertClosedByServer(t, silent)
+}
+
+// TestWrapCCMListenerWithTimeoutEffectiveValue pins the bound each input
+// selects: zero and WrapCCMListener keep the 10s default, a positive value is
+// used as given.
+func TestWrapCCMListenerWithTimeoutEffectiveValue(t *testing.T) {
+	cases := []struct {
+		name string
+		in   time.Duration
+		want time.Duration
+	}{
+		{"zero keeps the default", 0, 10 * time.Second},
+		{"positive is used as given", 3 * time.Second, 3 * time.Second},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatalf("Listen: %v", err)
+			}
+			wrapped, err := sepTLS.WrapCCMListenerWithTimeout(tcpListener, log.New(io.Discard, "", 0), tc.in)
+			if err != nil {
+				t.Fatalf("WrapCCMListenerWithTimeout: %v", err)
+			}
+			defer func() { _ = wrapped.Close() }()
+			if got := sepTLS.CCMHandshakeTimeoutOf(wrapped); got != tc.want {
+				t.Errorf("effective timeout = %v, want %v", got, tc.want)
+			}
+		})
+	}
+
+	t.Run("WrapCCMListener keeps the default", func(t *testing.T) {
+		tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("Listen: %v", err)
+		}
+		wrapped := sepTLS.WrapCCMListener(tcpListener, log.New(io.Discard, "", 0))
+		defer func() { _ = wrapped.Close() }()
+		if got := sepTLS.CCMHandshakeTimeoutOf(wrapped); got != 10*time.Second {
+			t.Errorf("effective timeout = %v, want 10s", got)
+		}
+	})
+}
+
+// TestWrapCCMListenerWithTimeoutRefusesNegative proves a negative bound is
+// refused and leaves the inner listener open and unwrapped.
+func TestWrapCCMListenerWithTimeoutRefusesNegative(t *testing.T) {
+	tcpListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	defer func() { _ = tcpListener.Close() }()
+	wrapped, err := sepTLS.WrapCCMListenerWithTimeout(tcpListener, nil, -time.Second)
+	if err == nil {
+		_ = wrapped.Close()
+		t.Fatal("negative timeout accepted, want an error")
+	}
+	if wrapped != nil {
+		t.Errorf("listener = %v alongside error, want nil", wrapped)
+	}
+	if !strings.Contains(err.Error(), "negative") {
+		t.Errorf("error = %q, want it to say the timeout is negative", err)
+	}
 }
 
 // TestCCMListenerClosesConnectionAfterFailedHandshake proves the wrapper
