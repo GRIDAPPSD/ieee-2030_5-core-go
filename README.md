@@ -32,19 +32,6 @@ The `crypto/tls` fork under `pkg/sep2tls/gotls` records its upstream Go base,
 the deliberate changes against it, and the repeatable diff command in
 `pkg/sep2tls/gotls/UPSTREAM.md`.
 
-### Relocated packages
-
-These packages moved to `ieee-2030_5-server-go` and are no longer part of
-this module.
-
-| Former import path | Now at |
-|---|---|
-| `pkg/sep2srv/assembly` | `github.com/GRIDAPPSD/ieee-2030_5-server-go/pkg/sep2srv/assembly` |
-| `pkg/sep2srv/handlers/*` | `github.com/GRIDAPPSD/ieee-2030_5-server-go/pkg/sep2srv/handlers/*` |
-| `pkg/sep2srv/paging` | `github.com/GRIDAPPSD/ieee-2030_5-server-go/pkg/sep2srv/paging` |
-| `pkg/store` | `github.com/GRIDAPPSD/ieee-2030_5-server-go/pkg/store` |
-| `pkg/store/memory` | `github.com/GRIDAPPSD/ieee-2030_5-server-go/pkg/store/memory` |
-
 ## Build and test
 
 ```
