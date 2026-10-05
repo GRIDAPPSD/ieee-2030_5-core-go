@@ -584,12 +584,15 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 			zero:     sep2.DERStatus{},
 			wantStruct: []string{
 				"omitempty-required DERStatus.ReadingTime",
+				"unknown-element DERStatus.ConnectStatus",
 			},
 			wantMarshal: []string{
 				"missing-element DERStatus/readingTime",
 			},
 			reason: "readingTime is minOccurs=1 but omitempty, so a DERStatus reporting at " +
-				"epoch zero, or one never explicitly stamped, omits the timestamp entirely.",
+				"epoch zero, or one never explicitly stamped, omits the timestamp entirely. " +
+				"ConnectStatus is the 2030.5-2023 connectStatus element, which the pinned 2018 " +
+				"schema does not declare; it is omitted unless set, so the 2018 wire form is unchanged.",
 		},
 		{
 			typeName: "MirrorUsagePoint",
