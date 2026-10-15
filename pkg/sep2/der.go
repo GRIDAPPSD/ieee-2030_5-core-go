@@ -214,9 +214,9 @@ func (d DefaultDERControl) Copy() DefaultDERControl {
 // DERProgram contains controls and curves for DER devices.
 //
 // Field order matches the SubscribableIdentifiedObject + DERProgram
-// combined xsd:sequence: mRID, description, version (base) THEN ActiveDERControlListLink, DefaultDERControlLink,
-// DERControlListLink, DERCurveListLink, primacy (DERProgram's own
-// sequence, primacy LAST).
+// combined xsd:sequence: mRID, description, version (base) THEN
+// ActiveDERControlListLink, DefaultDERControlLink, DERControlListLink,
+// DERCurveListLink, primacy (DERProgram's own sequence, primacy LAST).
 type DERProgram struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns DERProgram"`
 	SubscribableResource

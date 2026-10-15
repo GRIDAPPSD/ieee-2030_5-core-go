@@ -2,6 +2,7 @@ package sep2_test
 
 import (
 	"encoding/xml"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -118,16 +119,50 @@ func TestDefaultDERControlVersionCopyIsDeep(t *testing.T) {
 }
 
 func TestDERVersionSchemaValid(t *testing.T) {
-	for _, v := range []*uint16{nil, versionPtr(7)} {
+	connected := true
+	for _, v := range []*uint16{nil, versionPtr(0), versionPtr(7), versionPtr(65535)} {
 		xsdgate.AssertValid(t, "DERProgram", &sep2.DERProgram{
 			SubscribableResource: sep2.SubscribableResource{Resource: sep2.Resource{Href: "/derp/1"}},
 			MRID:                 "00000000000000000000000000000001",
+			Description:          "Solar",
 			Version:              v,
 		})
 		xsdgate.AssertValid(t, "DefaultDERControl", &sep2.DefaultDERControl{
 			SubscribableResource: sep2.SubscribableResource{Resource: sep2.Resource{Href: "/derp/1/dderc"}},
 			MRID:                 "00000000000000000000000000000002",
 			Version:              v,
+			DERControlBase:       &sep2.DERControlBase{OpModConnect: &connected},
 		})
+	}
+}
+
+func TestDERVersionBounds(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		v    uint16
+	}{{"zero", 0}, {"max", 65535}} {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := xml.Marshal(&sep2.DERProgram{Version: versionPtr(tc.v)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := "<version>" + strconv.Itoa(int(tc.v)) + "</version>"
+			if !strings.Contains(string(data), want) {
+				t.Fatalf("missing %s in %s", want, data)
+			}
+			var parsed sep2.DERProgram
+			if err := xml.Unmarshal(data, &parsed); err != nil {
+				t.Fatal(err)
+			}
+			if parsed.Version == nil || *parsed.Version != tc.v {
+				t.Errorf("Version = %v, want %d", parsed.Version, tc.v)
+			}
+		})
+	}
+
+	over := `<DERProgram xmlns="urn:ieee:std:2030.5:ns"><version>65536</version></DERProgram>`
+	var parsed sep2.DERProgram
+	if err := xml.Unmarshal([]byte(over), &parsed); err == nil {
+		t.Errorf("version 65536 parsed without error: %v", parsed.Version)
 	}
 }
