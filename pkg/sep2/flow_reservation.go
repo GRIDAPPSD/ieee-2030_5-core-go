@@ -37,26 +37,11 @@ type FlowReservationRequest struct {
 // Copy returns an independent copy.
 func (f FlowReservationRequest) Copy() FlowReservationRequest {
 	c := f
-	if f.Version != nil {
-		v := *f.Version
-		c.Version = &v
-	}
-	if f.DurationRequested != nil {
-		v := *f.DurationRequested
-		c.DurationRequested = &v
-	}
-	if f.EnergyRequested != nil {
-		v := *f.EnergyRequested
-		c.EnergyRequested = &v
-	}
-	if f.IntervalRequested != nil {
-		v := *f.IntervalRequested
-		c.IntervalRequested = &v
-	}
-	if f.PowerRequested != nil {
-		v := *f.PowerRequested
-		c.PowerRequested = &v
-	}
+	c.Version = clonePtr(f.Version)
+	c.DurationRequested = clonePtr(f.DurationRequested)
+	c.EnergyRequested = clonePtr(f.EnergyRequested)
+	c.IntervalRequested = clonePtr(f.IntervalRequested)
+	c.PowerRequested = clonePtr(f.PowerRequested)
 	// RequestStatus is a value, not a pointer, so `c := f` above already
 	// copied it independently; no per-field clone is needed here.
 	return c
@@ -86,14 +71,8 @@ type FlowReservationResponse struct {
 func (f FlowReservationResponse) Copy() FlowReservationResponse {
 	c := f
 	c.Event = f.Event.Copy()
-	if f.EnergyAvailable != nil {
-		v := *f.EnergyAvailable
-		c.EnergyAvailable = &v
-	}
-	if f.PowerAvailable != nil {
-		v := *f.PowerAvailable
-		c.PowerAvailable = &v
-	}
+	c.EnergyAvailable = clonePtr(f.EnergyAvailable)
+	c.PowerAvailable = clonePtr(f.PowerAvailable)
 	return c
 }
 

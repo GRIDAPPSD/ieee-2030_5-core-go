@@ -17,14 +17,9 @@ type DemandResponseProgram struct {
 // Copy returns an independent copy.
 func (d DemandResponseProgram) Copy() DemandResponseProgram {
 	c := d
-	if d.ActiveEndDeviceControlListLink != nil {
-		l := *d.ActiveEndDeviceControlListLink
-		c.ActiveEndDeviceControlListLink = &l
-	}
-	if d.EndDeviceControlListLink != nil {
-		l := *d.EndDeviceControlListLink
-		c.EndDeviceControlListLink = &l
-	}
+	c.SubscribableResource = d.SubscribableResource.Copy()
+	c.ActiveEndDeviceControlListLink = clonePtr(d.ActiveEndDeviceControlListLink)
+	c.EndDeviceControlListLink = clonePtr(d.EndDeviceControlListLink)
 	return c
 }
 
@@ -46,18 +41,9 @@ type EndDeviceControl struct {
 func (e EndDeviceControl) Copy() EndDeviceControl {
 	c := e
 	c.Event = e.Event.Copy()
-	if e.DeviceCategory != nil {
-		v := *e.DeviceCategory
-		c.DeviceCategory = &v
-	}
-	if e.RandomizeDuration != nil {
-		v := *e.RandomizeDuration
-		c.RandomizeDuration = &v
-	}
-	if e.RandomizeStart != nil {
-		v := *e.RandomizeStart
-		c.RandomizeStart = &v
-	}
+	c.DeviceCategory = clonePtr(e.DeviceCategory)
+	c.RandomizeDuration = clonePtr(e.RandomizeDuration)
+	c.RandomizeStart = clonePtr(e.RandomizeStart)
 	return c
 }
 
