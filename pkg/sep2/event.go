@@ -160,7 +160,11 @@ func (o *OneHourRange) UnmarshalXML(d *xml.Decoder, start xml.StartElement) erro
 	if err != nil {
 		return err
 	}
-	*o = OneHourRange(n)
+	v, err := asInt16("OneHourRange", n, minOneHourRange, maxOneHourRange)
+	if err != nil {
+		return err
+	}
+	*o = OneHourRange(v)
 	return nil
 }
 
@@ -179,7 +183,11 @@ func (o *OneHourRange) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	*o = OneHourRange(n)
+	v, err := asInt16("OneHourRange", n, minOneHourRange, maxOneHourRange)
+	if err != nil {
+		return err
+	}
+	*o = OneHourRange(v)
 	return nil
 }
 

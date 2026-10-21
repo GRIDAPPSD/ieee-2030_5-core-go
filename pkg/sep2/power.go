@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -62,9 +63,30 @@ const (
 // the bounded integer simple types (PerCent, SignedPerCent, OneHourRange).
 func checkBounded(name string, n, lo, hi int64) error {
 	if n < lo || n > hi {
-		return fmt.Errorf("sep2: %s %d out of range [%d, %d]", name, n, lo, hi)
+		return rangeError(name, n, lo, hi)
 	}
 	return nil
+}
+
+func rangeError(name string, n, lo, hi int64) error {
+	return fmt.Errorf("sep2: %s %d out of range [%d, %d]", name, n, lo, hi)
+}
+
+// asInt16 and asUint16 narrow a value that checkBounded already accepted.
+// The comparison against the target type's own limits sits at the conversion
+// so the narrowing is safe on its own, whatever lo and hi a caller passes.
+func asInt16(name string, n, lo, hi int64) (int16, error) {
+	if n < math.MinInt16 || n > math.MaxInt16 {
+		return 0, rangeError(name, n, lo, hi)
+	}
+	return int16(n), nil
+}
+
+func asUint16(name string, n, lo, hi int64) (uint16, error) {
+	if n < 0 || n > math.MaxUint16 {
+		return 0, rangeError(name, n, lo, hi)
+	}
+	return uint16(n), nil
 }
 
 // parseBounded trims element text, parses it as a decimal integer and checks
@@ -115,7 +137,11 @@ func (p *PerCent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	if err != nil {
 		return err
 	}
-	*p = PerCent(n)
+	v, err := asUint16("PerCent", n, 0, maxPerCent)
+	if err != nil {
+		return err
+	}
+	*p = PerCent(v)
 	return nil
 }
 
@@ -134,7 +160,11 @@ func (p *PerCent) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	*p = PerCent(n)
+	v, err := asUint16("PerCent", n, 0, maxPerCent)
+	if err != nil {
+		return err
+	}
+	*p = PerCent(v)
 	return nil
 }
 
@@ -149,7 +179,11 @@ func (p PerCent) MarshalJSON() ([]byte, error) {
 // parseSignedPerCent is kept for callers elsewhere in the package.
 func parseSignedPerCent(text string) (SignedPerCent, error) {
 	n, err := parseBounded("SignedPerCent", text, minSignedPerCent, maxSignedPerCent)
-	return SignedPerCent(n), err
+	if err != nil {
+		return 0, err
+	}
+	v, err := asInt16("SignedPerCent", n, minSignedPerCent, maxSignedPerCent)
+	return SignedPerCent(v), err
 }
 
 // UnmarshalXML mirrors PerCent.UnmarshalXML for the signed range.
@@ -158,7 +192,11 @@ func (s *SignedPerCent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) err
 	if err != nil {
 		return err
 	}
-	*s = SignedPerCent(n)
+	v, err := asInt16("SignedPerCent", n, minSignedPerCent, maxSignedPerCent)
+	if err != nil {
+		return err
+	}
+	*s = SignedPerCent(v)
 	return nil
 }
 
@@ -176,7 +214,11 @@ func (s *SignedPerCent) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	*s = SignedPerCent(n)
+	v, err := asInt16("SignedPerCent", n, minSignedPerCent, maxSignedPerCent)
+	if err != nil {
+		return err
+	}
+	*s = SignedPerCent(v)
 	return nil
 }
 
