@@ -22,18 +22,10 @@ type MessagingProgram struct {
 // Copy returns an independent copy.
 func (m MessagingProgram) Copy() MessagingProgram {
 	c := m
-	if m.Version != nil {
-		v := *m.Version
-		c.Version = &v
-	}
-	if m.ActiveTextMessageListLink != nil {
-		l := *m.ActiveTextMessageListLink
-		c.ActiveTextMessageListLink = &l
-	}
-	if m.TextMessageListLink != nil {
-		l := *m.TextMessageListLink
-		c.TextMessageListLink = &l
-	}
+	c.SubscribableResource = m.SubscribableResource.Copy()
+	c.Version = clonePtr(m.Version)
+	c.ActiveTextMessageListLink = clonePtr(m.ActiveTextMessageListLink)
+	c.TextMessageListLink = clonePtr(m.TextMessageListLink)
 	return c
 }
 

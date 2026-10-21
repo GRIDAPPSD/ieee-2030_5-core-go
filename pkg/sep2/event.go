@@ -17,10 +17,7 @@ type EventStatus struct {
 // Copy returns an independent copy.
 func (e EventStatus) Copy() EventStatus {
 	c := e
-	if e.PotentiallySupersededTime != nil {
-		v := *e.PotentiallySupersededTime
-		c.PotentiallySupersededTime = &v
-	}
+	c.PotentiallySupersededTime = clonePtr(e.PotentiallySupersededTime)
 	return c
 }
 
@@ -31,7 +28,7 @@ func (e EventStatus) Copy() EventStatus {
 // `responseRequired` as XML ATTRIBUTES, not child elements (sep.xsd:5435 and
 // sep.xsd:5440 declare both with `<xs:attribute>`). Element order for the
 // remaining child elements matches the XSD: identified-object fields (`mRID`,
-// `description`), then `creationTime`, `EventStatus`, `interval`. Field
+// `description`), then `version`, `creationTime`, `EventStatus`, `interval`. Field
 // declaration order in this struct controls `encoding/xml` marshal order for
 // the ELEMENTS; attributes are emitted on the start tag regardless of
 // position, so the two attribute fields stay declared first to mirror the
@@ -115,22 +112,11 @@ type Event struct {
 // embed Event call it so each pointer field has one copy site.
 func (e Event) Copy() Event {
 	c := e
-	if e.ResponseRequired != nil {
-		v := *e.ResponseRequired
-		c.ResponseRequired = &v
-	}
-	if e.Version != nil {
-		v := *e.Version
-		c.Version = &v
-	}
-	if e.EventStatus != nil {
-		es := e.EventStatus.Copy()
-		c.EventStatus = &es
-	}
-	if e.Interval != nil {
-		i := *e.Interval
-		c.Interval = &i
-	}
+	c.SubscribableResource = e.SubscribableResource.Copy()
+	c.ResponseRequired = clonePtr(e.ResponseRequired)
+	c.Version = clonePtr(e.Version)
+	c.EventStatus = cloneCopyPtr(e.EventStatus)
+	c.Interval = clonePtr(e.Interval)
 	return c
 }
 
