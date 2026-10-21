@@ -17,6 +17,7 @@ type DemandResponseProgram struct {
 // Copy returns an independent copy.
 func (d DemandResponseProgram) Copy() DemandResponseProgram {
 	c := d
+	c.SubscribableResource = d.SubscribableResource.Copy()
 	if d.ActiveEndDeviceControlListLink != nil {
 		l := *d.ActiveEndDeviceControlListLink
 		c.ActiveEndDeviceControlListLink = &l

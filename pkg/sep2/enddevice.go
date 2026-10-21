@@ -55,10 +55,7 @@ func (e EndDevice) Copy() EndDevice {
 		v := *e.Enabled
 		c.Enabled = &v
 	}
-	if e.Subscribable != nil {
-		v := *e.Subscribable
-		c.Subscribable = &v
-	}
+	c.SubscribableResource = e.SubscribableResource.Copy()
 	if e.RegistrationLink != nil {
 		l := *e.RegistrationLink
 		c.RegistrationLink = &l
@@ -111,6 +108,7 @@ type SelfDevice struct {
 // Copy returns an independent copy of the SelfDevice.
 func (s SelfDevice) Copy() SelfDevice {
 	c := s
+	c.SubscribableResource = s.SubscribableResource.Copy()
 	if s.DeviceInformationLink != nil {
 		l := *s.DeviceInformationLink
 		c.DeviceInformationLink = &l

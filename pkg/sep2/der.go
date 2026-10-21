@@ -203,6 +203,7 @@ type DefaultDERControl struct {
 // Copy returns an independent copy.
 func (d DefaultDERControl) Copy() DefaultDERControl {
 	c := d
+	c.SubscribableResource = d.SubscribableResource.Copy()
 	if d.Version != nil {
 		v := *d.Version
 		c.Version = &v
@@ -245,6 +246,7 @@ type DERProgram struct {
 // Copy returns an independent copy.
 func (p DERProgram) Copy() DERProgram {
 	c := p
+	c.SubscribableResource = p.SubscribableResource.Copy()
 	if p.Version != nil {
 		v := *p.Version
 		c.Version = &v
@@ -289,6 +291,7 @@ type DER struct {
 // Copy returns an independent copy.
 func (d DER) Copy() DER {
 	c := d
+	c.SubscribableResource = d.SubscribableResource.Copy()
 	if d.AssociatedDERProgramListLink != nil {
 		l := *d.AssociatedDERProgramListLink
 		c.AssociatedDERProgramListLink = &l
@@ -401,6 +404,7 @@ type DERSettings struct {
 // Copy returns an independent copy.
 func (d DERSettings) Copy() DERSettings {
 	c := d
+	c.SubscribableResource = d.SubscribableResource.Copy()
 	if d.ModesEnabled != nil {
 		v := *d.ModesEnabled
 		c.ModesEnabled = &v
@@ -500,6 +504,7 @@ type DERStatus struct {
 // Copy returns an independent copy.
 func (d DERStatus) Copy() DERStatus {
 	c := d
+	c.SubscribableResource = d.SubscribableResource.Copy()
 	if d.ConnectStatus != nil {
 		v := *d.ConnectStatus
 		c.ConnectStatus = &v
@@ -561,6 +566,7 @@ type DERAvailability struct {
 // Copy returns an independent copy.
 func (d DERAvailability) Copy() DERAvailability {
 	c := d
+	c.SubscribableResource = d.SubscribableResource.Copy()
 	if d.AvailabilityDuration != nil {
 		v := *d.AvailabilityDuration
 		c.AvailabilityDuration = &v

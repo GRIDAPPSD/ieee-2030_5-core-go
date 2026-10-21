@@ -23,6 +23,14 @@ type PowerConfiguration struct {
 	LowChargeThreshold *uint32 `xml:"lowChargeThreshold,omitempty"`
 }
 
+// Copy returns an independent copy.
+func (p PowerConfiguration) Copy() PowerConfiguration {
+	c := p
+	c.BatteryInstallTime = clonePtr(p.BatteryInstallTime)
+	c.LowChargeThreshold = clonePtr(p.LowChargeThreshold)
+	return c
+}
+
 // TimeConfiguration holds timezone/DST settings.
 type TimeConfiguration struct {
 	DstEndRule   string `xml:"dstEndRule"`
@@ -34,8 +42,9 @@ type TimeConfiguration struct {
 // Copy returns an independent copy.
 func (c Configuration) Copy() Configuration {
 	cp := c
+	cp.SubscribableResource = c.SubscribableResource.Copy()
 	if c.PowerConfiguration != nil {
-		p := *c.PowerConfiguration
+		p := c.PowerConfiguration.Copy()
 		cp.PowerConfiguration = &p
 	}
 	if c.TimeConfiguration != nil {

@@ -17,10 +17,7 @@ type Subscription struct {
 // Copy returns an independent copy.
 func (s Subscription) Copy() Subscription {
 	c := s
-	if s.Subscribable != nil {
-		v := *s.Subscribable
-		c.Subscribable = &v
-	}
+	c.SubscribableResource = s.SubscribableResource.Copy()
 	if s.Condition != nil {
 		cond := *s.Condition
 		c.Condition = &cond

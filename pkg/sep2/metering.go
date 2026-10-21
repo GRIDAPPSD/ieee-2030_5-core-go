@@ -19,10 +19,7 @@ type UsagePoint struct {
 // Copy returns an independent copy.
 func (u UsagePoint) Copy() UsagePoint {
 	c := u
-	if u.Subscribable != nil {
-		v := *u.Subscribable
-		c.Subscribable = &v
-	}
+	c.SubscribableResource = u.SubscribableResource.Copy()
 	if u.MeterReadingListLink != nil {
 		l := *u.MeterReadingListLink
 		c.MeterReadingListLink = &l
@@ -52,10 +49,7 @@ type MeterReading struct {
 // Copy returns an independent copy.
 func (m MeterReading) Copy() MeterReading {
 	c := m
-	if m.Subscribable != nil {
-		v := *m.Subscribable
-		c.Subscribable = &v
-	}
+	c.SubscribableResource = m.SubscribableResource.Copy()
 	if m.ReadingTypeLink != nil {
 		l := *m.ReadingTypeLink
 		c.ReadingTypeLink = &l

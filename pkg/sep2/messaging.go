@@ -22,6 +22,7 @@ type MessagingProgram struct {
 // Copy returns an independent copy.
 func (m MessagingProgram) Copy() MessagingProgram {
 	c := m
+	c.SubscribableResource = m.SubscribableResource.Copy()
 	if m.Version != nil {
 		v := *m.Version
 		c.Version = &v
