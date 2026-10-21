@@ -45,21 +45,10 @@ type EndDeviceControl struct {
 // Copy returns an independent copy.
 func (e EndDeviceControl) Copy() EndDeviceControl {
 	c := e
-	if e.ResponseRequired != nil {
-		v := *e.ResponseRequired
-		c.ResponseRequired = &v
-	}
+	c.Event = e.Event.Copy()
 	if e.DeviceCategory != nil {
 		v := *e.DeviceCategory
 		c.DeviceCategory = &v
-	}
-	if e.EventStatus != nil {
-		es := e.EventStatus.Copy()
-		c.EventStatus = &es
-	}
-	if e.Interval != nil {
-		i := *e.Interval
-		c.Interval = &i
 	}
 	if e.RandomizeDuration != nil {
 		v := *e.RandomizeDuration

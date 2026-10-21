@@ -360,6 +360,7 @@ func respondableFixtures() map[string]any {
 		e.ResponseRequired = &rr
 		e.MRID = "0102030405060708090A0B0C0D0E0F10"
 		e.Description = "populated fixture"
+		e.Version = func() *uint16 { v := uint16(3); return &v }()
 		e.CreationTime = 1500000000
 		e.EventStatus = &sep2.EventStatus{CurrentStatus: 1, DateTime: 1500000000}
 		e.Interval = &sep2.DateTimeInterval{Duration: 3600, Start: 1500000000}
@@ -438,6 +439,9 @@ func TestSchemaGatePopulatedRespondableResources(t *testing.T) {
 			// depends on MarshalXMLAttr, and without it encoding/xml would
 			// render decimal "7" that a hexBinary parser silently reads as
 			// 0x07's neighbour rather than erroring.
+			if !strings.Contains(string(data), "<version>3</version>") {
+				t.Errorf("%s must carry <version>3</version>; XML:\n%s", typeName, data)
+			}
 			for _, want := range []string{` replyTo="/rsps/1/rsp"`, ` responseRequired="07"`} {
 				if !strings.Contains(string(data), want) {
 					t.Errorf("%s must carry %s on its start tag; XML:\n%s", typeName, want, data)
