@@ -161,7 +161,7 @@ func TestDERProgramWireOrder(t *testing.T) {
 // opModFixedVar before opModFixedW, and opModTargetVar before opModTargetW.
 func TestDERControlBaseWireOrder(t *testing.T) {
 	fixedW := sep2.SignedPerCent(100)
-	fixedVar := sep2.ReactivePower{Value: 200}
+	fixedVar := sep2.FixedVar{RefType: 2, Value: 200}
 	targetW := sep2.ActivePower{Value: 300}
 	targetVar := sep2.ReactivePower{Value: 400}
 

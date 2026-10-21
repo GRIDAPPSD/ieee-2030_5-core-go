@@ -962,33 +962,13 @@ func TestSchemaGateCatchesOversizedIntegerWidth(t *testing.T) {
 // resources whose respondable struct lane keeps only placement lines, so a
 // mismatch inside a child element such as DERControlBase is asserted both ways.
 func TestSchemaGateControlIntegerPins(t *testing.T) {
-	const curveRef = "the schema types this element DERCurveLink, a link carrying an href; " +
-		"the Go field is an int32 curve ref by design (see the DERControlBase doc comment) (#153)"
 	type pin struct{ line, reason string }
 	cases := []struct {
 		typeName string
 		v        any
 		pins     []pin
 	}{
-		{
-			typeName: "DERControl",
-			v:        sep2.DERControl{},
-			pins: []pin{
-				{"integer-unresolved DERControl.DERControlBase.OpModFixedVar.Multiplier",
-					"the schema types opModFixedVar FixedVar, which declares refType and value but no multiplier; the Go field reuses ReactivePower (#153)"},
-				{"integer-unresolved DERControl.DERControlBase.OpModFreqDroop",
-					"the schema types this element FreqDroopType, a complex type of droop parameters; the Go field is a single uint16 (#153)"},
-				{"integer-unresolved DERControl.DERControlBase.OpModFreqWatt", curveRef},
-				{"integer-unresolved DERControl.DERControlBase.OpModHFRTMustTrip", curveRef},
-				{"integer-unresolved DERControl.DERControlBase.OpModHVRTMomentaryCessation", curveRef},
-				{"integer-unresolved DERControl.DERControlBase.OpModHVRTMustTrip", curveRef},
-				{"integer-unresolved DERControl.DERControlBase.OpModLFRTMustTrip", curveRef},
-				{"integer-unresolved DERControl.DERControlBase.OpModLVRTMomentaryCessation", curveRef},
-				{"integer-unresolved DERControl.DERControlBase.OpModLVRTMustTrip", curveRef},
-				{"integer-unresolved DERControl.DERControlBase.OpModVoltVar", curveRef},
-				{"integer-unresolved DERControl.DERControlBase.OpModVoltWatt", curveRef},
-			},
-		},
+		{typeName: "DERControl", v: sep2.DERControl{}},
 		{typeName: "EndDeviceControl", v: sep2.EndDeviceControl{}},
 	}
 	for _, tc := range cases {
@@ -1002,6 +982,47 @@ func TestSchemaGateControlIntegerPins(t *testing.T) {
 			assertPinned(t, "struct-definition integer", tc.typeName, integerProblemLines(ps), want)
 		})
 	}
+}
+
+// TestSchemaGateDERControlModeTypes validates the marshalled bytes of a
+// DERControl carrying every mode #153 retyped, and pins that the gate reports
+// the pre-#153 integer curve ref, so the clean result is known to be able to
+// fail.
+func TestSchemaGateDERControlModeTypes(t *testing.T) {
+	derc := respondableFixtures()["DERControl"].(sep2.DERControl)
+	link := func(id string) *sep2.DERCurveLink { return &sep2.DERCurveLink{Href: "/dc/" + id} }
+	derc.DERControlBase = &sep2.DERControlBase{
+		OpModFixedVar:               &sep2.FixedVar{RefType: 2, Value: -1500},
+		OpModFreqDroop:              &sep2.FreqDroopType{DBOF: 36, DBUF: 37, KOF: 50, KUF: 40, OpenLoopTms: 500},
+		OpModFreqWatt:               link("1"),
+		OpModHFRTMustTrip:           link("2"),
+		OpModHVRTMomentaryCessation: link("3"),
+		OpModHVRTMustTrip:           link("4"),
+		OpModLFRTMustTrip:           link("5"),
+		OpModLVRTMomentaryCessation: link("6"),
+		OpModLVRTMustTrip:           link("7"),
+		OpModVoltVar:                link("8"),
+		OpModVoltWatt:               link("9"),
+	}
+	problems, data := xsdgate.CollectProblems(t, "DERControl", derc)
+	if len(problems) > 0 {
+		t.Errorf("populated DERControl has schema problems:\n%s\nXML:\n%s", problems.Error(), data)
+	}
+
+	s := xsdgate.MustLoad(t)
+	const oldShape = `<DERControl xmlns="urn:ieee:std:2030.5:ns" href="/derp/0/derc/1">
+  <mRID>0102030405060708090A0B0C0D0E0F10</mRID>
+  <creationTime>1500000000</creationTime>
+  <EventStatus><currentStatus>1</currentStatus><dateTime>1500000000</dateTime><potentiallySuperseded>false</potentiallySuperseded></EventStatus>
+  <interval><duration>3600</duration><start>1500000000</start></interval>
+  <DERControlBase><opModVoltVar>3</opModVoltVar></DERControlBase>
+</DERControl>`
+	old, err := s.Validate("DERControl", []byte(oldShape))
+	if err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	want := []string{"missing-attribute DERControl/DERControlBase/opModVoltVar/@href"}
+	assertPinned(t, "marshalled-output", "DERControl(old-shape-fixture)", old.Summary(), want)
 }
 
 // TestSchemaGateRandomizableEventFieldsAreNotOversized is the other half: the
