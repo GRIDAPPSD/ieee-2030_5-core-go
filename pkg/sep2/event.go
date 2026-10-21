@@ -3,9 +3,6 @@ package sep2
 import (
 	"encoding/json"
 	"encoding/xml"
-	"fmt"
-	"strconv"
-	"strings"
 )
 
 // EventStatus describes the current state of an event.
@@ -145,60 +142,37 @@ const (
 
 // UnmarshalXML refuses element text outside OneHourRangeType's range.
 func (o *OneHourRange) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
-	var text string
-	if err := d.DecodeElement(&text, &start); err != nil {
-		return fmt.Errorf("sep2: OneHourRange: %w", err)
-	}
-	v, err := parseOneHourRange(text)
+	v, err := decodeBoundedXML(d, start, "OneHourRange", minOneHourRange, maxOneHourRange, narrowInt16)
 	if err != nil {
 		return err
 	}
-	*o = v
+	*o = OneHourRange(v)
 	return nil
-}
-
-func parseOneHourRange(text string) (OneHourRange, error) {
-	trimmed := strings.TrimSpace(text)
-	if trimmed == "" {
-		return 0, fmt.Errorf("sep2: OneHourRange: empty or non-scalar element")
-	}
-	n, err := strconv.ParseInt(trimmed, 10, 16)
-	if err != nil {
-		return 0, fmt.Errorf("sep2: OneHourRange: %q: %w", trimmed, err)
-	}
-	if n < minOneHourRange || n > maxOneHourRange {
-		return 0, fmt.Errorf("sep2: OneHourRange %d out of range [%d, %d]", n, minOneHourRange, maxOneHourRange)
-	}
-	return OneHourRange(n), nil
 }
 
 // MarshalXML rejects a value outside OneHourRangeType's range rather than
 // serializing an illegal wire value, mirroring SignedPerCent's guard.
 func (o OneHourRange) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
-	if o < minOneHourRange || o > maxOneHourRange {
-		return fmt.Errorf("sep2: OneHourRange %d out of range [%d, %d]", int16(o), minOneHourRange, maxOneHourRange)
+	if err := checkBounded("OneHourRange", int64(o), minOneHourRange, maxOneHourRange); err != nil {
+		return err
 	}
 	return e.EncodeElement(int16(o), start)
 }
 
-// UnmarshalJSON applies the same range refusal as UnmarshalXML; server-go
-// ingests JSON fixtures for this package's types.
+// UnmarshalJSON applies the same range refusal as UnmarshalXML.
 func (o *OneHourRange) UnmarshalJSON(data []byte) error {
-	var n int64
-	if err := json.Unmarshal(data, &n); err != nil {
-		return fmt.Errorf("sep2: OneHourRange: %w", err)
+	v, err := decodeBoundedJSON(data, "OneHourRange", minOneHourRange, maxOneHourRange, narrowInt16)
+	if err != nil {
+		return err
 	}
-	if n < minOneHourRange || n > maxOneHourRange {
-		return fmt.Errorf("sep2: OneHourRange %d out of range [%d, %d]", n, minOneHourRange, maxOneHourRange)
-	}
-	*o = OneHourRange(n)
+	*o = OneHourRange(v)
 	return nil
 }
 
 // MarshalJSON mirrors MarshalXML's range guard.
 func (o OneHourRange) MarshalJSON() ([]byte, error) {
-	if o < minOneHourRange || o > maxOneHourRange {
-		return nil, fmt.Errorf("sep2: OneHourRange %d out of range [%d, %d]", int16(o), minOneHourRange, maxOneHourRange)
+	if err := checkBounded("OneHourRange", int64(o), minOneHourRange, maxOneHourRange); err != nil {
+		return nil, err
 	}
 	return json.Marshal(int16(o))
 }
