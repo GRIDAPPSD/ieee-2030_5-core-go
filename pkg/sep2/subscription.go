@@ -18,10 +18,7 @@ type Subscription struct {
 func (s Subscription) Copy() Subscription {
 	c := s
 	c.SubscribableResource = s.SubscribableResource.Copy()
-	if s.Condition != nil {
-		cond := *s.Condition
-		c.Condition = &cond
-	}
+	c.Condition = clonePtr(s.Condition)
 	return c
 }
 

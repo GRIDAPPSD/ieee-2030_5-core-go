@@ -69,7 +69,9 @@ func addrs(v reflect.Value, path string, out map[uintptr]string, depth int) {
 
 // assertCopyIndependent fills a T, copies it, and fails when the copy shares
 // any pointer or slice with the original, or marshals to different bytes.
-func assertCopyIndependent[T interface{ Copy() T }](t *testing.T, name string) {
+// A type with no pointer fields passes flat; if a pointer is later added the
+// alias check runs on it regardless.
+func assertCopyIndependent[T interface{ Copy() T }](t *testing.T, name string, flat ...bool) {
 	t.Helper()
 	t.Run(name, func(t *testing.T) {
 		var orig T
@@ -80,7 +82,7 @@ func assertCopyIndependent[T interface{ Copy() T }](t *testing.T, name string) {
 		after := map[uintptr]string{}
 		addrs(reflect.ValueOf(orig), "", before, 0)
 		addrs(reflect.ValueOf(cp), "", after, 0)
-		if len(before) == 0 {
+		if len(before) == 0 && len(flat) == 0 {
 			t.Fatalf("fixture for %s holds no pointers; the check cannot fail", name)
 		}
 		for p, path := range after {
@@ -118,6 +120,30 @@ func TestCopyIndependent(t *testing.T) {
 	assertCopyIndependent[MeterReading](t, "MeterReading")
 	assertCopyIndependent[Event](t, "Event")
 	assertCopyIndependent[SubscribableResource](t, "SubscribableResource")
+	assertCopyIndependent[DERControlBase](t, "DERControlBase")
+	assertCopyIndependent[DERCapability](t, "DERCapability")
+	assertCopyIndependent[DERCurve](t, "DERCurve")
+	assertCopyIndependent[DeviceInformation](t, "DeviceInformation")
+	assertCopyIndependent[DeviceStatus](t, "DeviceStatus")
+	assertCopyIndependent[ReadingType](t, "ReadingType")
+	assertCopyIndependent[Reading](t, "Reading")
+	assertCopyIndependent[FlowReservationRequest](t, "FlowReservationRequest")
+	assertCopyIndependent[FunctionSetAssignments](t, "FunctionSetAssignments")
+	assertCopyIndependent[LogEvent](t, "LogEvent")
+	assertCopyIndependent[MirrorUsagePoint](t, "MirrorUsagePoint")
+	assertCopyIndependent[MirrorMeterReading](t, "MirrorMeterReading")
+	assertCopyIndependent[MirrorReadingSet](t, "MirrorReadingSet")
+	assertCopyIndependent[PowerStatus](t, "PowerStatus")
+	assertCopyIndependent[Registration](t, "Registration", true)
+	assertCopyIndependent[Response](t, "Response")
+	assertCopyIndependent[ResponseSet](t, "ResponseSet")
+	assertCopyIndependent[DERControlResponse](t, "DERControlResponse")
+	assertCopyIndependent[FlowReservationResponseResponse](t, "FlowReservationResponseResponse")
+	assertCopyIndependent[PriceResponse](t, "PriceResponse")
+	assertCopyIndependent[TextResponse](t, "TextResponse")
+	assertCopyIndependent[Notification](t, "Notification", true)
+	assertCopyIndependent[EventStatus](t, "EventStatus")
+	assertCopyIndependent[PowerConfiguration](t, "PowerConfiguration")
 }
 
 // aliasingProbe has a pointer field its Copy forgets, standing in for a

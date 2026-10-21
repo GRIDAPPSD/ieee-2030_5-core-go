@@ -23,18 +23,9 @@ type MessagingProgram struct {
 func (m MessagingProgram) Copy() MessagingProgram {
 	c := m
 	c.SubscribableResource = m.SubscribableResource.Copy()
-	if m.Version != nil {
-		v := *m.Version
-		c.Version = &v
-	}
-	if m.ActiveTextMessageListLink != nil {
-		l := *m.ActiveTextMessageListLink
-		c.ActiveTextMessageListLink = &l
-	}
-	if m.TextMessageListLink != nil {
-		l := *m.TextMessageListLink
-		c.TextMessageListLink = &l
-	}
+	c.Version = clonePtr(m.Version)
+	c.ActiveTextMessageListLink = clonePtr(m.ActiveTextMessageListLink)
+	c.TextMessageListLink = clonePtr(m.TextMessageListLink)
 	return c
 }
 

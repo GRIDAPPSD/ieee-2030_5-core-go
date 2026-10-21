@@ -20,10 +20,7 @@ type EventStatus struct {
 // Copy returns an independent copy.
 func (e EventStatus) Copy() EventStatus {
 	c := e
-	if e.PotentiallySupersededTime != nil {
-		v := *e.PotentiallySupersededTime
-		c.PotentiallySupersededTime = &v
-	}
+	c.PotentiallySupersededTime = clonePtr(e.PotentiallySupersededTime)
 	return c
 }
 

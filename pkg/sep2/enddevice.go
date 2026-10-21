@@ -51,39 +51,15 @@ type EndDevice struct {
 func (e EndDevice) Copy() EndDevice {
 	c := e
 	c.XMLName = e.XMLName
-	if e.Enabled != nil {
-		v := *e.Enabled
-		c.Enabled = &v
-	}
+	c.Enabled = clonePtr(e.Enabled)
 	c.SubscribableResource = e.SubscribableResource.Copy()
-	if e.RegistrationLink != nil {
-		l := *e.RegistrationLink
-		c.RegistrationLink = &l
-	}
-	if e.FlowReservationRequestListLink != nil {
-		l := *e.FlowReservationRequestListLink
-		c.FlowReservationRequestListLink = &l
-	}
-	if e.FlowReservationResponseListLink != nil {
-		l := *e.FlowReservationResponseListLink
-		c.FlowReservationResponseListLink = &l
-	}
-	if e.FunctionSetAssignmentsListLink != nil {
-		l := *e.FunctionSetAssignmentsListLink
-		c.FunctionSetAssignmentsListLink = &l
-	}
-	if e.DERListLink != nil {
-		l := *e.DERListLink
-		c.DERListLink = &l
-	}
-	if e.LogEventListLink != nil {
-		l := *e.LogEventListLink
-		c.LogEventListLink = &l
-	}
-	if e.SubscriptionListLink != nil {
-		l := *e.SubscriptionListLink
-		c.SubscriptionListLink = &l
-	}
+	c.RegistrationLink = clonePtr(e.RegistrationLink)
+	c.FlowReservationRequestListLink = clonePtr(e.FlowReservationRequestListLink)
+	c.FlowReservationResponseListLink = clonePtr(e.FlowReservationResponseListLink)
+	c.FunctionSetAssignmentsListLink = clonePtr(e.FunctionSetAssignmentsListLink)
+	c.DERListLink = clonePtr(e.DERListLink)
+	c.LogEventListLink = clonePtr(e.LogEventListLink)
+	c.SubscriptionListLink = clonePtr(e.SubscriptionListLink)
 	return c
 }
 
@@ -109,9 +85,6 @@ type SelfDevice struct {
 func (s SelfDevice) Copy() SelfDevice {
 	c := s
 	c.SubscribableResource = s.SubscribableResource.Copy()
-	if s.DeviceInformationLink != nil {
-		l := *s.DeviceInformationLink
-		c.DeviceInformationLink = &l
-	}
+	c.DeviceInformationLink = clonePtr(s.DeviceInformationLink)
 	return c
 }

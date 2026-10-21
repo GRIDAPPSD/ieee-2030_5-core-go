@@ -47,9 +47,6 @@ func (c Configuration) Copy() Configuration {
 		p := c.PowerConfiguration.Copy()
 		cp.PowerConfiguration = &p
 	}
-	if c.TimeConfiguration != nil {
-		t := *c.TimeConfiguration
-		cp.TimeConfiguration = &t
-	}
+	cp.TimeConfiguration = clonePtr(c.TimeConfiguration)
 	return cp
 }

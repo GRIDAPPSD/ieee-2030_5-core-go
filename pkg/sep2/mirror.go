@@ -55,10 +55,7 @@ type MirrorUsagePoint struct {
 // Copy returns an independent copy.
 func (m MirrorUsagePoint) Copy() MirrorUsagePoint {
 	c := m
-	if m.PostRate != nil {
-		v := *m.PostRate
-		c.PostRate = &v
-	}
+	c.PostRate = clonePtr(m.PostRate)
 	if m.MirrorMeterReading != nil {
 		c.MirrorMeterReading = make([]MirrorMeterReading, len(m.MirrorMeterReading))
 		for i, r := range m.MirrorMeterReading {
