@@ -205,57 +205,116 @@ func equalPairs(a, b [][2]string) bool {
 
 // TestDERControlRejectsMalformedModeElements covers the pre-#153 wire shapes
 // and the ways a new-shape element can be incomplete: each must fail to
-// decode rather than yield a zero value.
+// decode rather than yield a zero value, and with the error of its own guard.
 func TestDERControlRejectsMalformedModeElements(t *testing.T) {
 	t.Parallel()
-	const droopOK = `<dBOF>36</dBOF><dBUF>37</dBUF><kOF>50</kOF><kUF>40</kUF><openLoopTms>500</openLoopTms>`
-	cases := map[string]string{
-		"old FixedVar multiplier and value": `<opModFixedVar><multiplier>0</multiplier><value>5</value></opModFixedVar>`,
-		"FixedVar missing refType":          `<opModFixedVar><value>5</value></opModFixedVar>`,
-		"FixedVar missing value":            `<opModFixedVar><refType>1</refType></opModFixedVar>`,
-		"FixedVar repeated value":           `<opModFixedVar><refType>1</refType><value>5</value><value>6</value></opModFixedVar>`,
-		"FixedVar out of order":             `<opModFixedVar><value>5</value><refType>1</refType></opModFixedVar>`,
-		"FixedVar refType over UInt8":       `<opModFixedVar><refType>256</refType><value>5</value></opModFixedVar>`,
-		"FixedVar value over SignedPerCent": `<opModFixedVar><refType>1</refType><value>10001</value></opModFixedVar>`,
-		"FixedVar empty value":              `<opModFixedVar><refType>1</refType><value></value></opModFixedVar>`,
-		"FixedVar bare text":                `<opModFixedVar>5</opModFixedVar>`,
-		"old FreqDroop scalar":              `<opModFreqDroop>55</opModFreqDroop>`,
-		"FreqDroop missing openLoopTms":     `<opModFreqDroop><dBOF>36</dBOF><dBUF>37</dBUF><kOF>50</kOF><kUF>40</kUF></opModFreqDroop>`,
-		"FreqDroop unknown child":           `<opModFreqDroop>` + droopOK + `<extra>1</extra></opModFreqDroop>`,
-		"FreqDroop kOF over UInt16":         `<opModFreqDroop><dBOF>36</dBOF><dBUF>37</dBUF><kOF>65536</kOF><kUF>40</kUF><openLoopTms>500</openLoopTms></opModFreqDroop>`,
-		"FreqDroop negative dBOF":           `<opModFreqDroop><dBOF>-1</dBOF><dBUF>37</dBUF><kOF>50</kOF><kUF>40</kUF><openLoopTms>500</openLoopTms></opModFreqDroop>`,
-		"FreqDroop text beside children":    `<opModFreqDroop>9` + droopOK + `</opModFreqDroop>`,
-		"curve link with empty href":        `<opModVoltVar href=""></opModVoltVar>`,
-		"curve link with blank href":        `<opModVoltVar href="  "></opModVoltVar>`,
-		"curve link with child element":     `<opModVoltVar href="/dc/1"><x/></opModVoltVar>`,
-		"curve link with href and old text": `<opModVoltVar href="/dc/1">3</opModVoltVar>`,
-		"curve link href in another space":  `<opModVoltVar xmlns:o="urn:other" o:href="/dc/1"></opModVoltVar>`,
+	const droopTail = `<dBUF>37</dBUF><kOF>50</kOF><kUF>40</kUF><openLoopTms>500</openLoopTms>`
+	const droopOK = `<dBOF>36</dBOF>` + droopTail
+	droop := func(inner string) string { return `<opModFreqDroop>` + inner + `</opModFreqDroop>` }
+	fixedVar := func(inner string) string { return `<opModFixedVar>` + inner + `</opModFixedVar>` }
+	type reject struct{ elem, wantErr string }
+	cases := map[string]reject{
+		"old FixedVar multiplier and value":  {fixedVar(`<multiplier>0</multiplier><value>5</value>`), "FixedVar: unexpected element <multiplier>"},
+		"FixedVar missing refType":           {fixedVar(`<value>5</value>`), "FixedVar: unexpected element <value>"},
+		"FixedVar missing value":             {fixedVar(`<refType>1</refType>`), "FixedVar: missing element <value>"},
+		"FixedVar repeated value":            {fixedVar(`<refType>1</refType><value>5</value><value>6</value>`), "FixedVar: unexpected element <value>"},
+		"FixedVar out of order":              {fixedVar(`<value>5</value><refType>1</refType>`), "FixedVar: unexpected element <value>"},
+		"FixedVar refType over UInt8":        {fixedVar(`<refType>256</refType><value>5</value>`), `FixedVar.refType: strconv.ParseUint: parsing "256": value out of range`},
+		"FixedVar refType 0":                 {fixedVar(`<refType>0</refType><value>5</value>`), "FixedVar: refType 0 is not"},
+		"FixedVar refType 4":                 {fixedVar(`<refType>4</refType><value>5</value>`), "FixedVar: refType 4 is not"},
+		"FixedVar value over SignedPerCent":  {fixedVar(`<refType>1</refType><value>10001</value>`), "SignedPerCent 10001 out of range"},
+		"FixedVar empty value":               {fixedVar(`<refType>1</refType><value></value>`), "SignedPerCent: empty or non-scalar element"},
+		"FixedVar bare text":                 {fixedVar(`5`), "FixedVar: unexpected text"},
+		"FixedVar refType in another space":  {fixedVar(`<o:refType xmlns:o="urn:other">1</o:refType><value>5</value>`), `FixedVar: element <refType> in namespace "urn:other"`},
+		"FixedVar value with nested element": {fixedVar(`<refType>1</refType><value><x/>5</value>`), "FixedVar.value: unexpected child element <x>"},
+		"old FreqDroop scalar":               {droop(`55`), "FreqDroopType: unexpected text"},
+		"FreqDroop missing openLoopTms":      {droop(`<dBOF>36</dBOF><dBUF>37</dBUF><kOF>50</kOF><kUF>40</kUF>`), "FreqDroopType: missing element <openLoopTms>"},
+		"FreqDroop unknown child":            {droop(droopOK + `<extra>1</extra>`), "FreqDroopType: unexpected element <extra>"},
+		"FreqDroop kOF over UInt16":          {droop(`<dBOF>36</dBOF><dBUF>37</dBUF><kOF>65536</kOF><kUF>40</kUF><openLoopTms>500</openLoopTms>`), `FreqDroopType.kOF: strconv.ParseUint: parsing "65536": value out of range`},
+		"FreqDroop dBOF over UInt32":         {droop(`<dBOF>4294967296</dBOF>` + droopTail), `FreqDroopType.dBOF: strconv.ParseUint: parsing "4294967296": value out of range`},
+		"FreqDroop dBUF over UInt32":         {droop(`<dBOF>36</dBOF><dBUF>4294967296</dBUF><kOF>50</kOF><kUF>40</kUF><openLoopTms>500</openLoopTms>`), `FreqDroopType.dBUF: strconv.ParseUint: parsing "4294967296": value out of range`},
+		"FreqDroop negative dBOF":            {droop(`<dBOF>-1</dBOF>` + droopTail), `FreqDroopType.dBOF: strconv.ParseUint: parsing "-1": invalid syntax`},
+		"FreqDroop text beside children":     {droop(`9` + droopOK), "FreqDroopType: unexpected text"},
+		"FreqDroop dBOF with nested element": {droop(`<dBOF><x/>1</dBOF>` + droopTail), "FreqDroopType.dBOF: unexpected child element <x>"},
+		"FreqDroop kOF in another space":     {droop(`<dBOF>36</dBOF><dBUF>37</dBUF><o:kOF xmlns:o="urn:other">50</o:kOF><kUF>40</kUF><openLoopTms>500</openLoopTms>`), `FreqDroopType: element <kOF> in namespace "urn:other"`},
+		"curve link with empty href":         {`<opModVoltVar href=""></opModVoltVar>`, "opModVoltVar: DERCurveLink: href is required"},
+		"curve link with blank href":         {`<opModVoltWatt href="  "></opModVoltWatt>`, "opModVoltWatt: DERCurveLink: href is required"},
+		"curve link with child element":      {`<opModVoltVar href="/dc/1"><x/></opModVoltVar>`, "DERCurveLink: unexpected element <x>"},
+		"curve link with href and old text":  {`<opModVoltVar href="/dc/1">3</opModVoltVar>`, "DERCurveLink: unexpected text"},
+		"curve link href in another space":   {`<opModVoltVar xmlns:o="urn:other" o:href="/dc/1"></opModVoltVar>`, "opModVoltVar: DERCurveLink: href is required"},
 	}
 	for _, f := range curveLinkFields() {
-		cases["old int32 "+f.element] = `<` + f.element + `>3</` + f.element + `>`
+		cases["old int32 "+f.element] = reject{`<` + f.element + `>3</` + f.element + `>`, f.element + ": DERCurveLink: href is required"}
 	}
-	for name, elem := range cases {
+	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			doc := `<DERControl xmlns="urn:ieee:std:2030.5:ns"><DERControlBase>` + elem + `</DERControlBase></DERControl>`
+			doc := `<DERControl xmlns="urn:ieee:std:2030.5:ns"><DERControlBase>` + tc.elem + `</DERControlBase></DERControl>`
 			var parsed sep2.DERControl
 			err := xml.Unmarshal([]byte(doc), &parsed)
-			if err == nil {
-				t.Errorf("decoded without error: %+v", parsed.DERControlBase)
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Errorf("error = %v, want one containing %q (decoded %+v)", err, tc.wantErr, parsed.DERControlBase)
 			}
 		})
 	}
 }
 
-func TestDERControlRefusesToMarshalEmptyCurveLink(t *testing.T) {
+// TestDERControlModeElementBoundaries pins the accepted edges: the UInt32
+// maximum for the droop deadbands, the refType range 1 to 3, and an href
+// whose surrounding whitespace the schema's anyURI collapse removes.
+func TestDERControlModeElementBoundaries(t *testing.T) {
 	t.Parallel()
-	for _, href := range []string{"", " "} {
-		base := &sep2.DERControlBase{OpModVoltVar: &sep2.DERCurveLink{Href: href}}
-		if data, err := xml.Marshal(&sep2.DERControl{DERControlBase: base}); err == nil {
-			t.Errorf("href %q marshalled: %s", href, data)
+	const maxU32 = 4294967295
+	doc := `<DERControl xmlns="urn:ieee:std:2030.5:ns"><DERControlBase>` +
+		`<opModFixedVar><refType>3</refType><value>1</value></opModFixedVar>` +
+		`<opModFreqDroop><dBOF>4294967295</dBOF><dBUF>4294967295</dBUF><kOF>1</kOF><kUF>2</kUF><openLoopTms>3</openLoopTms></opModFreqDroop>` +
+		`<opModVoltVar href="  /dc/1  "></opModVoltVar>` +
+		`</DERControlBase></DERControl>`
+	base := unmarshalControl(t, []byte(doc))
+	if base.OpModFreqDroop == nil || base.OpModFreqDroop.DBOF != maxU32 || base.OpModFreqDroop.DBUF != maxU32 {
+		t.Errorf("droop at UInt32 max = %+v", base.OpModFreqDroop)
+	}
+	if base.OpModFixedVar == nil || base.OpModFixedVar.RefType != 3 {
+		t.Errorf("refType 3 = %+v", base.OpModFixedVar)
+	}
+	if base.OpModVoltVar == nil || base.OpModVoltVar.Href != "/dc/1" {
+		t.Errorf("padded href decoded as %+v, want /dc/1", base.OpModVoltVar)
+	}
+	if data := marshalControl(t, base); !strings.Contains(string(data), `<opModVoltVar href="/dc/1">`) {
+		t.Errorf("padded href re-marshalled with padding: %s", data)
+	}
+
+	var fromJSON sep2.DERControlBase
+	err := json.Unmarshal([]byte(`{"OpModFixedVar":{"RefType":1,"Value":1},`+
+		`"OpModFreqDroop":{"DBOF":4294967295,"DBUF":4294967295,"KOF":1,"KUF":2,"OpenLoopTms":3},`+
+		`"OpModVoltVar":{"Href":" /dc/2 "}}`), &fromJSON)
+	if err != nil {
+		t.Fatalf("JSON at the bounds: %v", err)
+	}
+	if fromJSON.OpModFreqDroop.DBOF != maxU32 || fromJSON.OpModFreqDroop.DBUF != maxU32 ||
+		fromJSON.OpModFixedVar.RefType != 1 || fromJSON.OpModVoltVar.Href != "/dc/2" {
+		t.Errorf("JSON at the bounds = %+v %+v %+v", fromJSON.OpModFreqDroop, fromJSON.OpModFixedVar, fromJSON.OpModVoltVar)
+	}
+}
+
+func TestDERControlRefusesToMarshalInvalidModes(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		base    sep2.DERControlBase
+		wantErr string
+	}{
+		"empty href":  {sep2.DERControlBase{OpModVoltVar: &sep2.DERCurveLink{Href: ""}}, "DERCurveLink: href is required"},
+		"blank href":  {sep2.DERControlBase{OpModVoltVar: &sep2.DERCurveLink{Href: " "}}, "DERCurveLink: href is required"},
+		"refType 0":   {sep2.DERControlBase{OpModFixedVar: &sep2.FixedVar{RefType: 0, Value: 1}}, "FixedVar: refType 0 is not"},
+		"refType 255": {sep2.DERControlBase{OpModFixedVar: &sep2.FixedVar{RefType: 255, Value: 1}}, "FixedVar: refType 255 is not"},
+	}
+	for name, tc := range cases {
+		base := tc.base
+		if data, err := xml.Marshal(&sep2.DERControl{DERControlBase: &base}); err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+			t.Errorf("%s: XML error = %v, want %q (wrote %s)", name, err, tc.wantErr, data)
 		}
-		if data, err := json.Marshal(base); err == nil {
-			t.Errorf("href %q marshalled to JSON: %s", href, data)
+		if data, err := json.Marshal(base); err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+			t.Errorf("%s: JSON error = %v, want %q (wrote %s)", name, err, tc.wantErr, data)
 		}
 	}
 }
@@ -294,26 +353,31 @@ func TestDERControlBaseModeTypesJSON(t *testing.T) {
 		t.Errorf("JSON round trip = %+v", out)
 	}
 
-	rejected := map[string]string{
-		"old curve ref integer":       `{"OpModVoltVar":3}`,
-		"curve link without href":     `{"OpModVoltVar":{}}`,
-		"curve link with empty href":  `{"OpModVoltVar":{"Href":""}}`,
-		"curve link with unknown key": `{"OpModVoltVar":{"Href":"/dc/1","ID":3}}`,
-		"old FreqDroop integer":       `{"OpModFreqDroop":55}`,
-		"FreqDroop missing a field":   `{"OpModFreqDroop":{"DBOF":36,"DBUF":37,"KOF":50,"KUF":40}}`,
-		"old FixedVar ReactivePower":  `{"OpModFixedVar":{"Multiplier":0,"Value":5}}`,
-		"FixedVar missing RefType":    `{"OpModFixedVar":{"Value":5}}`,
-		"FixedVar value out of range": `{"OpModFixedVar":{"RefType":1,"Value":10001}}`,
-		"FixedVar missing Value":      `{"OpModFixedVar":{"RefType":1}}`,
-		"FreqDroop missing DBOF":      `{"OpModFreqDroop":{"DBUF":37,"KOF":50,"KUF":40,"OpenLoopTms":500}}`,
-		"FreqDroop missing DBUF":      `{"OpModFreqDroop":{"DBOF":36,"KOF":50,"KUF":40,"OpenLoopTms":500}}`,
-		"FreqDroop missing KOF":       `{"OpModFreqDroop":{"DBOF":36,"DBUF":37,"KUF":40,"OpenLoopTms":500}}`,
-		"FreqDroop missing KUF":       `{"OpModFreqDroop":{"DBOF":36,"DBUF":37,"KOF":50,"OpenLoopTms":500}}`,
+	rejected := map[string]struct{ doc, wantErr string }{
+		"old curve ref integer":       {`{"OpModVoltVar":3}`, "DERCurveLink: json: cannot unmarshal number"},
+		"curve link without href":     {`{"OpModVoltVar":{}}`, "DERCurveLink: href is required"},
+		"curve link with empty href":  {`{"OpModVoltVar":{"Href":""}}`, "DERCurveLink: href is required"},
+		"curve link with blank href":  {`{"OpModVoltVar":{"Href":"  "}}`, "DERCurveLink: href is required"},
+		"curve link with unknown key": {`{"OpModVoltVar":{"Href":"/dc/1","ID":3}}`, `unknown field "ID"`},
+		"old FreqDroop integer":       {`{"OpModFreqDroop":55}`, "FreqDroopType: json: cannot unmarshal number"},
+		"FreqDroop missing DBOF":      {`{"OpModFreqDroop":{"DBUF":37,"KOF":50,"KUF":40,"OpenLoopTms":500}}`, "FreqDroopType: DBOF is required"},
+		"FreqDroop missing DBUF":      {`{"OpModFreqDroop":{"DBOF":36,"KOF":50,"KUF":40,"OpenLoopTms":500}}`, "FreqDroopType: DBUF is required"},
+		"FreqDroop missing KOF":       {`{"OpModFreqDroop":{"DBOF":36,"DBUF":37,"KUF":40,"OpenLoopTms":500}}`, "FreqDroopType: KOF is required"},
+		"FreqDroop missing KUF":       {`{"OpModFreqDroop":{"DBOF":36,"DBUF":37,"KOF":50,"OpenLoopTms":500}}`, "FreqDroopType: KUF is required"},
+		"FreqDroop missing OpenLoop":  {`{"OpModFreqDroop":{"DBOF":36,"DBUF":37,"KOF":50,"KUF":40}}`, "FreqDroopType: OpenLoopTms is required"},
+		"FreqDroop DBOF over UInt32":  {`{"OpModFreqDroop":{"DBOF":4294967296,"DBUF":37,"KOF":50,"KUF":40,"OpenLoopTms":500}}`, "FreqDroopType: json: cannot unmarshal number 4294967296"},
+		"FreqDroop DBUF over UInt32":  {`{"OpModFreqDroop":{"DBOF":36,"DBUF":4294967296,"KOF":50,"KUF":40,"OpenLoopTms":500}}`, "FreqDroopType: json: cannot unmarshal number 4294967296"},
+		"old FixedVar ReactivePower":  {`{"OpModFixedVar":{"Multiplier":0,"Value":5}}`, `unknown field "Multiplier"`},
+		"FixedVar missing RefType":    {`{"OpModFixedVar":{"Value":5}}`, "FixedVar: RefType is required"},
+		"FixedVar missing Value":      {`{"OpModFixedVar":{"RefType":1}}`, "FixedVar: Value is required"},
+		"FixedVar value out of range": {`{"OpModFixedVar":{"RefType":1,"Value":10001}}`, "SignedPerCent 10001 out of range"},
+		"FixedVar refType 0":          {`{"OpModFixedVar":{"RefType":0,"Value":5}}`, "FixedVar: refType 0 is not"},
+		"FixedVar refType 4":          {`{"OpModFixedVar":{"RefType":4,"Value":5}}`, "FixedVar: refType 4 is not"},
 	}
-	for name, doc := range rejected {
+	for name, tc := range rejected {
 		var b sep2.DERControlBase
-		if err := json.Unmarshal([]byte(doc), &b); err == nil {
-			t.Errorf("%s: decoded without error: %+v", name, b)
+		if err := json.Unmarshal([]byte(tc.doc), &b); err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+			t.Errorf("%s: error = %v, want one containing %q (decoded %+v)", name, err, tc.wantErr, b)
 		}
 	}
 
