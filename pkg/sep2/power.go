@@ -72,26 +72,24 @@ func rangeError(name string, n, lo, hi int64) error {
 	return fmt.Errorf("sep2: %s %d out of range [%d, %d]", name, n, lo, hi)
 }
 
-// asInt16 and asUint16 narrow a value that checkBounded already accepted.
-// The comparison against the target type's own limits sits at the conversion
-// so the narrowing is safe on its own, whatever lo and hi a caller passes.
-func asInt16(name string, n, lo, hi int64) (int16, error) {
-	if n < math.MinInt16 || n > math.MaxInt16 {
+// narrowBounded is the one place a decoded integer is range checked and
+// narrowed. The semantic range [lo, hi] and the limits of T share a single
+// guard placed at the conversion, so the narrowing is safe whatever lo and hi
+// a caller passes.
+func narrowBounded[T int16 | uint16](name string, n, lo, hi int64) (T, error) {
+	tmin, tmax := int64(0), int64(math.MaxUint16)
+	if _, signed := any(T(0)).(int16); signed {
+		tmin, tmax = math.MinInt16, math.MaxInt16
+	}
+	if n < max(lo, tmin) || n > min(hi, tmax) {
 		return 0, rangeError(name, n, lo, hi)
 	}
-	return int16(n), nil
+	return T(n), nil
 }
 
-func asUint16(name string, n, lo, hi int64) (uint16, error) {
-	if n < 0 || n > math.MaxUint16 {
-		return 0, rangeError(name, n, lo, hi)
-	}
-	return uint16(n), nil
-}
-
-// parseBounded trims element text, parses it as a decimal integer and checks
-// it against [lo, hi].
-func parseBounded(name, text string, lo, hi int64) (int64, error) {
+// parseBounded trims element text, parses it as a decimal integer and
+// narrows it through narrowBounded.
+func parseBounded[T int16 | uint16](name, text string, lo, hi int64) (T, error) {
 	trimmed := strings.TrimSpace(text)
 	if trimmed == "" {
 		return 0, fmt.Errorf("sep2: %s: empty or non-scalar element", name)
@@ -100,44 +98,34 @@ func parseBounded(name, text string, lo, hi int64) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("sep2: %s: %q: %w", name, trimmed, err)
 	}
-	if err := checkBounded(name, n, lo, hi); err != nil {
-		return 0, err
-	}
-	return n, nil
+	return narrowBounded[T](name, n, lo, hi)
 }
 
 // decodeBoundedXML reads element text only. Without that, encoding/xml's
 // default scalar decode skips unrecognized child elements (the pre-fix
 // ActivePower multiplier+value shape) and silently yields a zero value with
 // a nil error.
-func decodeBoundedXML(d *xml.Decoder, start xml.StartElement, name string, lo, hi int64) (int64, error) {
+func decodeBoundedXML[T int16 | uint16](d *xml.Decoder, start xml.StartElement, name string, lo, hi int64) (T, error) {
 	var text string
 	if err := d.DecodeElement(&text, &start); err != nil {
 		return 0, fmt.Errorf("sep2: %s: %w", name, err)
 	}
-	return parseBounded(name, text, lo, hi)
+	return parseBounded[T](name, text, lo, hi)
 }
 
 // decodeBoundedJSON applies the same range refusal as decodeBoundedXML;
 // server-go ingests JSON fixtures for this package's types.
-func decodeBoundedJSON(data []byte, name string, lo, hi int64) (int64, error) {
+func decodeBoundedJSON[T int16 | uint16](data []byte, name string, lo, hi int64) (T, error) {
 	var n int64
 	if err := json.Unmarshal(data, &n); err != nil {
 		return 0, fmt.Errorf("sep2: %s: %w", name, err)
 	}
-	if err := checkBounded(name, n, lo, hi); err != nil {
-		return 0, err
-	}
-	return n, nil
+	return narrowBounded[T](name, n, lo, hi)
 }
 
 // UnmarshalXML refuses anything but bare integer element text in range.
 func (p *PerCent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
-	n, err := decodeBoundedXML(d, start, "PerCent", 0, maxPerCent)
-	if err != nil {
-		return err
-	}
-	v, err := asUint16("PerCent", n, 0, maxPerCent)
+	v, err := decodeBoundedXML[uint16](d, start, "PerCent", 0, maxPerCent)
 	if err != nil {
 		return err
 	}
@@ -156,11 +144,7 @@ func (p PerCent) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 
 // UnmarshalJSON applies the same range refusal as UnmarshalXML.
 func (p *PerCent) UnmarshalJSON(data []byte) error {
-	n, err := decodeBoundedJSON(data, "PerCent", 0, maxPerCent)
-	if err != nil {
-		return err
-	}
-	v, err := asUint16("PerCent", n, 0, maxPerCent)
+	v, err := decodeBoundedJSON[uint16](data, "PerCent", 0, maxPerCent)
 	if err != nil {
 		return err
 	}
@@ -178,21 +162,13 @@ func (p PerCent) MarshalJSON() ([]byte, error) {
 
 // parseSignedPerCent is kept for callers elsewhere in the package.
 func parseSignedPerCent(text string) (SignedPerCent, error) {
-	n, err := parseBounded("SignedPerCent", text, minSignedPerCent, maxSignedPerCent)
-	if err != nil {
-		return 0, err
-	}
-	v, err := asInt16("SignedPerCent", n, minSignedPerCent, maxSignedPerCent)
+	v, err := parseBounded[int16]("SignedPerCent", text, minSignedPerCent, maxSignedPerCent)
 	return SignedPerCent(v), err
 }
 
 // UnmarshalXML mirrors PerCent.UnmarshalXML for the signed range.
 func (s *SignedPerCent) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
-	n, err := decodeBoundedXML(d, start, "SignedPerCent", minSignedPerCent, maxSignedPerCent)
-	if err != nil {
-		return err
-	}
-	v, err := asInt16("SignedPerCent", n, minSignedPerCent, maxSignedPerCent)
+	v, err := decodeBoundedXML[int16](d, start, "SignedPerCent", minSignedPerCent, maxSignedPerCent)
 	if err != nil {
 		return err
 	}
@@ -210,11 +186,7 @@ func (s SignedPerCent) MarshalXML(e *xml.Encoder, start xml.StartElement) error 
 
 // UnmarshalJSON mirrors PerCent.UnmarshalJSON for the signed range.
 func (s *SignedPerCent) UnmarshalJSON(data []byte) error {
-	n, err := decodeBoundedJSON(data, "SignedPerCent", minSignedPerCent, maxSignedPerCent)
-	if err != nil {
-		return err
-	}
-	v, err := asInt16("SignedPerCent", n, minSignedPerCent, maxSignedPerCent)
+	v, err := decodeBoundedJSON[int16](data, "SignedPerCent", minSignedPerCent, maxSignedPerCent)
 	if err != nil {
 		return err
 	}

@@ -156,11 +156,7 @@ const (
 
 // UnmarshalXML refuses element text outside OneHourRangeType's range.
 func (o *OneHourRange) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
-	n, err := decodeBoundedXML(d, start, "OneHourRange", minOneHourRange, maxOneHourRange)
-	if err != nil {
-		return err
-	}
-	v, err := asInt16("OneHourRange", n, minOneHourRange, maxOneHourRange)
+	v, err := decodeBoundedXML[int16](d, start, "OneHourRange", minOneHourRange, maxOneHourRange)
 	if err != nil {
 		return err
 	}
@@ -179,11 +175,7 @@ func (o OneHourRange) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 
 // UnmarshalJSON applies the same range refusal as UnmarshalXML.
 func (o *OneHourRange) UnmarshalJSON(data []byte) error {
-	n, err := decodeBoundedJSON(data, "OneHourRange", minOneHourRange, maxOneHourRange)
-	if err != nil {
-		return err
-	}
-	v, err := asInt16("OneHourRange", n, minOneHourRange, maxOneHourRange)
+	v, err := decodeBoundedJSON[int16](data, "OneHourRange", minOneHourRange, maxOneHourRange)
 	if err != nil {
 		return err
 	}
