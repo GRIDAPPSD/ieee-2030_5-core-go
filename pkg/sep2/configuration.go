@@ -43,10 +43,7 @@ type TimeConfiguration struct {
 func (c Configuration) Copy() Configuration {
 	cp := c
 	cp.SubscribableResource = c.SubscribableResource.Copy()
-	if c.PowerConfiguration != nil {
-		p := c.PowerConfiguration.Copy()
-		cp.PowerConfiguration = &p
-	}
+	cp.PowerConfiguration = cloneCopyPtr(c.PowerConfiguration)
 	cp.TimeConfiguration = clonePtr(c.TimeConfiguration)
 	return cp
 }

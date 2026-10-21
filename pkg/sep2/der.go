@@ -85,10 +85,7 @@ func (d DERControl) Copy() DERControl {
 	c.Event = d.Event.Copy()
 	c.RandomizeDuration = clonePtr(d.RandomizeDuration)
 	c.RandomizeStart = clonePtr(d.RandomizeStart)
-	if d.DERControlBase != nil {
-		cb := d.DERControlBase.Copy()
-		c.DERControlBase = &cb
-	}
+	c.DERControlBase = cloneCopyPtr(d.DERControlBase)
 	return c
 }
 
@@ -121,10 +118,7 @@ func (d DefaultDERControl) Copy() DefaultDERControl {
 	c := d
 	c.SubscribableResource = d.SubscribableResource.Copy()
 	c.Version = clonePtr(d.Version)
-	if d.DERControlBase != nil {
-		cb := d.DERControlBase.Copy()
-		c.DERControlBase = &cb
-	}
+	c.DERControlBase = cloneCopyPtr(d.DERControlBase)
 	c.SetGradW = clonePtr(d.SetGradW)
 	c.SetSoftGradW = clonePtr(d.SetSoftGradW)
 	return c
@@ -418,10 +412,7 @@ type DERCurve struct {
 // Copy returns an independent copy.
 func (d DERCurve) Copy() DERCurve {
 	c := d
-	if d.CurveData != nil {
-		c.CurveData = make([]CurveData, len(d.CurveData))
-		copy(c.CurveData, d.CurveData)
-	}
+	c.CurveData = cloneSlice(d.CurveData)
 	c.RampDecTms = clonePtr(d.RampDecTms)
 	c.RampIncTms = clonePtr(d.RampIncTms)
 	c.RampPT1Tms = clonePtr(d.RampPT1Tms)

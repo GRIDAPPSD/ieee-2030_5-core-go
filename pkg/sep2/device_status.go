@@ -33,10 +33,7 @@ func (d DeviceStatus) Copy() DeviceStatus {
 	c.OpState = clonePtr(d.OpState)
 	c.OpTime = clonePtr(d.OpTime)
 	c.TimeLink = clonePtr(d.TimeLink)
-	if d.Temperature != nil {
-		c.Temperature = make([]Temperature, len(d.Temperature))
-		copy(c.Temperature, d.Temperature)
-	}
+	c.Temperature = cloneSlice(d.Temperature)
 	return c
 }
 

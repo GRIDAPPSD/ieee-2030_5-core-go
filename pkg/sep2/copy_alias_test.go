@@ -32,6 +32,8 @@ func fillAll(v reflect.Value, depth int) {
 		v.SetString("x")
 	case reflect.Bool:
 		v.SetBool(true)
+	case reflect.Map, reflect.Interface, reflect.Array, reflect.Float32, reflect.Float64, reflect.Chan, reflect.Func:
+		panic("fillAll: unhandled kind " + v.Kind().String() + " in " + v.Type().String())
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		v.SetInt(1)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
@@ -56,6 +58,8 @@ func addrs(v reflect.Value, path string, out map[uintptr]string, depth int) {
 		for i := 0; i < v.NumField(); i++ {
 			addrs(v.Field(i), path+"."+v.Type().Field(i).Name, out, depth+1)
 		}
+	case reflect.Map, reflect.Interface, reflect.Array, reflect.Float32, reflect.Float64, reflect.Chan, reflect.Func:
+		panic("addrs: unhandled kind " + v.Kind().String() + " in " + v.Type().String())
 	case reflect.Slice:
 		if v.Len() == 0 {
 			return
@@ -178,5 +182,22 @@ func TestCopyIndependentCatchesMissedField(t *testing.T) {
 	}
 	if shared != 1 {
 		t.Fatalf("control: want exactly 1 shared pointer (field B), got %d", shared)
+	}
+}
+
+func TestCopyHelpersRejectUnhandledKinds(t *testing.T) {
+	type withMap struct{ M map[string]int }
+	for name, fn := range map[string]func(){
+		"fillAll": func() { var v withMap; fillAll(reflect.ValueOf(&v).Elem(), 0) },
+		"addrs":   func() { addrs(reflect.ValueOf(withMap{}), "", map[uintptr]string{}, 0) },
+	} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("%s accepted a map field without failing", name)
+				}
+			}()
+			fn()
+		}()
 	}
 }

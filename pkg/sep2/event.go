@@ -118,10 +118,7 @@ func (e Event) Copy() Event {
 	c.SubscribableResource = e.SubscribableResource.Copy()
 	c.ResponseRequired = clonePtr(e.ResponseRequired)
 	c.Version = clonePtr(e.Version)
-	if e.EventStatus != nil {
-		es := e.EventStatus.Copy()
-		c.EventStatus = &es
-	}
+	c.EventStatus = cloneCopyPtr(e.EventStatus)
 	c.Interval = clonePtr(e.Interval)
 	return c
 }
