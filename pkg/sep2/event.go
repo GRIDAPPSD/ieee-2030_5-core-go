@@ -75,6 +75,17 @@ type Event struct {
 	MRID        string `xml:"mRID,omitempty"`
 	Description string `xml:"description,omitempty"`
 
+	// Version is the VersionType revision of this event: a child ELEMENT
+	// declared minOccurs="0" maxOccurs="1" after description and before
+	// creationTime (sep.xsd:5474, inherited from
+	// RespondableSubscribableIdentifiedObject; type VersionType, a UInt16,
+	// sep.xsd:6231). The standard says an absent version means 0 and that a
+	// modification keeps the mRID and increments the version.
+	//
+	// The pointer is load-bearing: omitempty omits only nil, so an explicit
+	// version 0 still reaches the wire and stays distinguishable from unset.
+	Version *uint16 `xml:"version,omitempty"`
+
 	// CreationTime is the TimeType instant at which the server created
 	// this event. It is a REQUIRED element: the 2023 XSD declares
 	// `creationTime` minOccurs="1" maxOccurs="1" as the FIRST child
@@ -101,6 +112,29 @@ type Event struct {
 
 	EventStatus *EventStatus      `xml:"EventStatus,omitempty"`
 	Interval    *DateTimeInterval `xml:"interval,omitempty"`
+}
+
+// Copy returns an independent copy of the Event's pointer fields. Types that
+// embed Event call it so each pointer field has one copy site.
+func (e Event) Copy() Event {
+	c := e
+	if e.ResponseRequired != nil {
+		v := *e.ResponseRequired
+		c.ResponseRequired = &v
+	}
+	if e.Version != nil {
+		v := *e.Version
+		c.Version = &v
+	}
+	if e.EventStatus != nil {
+		es := e.EventStatus.Copy()
+		c.EventStatus = &es
+	}
+	if e.Interval != nil {
+		i := *e.Interval
+		c.Interval = &i
+	}
+	return c
 }
 
 // RandomizableEvent extends Event with randomization parameters.
