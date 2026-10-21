@@ -304,6 +304,11 @@ func TestDERControlBaseModeTypesJSON(t *testing.T) {
 		"old FixedVar ReactivePower":  `{"OpModFixedVar":{"Multiplier":0,"Value":5}}`,
 		"FixedVar missing RefType":    `{"OpModFixedVar":{"Value":5}}`,
 		"FixedVar value out of range": `{"OpModFixedVar":{"RefType":1,"Value":10001}}`,
+		"FixedVar missing Value":      `{"OpModFixedVar":{"RefType":1}}`,
+		"FreqDroop missing DBOF":      `{"OpModFreqDroop":{"DBUF":37,"KOF":50,"KUF":40,"OpenLoopTms":500}}`,
+		"FreqDroop missing DBUF":      `{"OpModFreqDroop":{"DBOF":36,"KOF":50,"KUF":40,"OpenLoopTms":500}}`,
+		"FreqDroop missing KOF":       `{"OpModFreqDroop":{"DBOF":36,"DBUF":37,"KUF":40,"OpenLoopTms":500}}`,
+		"FreqDroop missing KUF":       `{"OpModFreqDroop":{"DBOF":36,"DBUF":37,"KOF":50,"OpenLoopTms":500}}`,
 	}
 	for name, doc := range rejected {
 		var b sep2.DERControlBase
