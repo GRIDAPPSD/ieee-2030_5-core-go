@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"encoding/xml"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -16,18 +17,25 @@ type curveLinkField struct {
 	field   func(*sep2.DERControlBase) **sep2.DERCurveLink
 }
 
-// curveLinkFields lists the nine curve-reference fields of #153 and #122.
+// curveLinkFields lists the fifteen curve-reference fields of DERControlBase, in
+// schema sequence order (#153, #210).
 func curveLinkFields() []curveLinkField {
 	return []curveLinkField{
 		{"opModFreqWatt", func(b *sep2.DERControlBase) **sep2.DERCurveLink { return &b.OpModFreqWatt }},
+		{"opModHFRTMayTrip", func(b *sep2.DERControlBase) **sep2.DERCurveLink { return &b.OpModHFRTMayTrip }},
 		{"opModHFRTMustTrip", func(b *sep2.DERControlBase) **sep2.DERCurveLink { return &b.OpModHFRTMustTrip }},
+		{"opModHVRTMayTrip", func(b *sep2.DERControlBase) **sep2.DERCurveLink { return &b.OpModHVRTMayTrip }},
 		{"opModHVRTMomentaryCessation", func(b *sep2.DERControlBase) **sep2.DERCurveLink { return &b.OpModHVRTMomentaryCessation }},
 		{"opModHVRTMustTrip", func(b *sep2.DERControlBase) **sep2.DERCurveLink { return &b.OpModHVRTMustTrip }},
+		{"opModLFRTMayTrip", func(b *sep2.DERControlBase) **sep2.DERCurveLink { return &b.OpModLFRTMayTrip }},
 		{"opModLFRTMustTrip", func(b *sep2.DERControlBase) **sep2.DERCurveLink { return &b.OpModLFRTMustTrip }},
+		{"opModLVRTMayTrip", func(b *sep2.DERControlBase) **sep2.DERCurveLink { return &b.OpModLVRTMayTrip }},
 		{"opModLVRTMomentaryCessation", func(b *sep2.DERControlBase) **sep2.DERCurveLink { return &b.OpModLVRTMomentaryCessation }},
 		{"opModLVRTMustTrip", func(b *sep2.DERControlBase) **sep2.DERCurveLink { return &b.OpModLVRTMustTrip }},
 		{"opModVoltVar", func(b *sep2.DERControlBase) **sep2.DERCurveLink { return &b.OpModVoltVar }},
 		{"opModVoltWatt", func(b *sep2.DERControlBase) **sep2.DERCurveLink { return &b.OpModVoltWatt }},
+		{"opModWattPF", func(b *sep2.DERControlBase) **sep2.DERCurveLink { return &b.OpModWattPF }},
+		{"opModWattVar", func(b *sep2.DERControlBase) **sep2.DERCurveLink { return &b.OpModWattVar }},
 	}
 }
 
@@ -104,7 +112,7 @@ func TestDERControlCurveLinkWireForm(t *testing.T) {
 	for i, f := range curveLinkFields() {
 		t.Run(f.element, func(t *testing.T) {
 			t.Parallel()
-			href := "/dc/" + string(rune('1'+i))
+			href := "/dc/" + strconv.Itoa(i+1)
 			base := &sep2.DERControlBase{}
 			*f.field(base) = &sep2.DERCurveLink{Href: href}
 
@@ -387,5 +395,32 @@ func TestDERControlBaseModeTypesJSON(t *testing.T) {
 	}
 	if null.OpModVoltVar != nil || null.OpModFixedVar != nil || null.OpModFreqDroop != nil {
 		t.Errorf("null modes decoded as set: %+v", null)
+	}
+}
+
+// TestDERControlCurveLinkSchemaOrder pins the wire position of every curve
+// link: all fifteen set at once must marshal in the sep.xsd sequence order,
+// interleaved correctly with the non-link elements around them.
+func TestDERControlCurveLinkSchemaOrder(t *testing.T) {
+	t.Parallel()
+	base := &sep2.DERControlBase{}
+	for i, f := range curveLinkFields() {
+		*f.field(base) = &sep2.DERCurveLink{Href: "/dc/" + string(rune('a'+i))}
+	}
+	pct := sep2.PerCent(5)
+	base.OpModMaxLimW = &pct
+	data := marshalControl(t, base)
+	var got []string
+	for _, kv := range childTexts(t, data, "DERControlBase") {
+		got = append(got, kv[0])
+	}
+	want := []string{
+		"opModFreqWatt", "opModHFRTMayTrip", "opModHFRTMustTrip", "opModHVRTMayTrip",
+		"opModHVRTMomentaryCessation", "opModHVRTMustTrip", "opModLFRTMayTrip", "opModLFRTMustTrip",
+		"opModLVRTMayTrip", "opModLVRTMomentaryCessation", "opModLVRTMustTrip", "opModMaxLimW",
+		"opModVoltVar", "opModVoltWatt", "opModWattPF", "opModWattVar",
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("DERControlBase child order:\n got %v\nwant %v", got, want)
 	}
 }
