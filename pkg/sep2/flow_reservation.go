@@ -85,18 +85,7 @@ type FlowReservationResponse struct {
 // Copy returns an independent copy.
 func (f FlowReservationResponse) Copy() FlowReservationResponse {
 	c := f
-	if f.ResponseRequired != nil {
-		v := *f.ResponseRequired
-		c.ResponseRequired = &v
-	}
-	if f.EventStatus != nil {
-		es := f.EventStatus.Copy()
-		c.EventStatus = &es
-	}
-	if f.Interval != nil {
-		i := *f.Interval
-		c.Interval = &i
-	}
+	c.Event = f.Event.Copy()
 	if f.EnergyAvailable != nil {
 		v := *f.EnergyAvailable
 		c.EnergyAvailable = &v
