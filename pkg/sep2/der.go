@@ -17,10 +17,14 @@ type DERControlBase struct {
 	OpModFixedW                 *SignedPerCent `xml:"opModFixedW,omitempty"`
 	OpModFreqDroop              *FreqDroopType `xml:"opModFreqDroop,omitempty"`
 	OpModFreqWatt               *DERCurveLink  `xml:"opModFreqWatt,omitempty"`
+	OpModHFRTMayTrip            *DERCurveLink  `xml:"opModHFRTMayTrip,omitempty"`
 	OpModHFRTMustTrip           *DERCurveLink  `xml:"opModHFRTMustTrip,omitempty"`
+	OpModHVRTMayTrip            *DERCurveLink  `xml:"opModHVRTMayTrip,omitempty"`
 	OpModHVRTMomentaryCessation *DERCurveLink  `xml:"opModHVRTMomentaryCessation,omitempty"`
 	OpModHVRTMustTrip           *DERCurveLink  `xml:"opModHVRTMustTrip,omitempty"`
+	OpModLFRTMayTrip            *DERCurveLink  `xml:"opModLFRTMayTrip,omitempty"`
 	OpModLFRTMustTrip           *DERCurveLink  `xml:"opModLFRTMustTrip,omitempty"`
+	OpModLVRTMayTrip            *DERCurveLink  `xml:"opModLVRTMayTrip,omitempty"`
 	OpModLVRTMomentaryCessation *DERCurveLink  `xml:"opModLVRTMomentaryCessation,omitempty"`
 	OpModLVRTMustTrip           *DERCurveLink  `xml:"opModLVRTMustTrip,omitempty"`
 	// OpModMaxLimW is a percentage of %setMaxW, in hundredths of a
@@ -31,6 +35,8 @@ type DERControlBase struct {
 	OpModTargetW   *ActivePower   `xml:"opModTargetW,omitempty"`
 	OpModVoltVar   *DERCurveLink  `xml:"opModVoltVar,omitempty"`
 	OpModVoltWatt  *DERCurveLink  `xml:"opModVoltWatt,omitempty"`
+	OpModWattPF    *DERCurveLink  `xml:"opModWattPF,omitempty"`
+	OpModWattVar   *DERCurveLink  `xml:"opModWattVar,omitempty"`
 	RampTms        *uint16        `xml:"rampTms,omitempty"`
 }
 
@@ -69,9 +75,17 @@ func (d DERControlBase) Copy() DERControlBase {
 		v := *d.OpModFreqWatt
 		c.OpModFreqWatt = &v
 	}
+	if d.OpModHFRTMayTrip != nil {
+		v := *d.OpModHFRTMayTrip
+		c.OpModHFRTMayTrip = &v
+	}
 	if d.OpModHFRTMustTrip != nil {
 		v := *d.OpModHFRTMustTrip
 		c.OpModHFRTMustTrip = &v
+	}
+	if d.OpModHVRTMayTrip != nil {
+		v := *d.OpModHVRTMayTrip
+		c.OpModHVRTMayTrip = &v
 	}
 	if d.OpModHVRTMomentaryCessation != nil {
 		v := *d.OpModHVRTMomentaryCessation
@@ -81,9 +95,17 @@ func (d DERControlBase) Copy() DERControlBase {
 		v := *d.OpModHVRTMustTrip
 		c.OpModHVRTMustTrip = &v
 	}
+	if d.OpModLFRTMayTrip != nil {
+		v := *d.OpModLFRTMayTrip
+		c.OpModLFRTMayTrip = &v
+	}
 	if d.OpModLFRTMustTrip != nil {
 		v := *d.OpModLFRTMustTrip
 		c.OpModLFRTMustTrip = &v
+	}
+	if d.OpModLVRTMayTrip != nil {
+		v := *d.OpModLVRTMayTrip
+		c.OpModLVRTMayTrip = &v
 	}
 	if d.OpModLVRTMomentaryCessation != nil {
 		v := *d.OpModLVRTMomentaryCessation
@@ -112,6 +134,14 @@ func (d DERControlBase) Copy() DERControlBase {
 	if d.OpModVoltWatt != nil {
 		v := *d.OpModVoltWatt
 		c.OpModVoltWatt = &v
+	}
+	if d.OpModWattPF != nil {
+		v := *d.OpModWattPF
+		c.OpModWattPF = &v
+	}
+	if d.OpModWattVar != nil {
+		v := *d.OpModWattVar
+		c.OpModWattVar = &v
 	}
 	if d.RampTms != nil {
 		v := *d.RampTms

@@ -995,14 +995,20 @@ func TestSchemaGateDERControlModeTypes(t *testing.T) {
 		OpModFixedVar:               &sep2.FixedVar{RefType: 2, Value: -1500},
 		OpModFreqDroop:              &sep2.FreqDroopType{DBOF: 36, DBUF: 37, KOF: 50, KUF: 40, OpenLoopTms: 500},
 		OpModFreqWatt:               link("1"),
+		OpModHFRTMayTrip:            link("10"),
 		OpModHFRTMustTrip:           link("2"),
+		OpModHVRTMayTrip:            link("11"),
 		OpModHVRTMomentaryCessation: link("3"),
 		OpModHVRTMustTrip:           link("4"),
+		OpModLFRTMayTrip:            link("12"),
 		OpModLFRTMustTrip:           link("5"),
+		OpModLVRTMayTrip:            link("13"),
 		OpModLVRTMomentaryCessation: link("6"),
 		OpModLVRTMustTrip:           link("7"),
 		OpModVoltVar:                link("8"),
 		OpModVoltWatt:               link("9"),
+		OpModWattPF:                 link("14"),
+		OpModWattVar:                link("15"),
 	}
 	problems, data := xsdgate.CollectProblems(t, "DERControl", derc)
 	if len(problems) > 0 {
