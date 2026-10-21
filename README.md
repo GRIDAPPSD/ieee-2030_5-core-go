@@ -2,12 +2,12 @@
 
 [![Build, vet, and test](https://github.com/GRIDAPPSD/ieee-2030_5-core-go/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/GRIDAPPSD/ieee-2030_5-core-go/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/GRIDAPPSD/ieee-2030_5-core-go/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/GRIDAPPSD/ieee-2030_5-core-go/actions/workflows/github-code-scanning/codeql)
-[![Go 1.26.8](https://img.shields.io/badge/go-1.26.8-00ADD8?logo=go)](https://go.dev)
+[![Go version](https://img.shields.io/github/go-mod/go-version/GRIDAPPSD/ieee-2030_5-core-go)](go.mod)
 [![Release](https://img.shields.io/github/v/release/GRIDAPPSD/ieee-2030_5-core-go)](https://github.com/GRIDAPPSD/ieee-2030_5-core-go/releases/latest)
 [![License](https://img.shields.io/badge/license-Battelle%20BSD-blue)](LICENSE)
 
-Shared Go library for the IEEE 2030.5 (SEP2) family at PNNL. Three
-repositories import this module: the reference server (`ieee-2030_5-server-go`),
+Shared Go library for the IEEE 2030.5 (SEP2) family at PNNL.
+Consumers of this module: the reference server (`ieee-2030_5-server-go`),
 the client and inverter simulator (`ieee-2030_5-client-go`), and the bridge to
 the GridAPPS-D platform (`gridappsd-ieee-2030_5-go`).
 
