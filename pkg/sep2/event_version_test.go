@@ -80,8 +80,8 @@ func TestEventCopyDoesNotAliasVersion(t *testing.T) {
 }
 
 func TestSiblingCopiesDoNotAliasEventPointers(t *testing.T) {
-	rr := sep2.HexBinary8(5)
 	mk := func() sep2.Event {
+		rr := sep2.HexBinary8(5)
 		return sep2.Event{Version: u16(7), ResponseRequired: &rr,
 			EventStatus: &sep2.EventStatus{CurrentStatus: 1},
 			Interval:    &sep2.DateTimeInterval{Duration: 9}}
