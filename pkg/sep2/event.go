@@ -183,11 +183,23 @@ func (o OneHourRange) MarshalJSON() ([]byte, error) {
 	return json.Marshal(int16(o))
 }
 
-// EventStatus current status values per spec.
+// EventStatus currentStatus values. The 2018 edition of IEEE 2030.5 defines
+// 0 through 4 and reserves every other value; the 2023 edition adds 5.
 const (
-	EventStatusScheduled  uint8 = 0
-	EventStatusActive     uint8 = 1
-	EventStatusCancelled  uint8 = 2
+	// EventStatusScheduled is defined by IEEE 2030.5-2018 and 2023.
+	EventStatusScheduled uint8 = 0
+	// EventStatusActive is defined by IEEE 2030.5-2018 and 2023.
+	EventStatusActive uint8 = 1
+	// EventStatusCancelled is defined by IEEE 2030.5-2018 and 2023.
+	EventStatusCancelled uint8 = 2
+	// EventStatusCancelledWithRandomization is defined by IEEE 2030.5-2018 and
+	// 2023. Only specializations of RandomizableEvent use it.
+	EventStatusCancelledWithRandomization uint8 = 3
+	// EventStatusSuperseded is defined by IEEE 2030.5-2018. The 2023 edition
+	// deprecates it for servers, but clients can still receive it from older
+	// servers.
 	EventStatusSuperseded uint8 = 4
-	EventStatusComplete   uint8 = 5
+	// EventStatusComplete is defined by IEEE 2030.5-2023 only; the 2018
+	// edition has no value 5.
+	EventStatusComplete uint8 = 5
 )
