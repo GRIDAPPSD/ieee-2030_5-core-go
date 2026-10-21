@@ -78,3 +78,28 @@ func TestEventCopyDoesNotAliasVersion(t *testing.T) {
 		t.Errorf("Event.Copy aliases Version: %d", *ec.Version)
 	}
 }
+
+func TestSiblingCopiesDoNotAliasEventPointers(t *testing.T) {
+	rr := sep2.HexBinary8(5)
+	mk := func() sep2.Event {
+		return sep2.Event{Version: u16(7), ResponseRequired: &rr,
+			EventStatus: &sep2.EventStatus{CurrentStatus: 1},
+			Interval:    &sep2.DateTimeInterval{Duration: 9}}
+	}
+	check := func(name string, orig, cp sep2.Event) {
+		t.Helper()
+		*orig.Version = 8
+		*orig.ResponseRequired = 6
+		orig.EventStatus.CurrentStatus = 2
+		orig.Interval.Duration = 10
+		if *cp.Version != 7 || *cp.ResponseRequired != 5 || cp.EventStatus.CurrentStatus != 1 || cp.Interval.Duration != 9 {
+			t.Errorf("%s.Copy aliases Event pointer fields", name)
+		}
+	}
+	e := sep2.EndDeviceControl{RandomizableEvent: sep2.RandomizableEvent{Event: mk()}}
+	check("EndDeviceControl", e.Event, e.Copy().Event)
+	m := sep2.TextMessage{Event: mk()}
+	check("TextMessage", m.Event, m.Copy().Event)
+	f := sep2.FlowReservationResponse{Event: mk()}
+	check("FlowReservationResponse", f.Event, f.Copy().Event)
+}
