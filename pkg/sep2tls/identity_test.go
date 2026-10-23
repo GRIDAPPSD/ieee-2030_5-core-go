@@ -304,6 +304,17 @@ func TestSFDIFromLFDIKnownValue(t *testing.T) {
 	}
 }
 
+func TestSFDIFromLFDISpecVector(t *testing.T) {
+	// Spec 6.3.2/6.3.3 example: this LFDI gives SFDI 167-261-211-391.
+	got, err := sepTLS.SFDIFromLFDI("3E4F45AB31EDFE5B67E343E5E4562E31984E23E5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "167261211391" {
+		t.Errorf("SFDIFromLFDI = %q, want 167261211391", got)
+	}
+}
+
 func TestSFDIFromLFDIRejectsBadInput(t *testing.T) {
 	good := strings.Repeat("AB", 20)
 	tests := map[string]string{
@@ -313,6 +324,8 @@ func TestSFDIFromLFDIRejectsBadInput(t *testing.T) {
 		"lowercase":     strings.ToLower(good),
 		"non-hex":       strings.Repeat("G", 40),
 		"leading space": " " + good[:39],
+		"bad tail only": good[:39] + "G",
+		"bad mid only":  good[:20] + "g" + good[21:],
 		"with colons":   strings.Repeat("AB:", 13) + "A",
 	}
 	for name, in := range tests {
