@@ -4,6 +4,9 @@ import (
 	"crypto/ecdsa"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2cert"
@@ -250,4 +253,77 @@ func generateTestDeviceCert(t *testing.T) *x509.Certificate {
 	devBlock, _ := pem.Decode(devCertPEM)
 	devCert, _ := x509.ParseCertificate(devBlock.Bytes)
 	return devCert
+}
+
+// certWithLeadingZeroHash returns a certificate whose fingerprint starts
+// with a zero byte, the case where a naive numeric conversion drops digits.
+func certWithLeadingZeroHash(t *testing.T) *x509.Certificate {
+	t.Helper()
+	for i := 0; i < 1_000_000; i++ {
+		cert := &x509.Certificate{Raw: []byte(fmt.Sprintf("zero-lead-%d", i))}
+		if sepTLS.Fingerprint(cert)[0] == 0 {
+			return cert
+		}
+	}
+	t.Fatal("no certificate with a zero leading hash byte found")
+	return nil
+}
+
+func TestSFDIFromLFDIMatchesSFDI(t *testing.T) {
+	certs := map[string]*x509.Certificate{
+		"generated a":  generateTestDeviceCert(t),
+		"generated b":  generateTestDeviceCert(t),
+		"synthetic":    {Raw: []byte("synthetic-cert-bytes")},
+		"zero leading": certWithLeadingZeroHash(t),
+	}
+	for name, cert := range certs {
+		t.Run(name, func(t *testing.T) {
+			got, err := sepTLS.SFDIFromLFDI(sepTLS.LFDI(cert))
+			if err != nil {
+				t.Fatalf("SFDIFromLFDI: %v", err)
+			}
+			if want := sepTLS.SFDI(cert); got != want {
+				t.Errorf("SFDIFromLFDI = %q, want SFDI(cert) = %q", got, want)
+			}
+			if !sepTLS.ValidateSFDI(got) {
+				t.Errorf("SFDI %q fails checksum", got)
+			}
+		})
+	}
+}
+
+func TestSFDIFromLFDIKnownValue(t *testing.T) {
+	// Fingerprint prefix 0x00 0x00 0x00 0x00 0x10 gives value 1, so the digits
+	// are 00000000001 and the check digit is 9.
+	got, err := sepTLS.SFDIFromLFDI("0000000010" + strings.Repeat("A", 30))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "000000000019" {
+		t.Errorf("SFDIFromLFDI = %q, want 000000000019", got)
+	}
+}
+
+func TestSFDIFromLFDIRejectsBadInput(t *testing.T) {
+	good := strings.Repeat("AB", 20)
+	tests := map[string]string{
+		"empty":         "",
+		"too short":     good[:39],
+		"too long":      good + "A",
+		"lowercase":     strings.ToLower(good),
+		"non-hex":       strings.Repeat("G", 40),
+		"leading space": " " + good[:39],
+		"with colons":   strings.Repeat("AB:", 13) + "A",
+	}
+	for name, in := range tests {
+		t.Run(name, func(t *testing.T) {
+			got, err := sepTLS.SFDIFromLFDI(in)
+			if !errors.Is(err, sepTLS.ErrInvalidLFDI) {
+				t.Errorf("err = %v, want ErrInvalidLFDI", err)
+			}
+			if got != "" {
+				t.Errorf("value = %q, want empty on error", got)
+			}
+		})
+	}
 }
