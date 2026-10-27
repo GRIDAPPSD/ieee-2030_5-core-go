@@ -97,3 +97,24 @@ func TestDERStatusFullWireOrder(t *testing.T) {
 		t.Errorf("DERStatus child order\n got %v\nwant %v", got, derStatusWireSequence)
 	}
 }
+
+// The schema gate fixtures must emit every element of the sequence the gate
+// is meant to check, minus connectStatus, which the pinned 2018 schema does
+// not declare. This runs without the schema, so a dropped field fails here.
+func TestSchemaGateFixturesCoverSequence(t *testing.T) {
+	capData, err := xml.Marshal(populatedDERCapability())
+	if err != nil {
+		t.Fatalf("marshal capability: %v", err)
+	}
+	if got := childElements(t, capData); !slices.Equal(got, derCapabilityWireSequence) {
+		t.Errorf("DERCapability fixture\n got %v\nwant %v", got, derCapabilityWireSequence)
+	}
+	wantStatus := slices.DeleteFunc(slices.Clone(derStatusWireSequence), func(n string) bool { return n == "connectStatus" })
+	statusData, err := xml.Marshal(populatedDERStatus())
+	if err != nil {
+		t.Fatalf("marshal status: %v", err)
+	}
+	if got := childElements(t, statusData); !slices.Equal(got, wantStatus) {
+		t.Errorf("DERStatus fixture\n got %v\nwant %v", got, wantStatus)
+	}
+}
