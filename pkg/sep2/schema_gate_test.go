@@ -106,7 +106,6 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 	uom := uint8(38)
 	powerOfTen := int8(-3)
 	intervalLength := uint32(900)
-	alarm := sep2.HexBinary32(0x01)
 	localID0 := sep2.HexBinary16(0x00)
 	localID1 := sep2.HexBinary16(0x01)
 
@@ -127,15 +126,7 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 			// every field, including readingTime, which is the resource's one
 			// pinned defect and is therefore clean here.
 			typeName: "DERStatus",
-			v: sep2.DERStatus{
-				AlarmStatus:           &alarm,
-				GenConnectStatus:      &sep2.ConnectStatusType{DateTime: 1604963587, Value: 1},
-				InverterStatus:        &sep2.InverterStatusType{DateTime: 1604963587, Value: 2},
-				OperationalModeStatus: &sep2.OperationalModeStatusType{DateTime: 1604963587, Value: 2},
-				ReadingTime:           1604963587,
-				StateOfChargeStatus:   &sep2.StateOfChargeStatusType{DateTime: 1604963587, Value: 7500},
-				StorageModeStatus:     &sep2.StorageModeStatusType{DateTime: 1604963587, Value: 1},
-			},
+			v:        populatedDERStatus(),
 		},
 		{
 			// A POPULATED LogEvent, because the zero value leaves details and
@@ -166,20 +157,9 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 		{
 			// The zero-value DERCapability entry below leaves rtgMaxV and
 			// rtgMaxVA nil, so only this fixture puts them through the
-			// marshalled check (#55). rtgMaxA stays nil because its Go type
-			// cannot produce the CurrentRMS the schema requires (#151).
+			// marshalled check (#55).
 			typeName: "DERCapability",
-			v: sep2.DERCapability{
-				Resource:             sep2.Resource{Href: "/edev/1/der/1/dercap"},
-				ModesSupported:       func() *sep2.DERControlType { v := sep2.DERControlType(0x0800); return &v }(),
-				RTGMaxChargeRateW:    &sep2.ActivePower{Multiplier: 3, Value: 5},
-				RTGMaxDischargeRateW: &sep2.ActivePower{Multiplier: 3, Value: 5},
-				RTGMaxV:              &sep2.VoltageRMS{Multiplier: -1, Value: 2400},
-				RTGMaxVA:             &sep2.ApparentPower{Multiplier: 0, Value: 65000},
-				RTGMaxVar:            &sep2.ReactivePower{Multiplier: 3, Value: 4},
-				RTGMaxW:              &sep2.ActivePower{Multiplier: 3, Value: 6},
-				Type:                 func() *uint8 { v := uint8(4); return &v }(),
-			},
+			v:        populatedDERCapability(),
 		},
 		{
 			typeName: "Registration",
@@ -309,6 +289,65 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			xsdgate.AssertValid(t, tc.typeName, tc.v)
 		})
+	}
+}
+
+// populatedDERCapability sets every DERCapability element, all 25 of
+// the sep.xsd sequence, so the gate validates each one and their order.
+func populatedDERCapability() sep2.DERCapability {
+	u8 := func(v uint8) *uint8 { return &v }
+	modes := sep2.DERControlType(0x0800)
+	pf := func(d uint16) *sep2.PowerFactor { return &sep2.PowerFactor{Displacement: d, Multiplier: -3} }
+	va := func(v uint16) *sep2.ApparentPower { return &sep2.ApparentPower{Multiplier: 0, Value: v} }
+	w := func(v int16) *sep2.ActivePower { return &sep2.ActivePower{Multiplier: 3, Value: v} }
+	return sep2.DERCapability{
+		Resource:               sep2.Resource{Href: "/edev/1/der/1/dercap"},
+		ModesSupported:         &modes,
+		RTGAbnormalCategory:    u8(2),
+		RTGMaxA:                &sep2.CurrentRMS{Multiplier: -1, Value: 205},
+		RTGMaxAh:               &sep2.AmpereHour{Multiplier: 0, Value: 300},
+		RTGMaxChargeRateVA:     va(5000),
+		RTGMaxChargeRateW:      w(5),
+		RTGMaxDischargeRateVA:  va(5100),
+		RTGMaxDischargeRateW:   w(5),
+		RTGMaxV:                &sep2.VoltageRMS{Multiplier: -1, Value: 2400},
+		RTGMaxVA:               va(65000),
+		RTGMaxVar:              &sep2.ReactivePower{Multiplier: 3, Value: 4},
+		RTGMaxVarNeg:           &sep2.ReactivePower{Multiplier: 3, Value: -4},
+		RTGMaxW:                w(6),
+		RTGMaxWh:               &sep2.WattHour{Multiplier: 3, Value: 14},
+		RTGMinPFOverExcited:    pf(950),
+		RTGMinPFUnderExcited:   pf(900),
+		RTGMinV:                &sep2.VoltageRMS{Multiplier: -1, Value: 1900},
+		RTGNormalCategory:      u8(3),
+		RTGOverExcitedPF:       pf(850),
+		RTGOverExcitedW:        w(7),
+		RTGReactiveSusceptance: &sep2.ReactiveSusceptance{Multiplier: -2, Value: 16},
+		RTGUnderExcitedPF:      pf(800),
+		RTGUnderExcitedW:       w(8),
+		RTGVNom:                &sep2.VoltageRMS{Multiplier: -1, Value: 2400},
+		Type:                   u8(4),
+	}
+}
+
+// populatedDERStatus sets every DERStatus element the pinned 2018 schema
+// declares, 10 of the 11 in the struct. connectStatus is the 2023 element
+// and stays unset here; its unknown-element pin is in
+// TestSchemaGateKnownFailures.
+func populatedDERStatus() sep2.DERStatus {
+	alarm := sep2.HexBinary32(0x01)
+	const ts = 1604963587
+	return sep2.DERStatus{
+		AlarmStatus:            &alarm,
+		GenConnectStatus:       &sep2.ConnectStatusType{DateTime: ts, Value: 1},
+		InverterStatus:         &sep2.InverterStatusType{DateTime: ts, Value: 2},
+		LocalControlModeStatus: &sep2.LocalControlModeStatusType{DateTime: ts, Value: 1},
+		ManufacturerStatus:     &sep2.ManufacturerStatusType{DateTime: ts, Value: "OK1234"},
+		OperationalModeStatus:  &sep2.OperationalModeStatusType{DateTime: ts, Value: 2},
+		ReadingTime:            ts,
+		StateOfChargeStatus:    &sep2.StateOfChargeStatusType{DateTime: ts, Value: 7500},
+		StorageModeStatus:      &sep2.StorageModeStatusType{DateTime: ts, Value: 1},
+		StorConnectStatus:      &sep2.ConnectStatusType{DateTime: ts, Value: 1},
 	}
 }
 
@@ -538,7 +577,6 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 			typeName: "DERCapability",
 			zero:     sep2.DERCapability{},
 			wantStruct: []string{
-				"integer-unresolved DERCapability.RTGMaxA",
 				"omitempty-required DERCapability.ModesSupported",
 				"omitempty-required DERCapability.RTGMaxW",
 				"omitempty-required DERCapability.Type",
@@ -550,9 +588,7 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 			},
 			reason: "modesSupported, rtgMaxW and type are minOccurs=1 but tagged omitempty, " +
 				"so a zero-value DERCapability serializes with none of them. Fixing this means " +
-				"dropping omitempty and deciding each field's zero-value semantics. Separately, " +
-				"rtgMaxA is modelled as *int32 while the schema types it CurrentRMS, a complex " +
-				"type carrying multiplier and value, so the integer check cannot resolve it (#151).",
+				"dropping omitempty and deciding each field's zero-value semantics.",
 		},
 		{
 			// The struct is in sequence order with no omitempty on a required

@@ -16,7 +16,7 @@ import (
 // which a strict schema validator rejects.
 func TestDERCapabilityWireOrder(t *testing.T) {
 	modes := sep2.DERControlType(0xFF)
-	maxA := int32(20)
+	maxA := sep2.CurrentRMS{Value: 20}
 	maxVar := sep2.ReactivePower{Value: 100}
 	maxChargeW := sep2.ActivePower{Value: 200}
 	maxDischargeW := sep2.ActivePower{Value: 300}

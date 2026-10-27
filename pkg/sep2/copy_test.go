@@ -183,7 +183,7 @@ func TestDERProgramCopy(t *testing.T) {
 func TestDERCapabilityCopy(t *testing.T) {
 	modes := sep2.DERControlType(0xFF)
 	maxW := sep2.ActivePower{Value: 5000}
-	maxA := int32(20)
+	maxA := sep2.CurrentRMS{Value: 20}
 	dtype := uint8(1)
 	cap := sep2.DERCapability{
 		ModesSupported: &modes,
