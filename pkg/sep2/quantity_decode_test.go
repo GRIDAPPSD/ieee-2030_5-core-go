@@ -102,3 +102,54 @@ func TestDERCapabilityBareIntegerRatingFailsDecode(t *testing.T) {
 		t.Fatalf("error %q does not name rtgMaxA", err)
 	}
 }
+
+// pfCase checks one {displacement, multiplier} type through its decoder.
+type pfCase struct {
+	name    string
+	complex string
+	decode  func(doc string) (displacement uint16, multiplier int8, err error)
+}
+
+func pfCases() []pfCase {
+	return []pfCase{
+		{"PowerFactor", `<displacement>9500</displacement><multiplier>-2</multiplier>`, func(doc string) (uint16, int8, error) {
+			var v sep2.PowerFactor
+			err := xml.Unmarshal([]byte(doc), &v)
+			return v.Displacement, v.Multiplier, err
+		}},
+		{"FixedPowerFactor", `<displacement>9500</displacement><excitation>true</excitation><multiplier>-2</multiplier>`, func(doc string) (uint16, int8, error) {
+			var v sep2.FixedPowerFactor
+			err := xml.Unmarshal([]byte(doc), &v)
+			return v.Displacement, v.Multiplier, err
+		}},
+	}
+}
+
+func TestPowerFactorBareIntegerRefused(t *testing.T) {
+	for _, c := range pfCases() {
+		t.Run(c.name, func(t *testing.T) {
+			_, _, err := c.decode(`<pf ` + quantityNS + `>95</pf>`)
+			if err == nil {
+				t.Fatal("bare integer decoded without error")
+			}
+			if !strings.Contains(err.Error(), c.name) || !strings.Contains(err.Error(), "<pf>") {
+				t.Fatalf("error %q does not name the type %s and element <pf>", err, c.name)
+			}
+		})
+	}
+}
+
+func TestPowerFactorComplexAndEmpty(t *testing.T) {
+	for _, c := range pfCases() {
+		t.Run(c.name, func(t *testing.T) {
+			d, m, err := c.decode(`<pf ` + quantityNS + `>` + c.complex + `</pf>`)
+			if err != nil || d != 9500 || m != -2 {
+				t.Fatalf("complex form: displacement %d multiplier %d err %v, want 9500, -2, nil", d, m, err)
+			}
+			d, m, err = c.decode(`<pf ` + quantityNS + `/>`)
+			if err != nil || d != 0 || m != 0 {
+				t.Fatalf("empty element: displacement %d multiplier %d err %v, want zero, nil", d, m, err)
+			}
+		})
+	}
+}
