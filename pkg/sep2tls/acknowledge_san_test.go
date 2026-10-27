@@ -52,14 +52,15 @@ func TestAcknowledgeHardwareModuleSAN(t *testing.T) {
 		stdlibSkips  bool // stdlib parses the DNS name, so the SAN never reaches the unhandled list
 		wantSANKept  bool
 		wantUnknownK bool
+		wantReturn   bool
 	}{
-		{"HMN only is cleared", []pkix.Extension{mustBuildMultiOtherNameSAN(t, []otherNameSpec{hmn})}, false, false, false},
-		{"HMN with DNS name is never unhandled", []pkix.Extension{sanWithDNSName(t, []otherNameSpec{hmn}, "a.example")}, true, false, false},
-		{"foreign otherName OID is kept", []pkix.Extension{mustBuildMultiOtherNameSAN(t, []otherNameSpec{{OID: asn1.ObjectIdentifier{1, 2, 3, 4}, InnerKind: innerKindValidHMN}})}, false, true, false},
-		{"HMN beside a foreign otherName is kept", []pkix.Extension{mustBuildMultiOtherNameSAN(t, []otherNameSpec{hmn, {OID: asn1.ObjectIdentifier{1, 2, 3, 4}, InnerKind: innerKindArbitraryBytes}})}, false, true, false},
-		{"malformed HMN inner bytes are kept", []pkix.Extension{mustBuildMalformedHMNSAN(t)}, false, true, false},
-		{"empty SAN is kept", []pkix.Extension{mustBuildMultiOtherNameSAN(t, nil)}, false, true, false},
-		{"HMN SAN cleared but other unknown critical extension kept", []pkix.Extension{mustBuildMultiOtherNameSAN(t, []otherNameSpec{hmn}), unknownCritical}, false, false, true},
+		{"HMN only is cleared", []pkix.Extension{mustBuildMultiOtherNameSAN(t, []otherNameSpec{hmn})}, false, false, false, true},
+		{"HMN with DNS name is never unhandled", []pkix.Extension{sanWithDNSName(t, []otherNameSpec{hmn}, "a.example")}, true, false, false, false},
+		{"foreign otherName OID is kept", []pkix.Extension{mustBuildMultiOtherNameSAN(t, []otherNameSpec{{OID: asn1.ObjectIdentifier{1, 2, 3, 4}, InnerKind: innerKindValidHMN}})}, false, true, false, false},
+		{"HMN beside a foreign otherName is kept", []pkix.Extension{mustBuildMultiOtherNameSAN(t, []otherNameSpec{hmn, {OID: asn1.ObjectIdentifier{1, 2, 3, 4}, InnerKind: innerKindArbitraryBytes}})}, false, true, false, false},
+		{"malformed HMN inner bytes are kept", []pkix.Extension{mustBuildMalformedHMNSAN(t)}, false, true, false, false},
+		{"empty SAN is kept", []pkix.Extension{mustBuildMultiOtherNameSAN(t, nil)}, false, true, false, false},
+		{"HMN SAN cleared but other unknown critical extension kept", []pkix.Extension{mustBuildMultiOtherNameSAN(t, []otherNameSpec{hmn}), unknownCritical}, false, false, true, true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -71,7 +72,9 @@ func TestAcknowledgeHardwareModuleSAN(t *testing.T) {
 			if !tc.stdlibSkips && !hasOID(cert.UnhandledCriticalExtensions, sep2cert.OIDSubjectAltName) {
 				t.Fatalf("precondition: SAN OID not unhandled before call: %v", cert.UnhandledCriticalExtensions)
 			}
-			AcknowledgeHardwareModuleSAN(cert)
+			if got := AcknowledgeHardwareModuleSAN(cert); got != tc.wantReturn {
+				t.Errorf("return = %v, want %v", got, tc.wantReturn)
+			}
 			if tc.stdlibSkips {
 				if allHMN, _ := sep2cert.SANAllOtherNamesAreHardwareModuleName(cert); allHMN {
 					t.Error("strict checker accepted a SAN carrying a dNSName")
@@ -108,7 +111,9 @@ func TestAcknowledgeHardwareModuleSANServerAuthLeaf(t *testing.T) {
 	if _, err := leaf.Verify(opts); err == nil {
 		t.Fatal("precondition: Verify passed without acknowledging the critical SAN")
 	}
-	AcknowledgeHardwareModuleSAN(leaf)
+	if !AcknowledgeHardwareModuleSAN(leaf) {
+		t.Fatal("AcknowledgeHardwareModuleSAN returned false for an HMN-only leaf")
+	}
 	if _, err := leaf.Verify(opts); err != nil {
 		t.Fatalf("Verify after AcknowledgeHardwareModuleSAN: %v", err)
 	}
@@ -129,5 +134,39 @@ func TestVerifyPeerCertWithHardwareModuleSANUsesRule(t *testing.T) {
 	bad := mintRawCertDER(t, caCert, caKey, []pkix.Extension{mustBuildMultiOtherNameSAN(t, []otherNameSpec{hmn, {OID: asn1.ObjectIdentifier{1, 2, 3, 4}, InnerKind: innerKindArbitraryBytes}})})
 	if err := VerifyPeerCertWithHardwareModuleSAN([][]byte{bad}, roots); err == nil {
 		t.Error("HMN beside a foreign otherName accepted; want fail-closed")
+	}
+}
+
+func TestAcknowledgeHardwareModuleSANNilCert(t *testing.T) {
+	if AcknowledgeHardwareModuleSAN(nil) {
+		t.Error("nil cert returned true")
+	}
+}
+
+// A by-value copy of the Certificate shares the slice header's backing
+// array; clearing the original must not rewrite the copy's list.
+func TestAcknowledgeHardwareModuleSANDoesNotAliasCopy(t *testing.T) {
+	caCert, caKey := genCA(t)
+	hmn := otherNameSpec{OID: sep2cert.OIDHardwareModuleName, InnerKind: innerKindValidHMN}
+	unknown := pkix.Extension{Id: asn1.ObjectIdentifier{1, 2, 3, 4, 5, 6, 7}, Critical: true, Value: []byte{0x05, 0x00}}
+	cert, err := x509.ParseCertificate(mintRawCertDER(t, caCert, caKey, []pkix.Extension{mustBuildMultiOtherNameSAN(t, []otherNameSpec{hmn}), unknown}))
+	if err != nil {
+		t.Fatalf("ParseCertificate: %v", err)
+	}
+	cp := *cert
+	want := []string{sep2cert.OIDSubjectAltName.String(), unknown.Id.String()}
+	if len(cp.UnhandledCriticalExtensions) != 2 {
+		t.Fatalf("precondition: unhandled = %v, want %v", cp.UnhandledCriticalExtensions, want)
+	}
+	if !AcknowledgeHardwareModuleSAN(cert) {
+		t.Fatal("original not acknowledged")
+	}
+	for i, oid := range cp.UnhandledCriticalExtensions {
+		if oid.String() != want[i] {
+			t.Errorf("copy[%d] = %s, want %s (aliased write)", i, oid, want[i])
+		}
+	}
+	if len(cert.UnhandledCriticalExtensions) != 1 || !cert.UnhandledCriticalExtensions[0].Equal(unknown.Id) {
+		t.Errorf("original unhandled = %v, want only %v", cert.UnhandledCriticalExtensions, unknown.Id)
 	}
 }

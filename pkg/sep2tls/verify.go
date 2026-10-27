@@ -2,6 +2,7 @@ package sep2tls
 
 import (
 	"crypto/x509"
+	"encoding/asn1"
 	"errors"
 	"fmt"
 
@@ -108,19 +109,30 @@ func VerifyPeerCertWithHardwareModuleSAN(rawCerts [][]byte, roots *x509.CertPool
 // leaf can call it before x509.Verify with ServerAuth, and
 // VerifyPeerCertWithHardwareModuleSAN calls it for ClientAuth chains.
 //
-// This function mutates cert.UnhandledCriticalExtensions in place. Callers
-// must not share cert across goroutines or cache it.
-func AcknowledgeHardwareModuleSAN(cert *x509.Certificate) {
-	if len(cert.UnhandledCriticalExtensions) == 0 {
-		return
+// It returns true only when this call removed the SAN OID, so a caller can
+// tell why a leaf still fails Verify. A nil cert, a cert with no unhandled
+// critical extensions, and a SAN that fails the rule all return false.
+//
+// The call replaces cert.UnhandledCriticalExtensions with a new slice and
+// never writes through the old backing array, so a by-value copy of the
+// Certificate keeps its own list. Callers must still not share cert across
+// goroutines.
+func AcknowledgeHardwareModuleSAN(cert *x509.Certificate) bool {
+	if cert == nil || len(cert.UnhandledCriticalExtensions) == 0 {
+		return false
 	}
-	allHMN, _ := sep2cert.SANAllOtherNamesAreHardwareModuleName(cert)
-	filtered := cert.UnhandledCriticalExtensions[:0]
+	if allHMN, _ := sep2cert.SANAllOtherNamesAreHardwareModuleName(cert); !allHMN {
+		return false
+	}
+	filtered := make([]asn1.ObjectIdentifier, 0, len(cert.UnhandledCriticalExtensions))
+	cleared := false
 	for _, oid := range cert.UnhandledCriticalExtensions {
-		if oid.Equal(sep2cert.OIDSubjectAltName) && allHMN {
+		if oid.Equal(sep2cert.OIDSubjectAltName) {
+			cleared = true
 			continue
 		}
 		filtered = append(filtered, oid)
 	}
 	cert.UnhandledCriticalExtensions = filtered
+	return cleared
 }
