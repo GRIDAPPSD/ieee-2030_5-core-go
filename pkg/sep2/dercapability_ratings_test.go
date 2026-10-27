@@ -60,7 +60,7 @@ func TestDERCapabilityRatingsSurviveDecodeEncode(t *testing.T) {
 // sequence.
 func TestDERCapabilityRatingsWireOrder(t *testing.T) {
 	modes := sep2.DERControlType(0xFF)
-	maxA := int32(20)
+	maxA := sep2.CurrentRMS{Value: 20}
 	derCap := sep2.DERCapability{
 		ModesSupported:       &modes,
 		RTGMaxA:              &maxA,

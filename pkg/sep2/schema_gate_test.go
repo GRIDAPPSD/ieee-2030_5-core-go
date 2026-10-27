@@ -166,12 +166,12 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 		{
 			// The zero-value DERCapability entry below leaves rtgMaxV and
 			// rtgMaxVA nil, so only this fixture puts them through the
-			// marshalled check (#55). rtgMaxA stays nil because its Go type
-			// cannot produce the CurrentRMS the schema requires (#151).
+			// marshalled check (#55).
 			typeName: "DERCapability",
 			v: sep2.DERCapability{
 				Resource:             sep2.Resource{Href: "/edev/1/der/1/dercap"},
 				ModesSupported:       func() *sep2.DERControlType { v := sep2.DERControlType(0x0800); return &v }(),
+				RTGMaxA:              &sep2.CurrentRMS{Multiplier: -1, Value: 205},
 				RTGMaxChargeRateW:    &sep2.ActivePower{Multiplier: 3, Value: 5},
 				RTGMaxDischargeRateW: &sep2.ActivePower{Multiplier: 3, Value: 5},
 				RTGMaxV:              &sep2.VoltageRMS{Multiplier: -1, Value: 2400},
@@ -538,7 +538,6 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 			typeName: "DERCapability",
 			zero:     sep2.DERCapability{},
 			wantStruct: []string{
-				"integer-unresolved DERCapability.RTGMaxA",
 				"omitempty-required DERCapability.ModesSupported",
 				"omitempty-required DERCapability.RTGMaxW",
 				"omitempty-required DERCapability.Type",
@@ -550,9 +549,7 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 			},
 			reason: "modesSupported, rtgMaxW and type are minOccurs=1 but tagged omitempty, " +
 				"so a zero-value DERCapability serializes with none of them. Fixing this means " +
-				"dropping omitempty and deciding each field's zero-value semantics. Separately, " +
-				"rtgMaxA is modelled as *int32 while the schema types it CurrentRMS, a complex " +
-				"type carrying multiplier and value, so the integer check cannot resolve it (#151).",
+				"dropping omitempty and deciding each field's zero-value semantics.",
 		},
 		{
 			// The struct is in sequence order with no omitempty on a required
