@@ -73,11 +73,11 @@ func VerifyPeerCertWithHardwareModuleSAN(rawCerts [][]byte, roots *x509.CertPool
 	}
 
 	leaf := chain[0]
-	clearKnownCriticalSAN(leaf)
+	AcknowledgeHardwareModuleSAN(leaf)
 
 	intermediates := x509.NewCertPool()
 	for _, c := range chain[1:] {
-		clearKnownCriticalSAN(c)
+		AcknowledgeHardwareModuleSAN(c)
 		intermediates.AddCert(c)
 	}
 
@@ -92,23 +92,25 @@ func VerifyPeerCertWithHardwareModuleSAN(rawCerts [][]byte, roots *x509.CertPool
 	return nil
 }
 
-// clearKnownCriticalSAN removes the SubjectAlternativeName OID from
+// AcknowledgeHardwareModuleSAN removes the SubjectAlternativeName OID from
 // cert.UnhandledCriticalExtensions if and only if the cert's SAN is a
 // well-formed GeneralNames SEQUENCE in which EVERY otherName is a
-// well-formed RFC 4108 §5 HardwareModuleName. A SAN that mixes a valid
+// well-formed RFC 4108 section 5 HardwareModuleName. A SAN that mixes a valid
 // HardwareModuleName with any other otherName (different OID, or HMN OID
 // but malformed inner bytes) or with any non-otherName GeneralName form is
 // left unacknowledged so x509.Verify fails closed.
 //
 // All other unhandled critical OIDs are also left in place. This is the
-// fail-closed counterpart to ExtractHardwareModuleName — see
+// fail-closed counterpart to ExtractHardwareModuleName; see
 // sep2cert.SANAllOtherNamesAreHardwareModuleName for the strict checker.
 //
-// Note: this function mutates cert.UnhandledCriticalExtensions in place.
-// Callers must not share *cert across goroutines or cache it; in the current
-// production path each handshake parses fresh certs from rawCerts, so the
-// mutation is safe.
-func clearKnownCriticalSAN(cert *x509.Certificate) {
+// The rule assumes nothing about ExtKeyUsage, so a server verifying its own
+// leaf can call it before x509.Verify with ServerAuth, and
+// VerifyPeerCertWithHardwareModuleSAN calls it for ClientAuth chains.
+//
+// This function mutates cert.UnhandledCriticalExtensions in place. Callers
+// must not share cert across goroutines or cache it.
+func AcknowledgeHardwareModuleSAN(cert *x509.Certificate) {
 	if len(cert.UnhandledCriticalExtensions) == 0 {
 		return
 	}

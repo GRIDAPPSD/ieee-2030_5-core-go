@@ -221,7 +221,7 @@ func TestVerifyRejectsSANWithWrongOtherNameOID(t *testing.T) {
 	}
 }
 
-// TestVerifyRejectsAdditionalUnknownCriticalExtension proves clearKnownCriticalSAN
+// TestVerifyRejectsAdditionalUnknownCriticalExtension proves AcknowledgeHardwareModuleSAN
 // is selective: a cert with a valid HardwareModuleName SAN PLUS some other
 // unknown critical extension still gets rejected, because only the SAN OID is
 // removed from UnhandledCriticalExtensions. (Dutch M1 / Leon row 3: the
@@ -399,7 +399,7 @@ func TestVerifyRejectsExtKeyUsageMismatch(t *testing.T) {
 	}
 }
 
-// TestVerifyRejectsSANWithExtraForeignOtherName proves clearKnownCriticalSAN
+// TestVerifyRejectsSANWithExtraForeignOtherName proves AcknowledgeHardwareModuleSAN
 // does NOT acknowledge the SAN OID when the SAN contains a valid
 // HardwareModuleName otherName entry plus an additional otherName with a
 // different (foreign) OID. The acknowledgement contract is "every otherName
@@ -483,6 +483,12 @@ func TestVerifyRejectsSANWithCorruptOuterSequence(t *testing.T) {
 // exercise corrupt-SAN paths the stdlib parser would otherwise reject.
 func mintRawCertDER(t *testing.T, caCert *x509.Certificate, caKey *ecdsa.PrivateKey, extra []pkix.Extension) []byte {
 	t.Helper()
+	return mintRawCertDERWithEKU(t, caCert, caKey, extra, x509.ExtKeyUsageClientAuth)
+}
+
+// mintRawCertDERWithEKU is mintRawCertDER with a caller-chosen ExtKeyUsage.
+func mintRawCertDERWithEKU(t *testing.T, caCert *x509.Certificate, caKey *ecdsa.PrivateKey, extra []pkix.Extension, eku x509.ExtKeyUsage) []byte {
+	t.Helper()
 	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatalf("ecdsa.GenerateKey: %v", err)
@@ -497,7 +503,7 @@ func mintRawCertDER(t *testing.T, caCert *x509.Certificate, caKey *ecdsa.Private
 		NotBefore:             time.Now().Add(-1 * time.Minute),
 		NotAfter:              time.Now().AddDate(1, 0, 0),
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyAgreement,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		ExtKeyUsage:           []x509.ExtKeyUsage{eku},
 		BasicConstraintsValid: true,
 		ExtraExtensions:       extra,
 	}
