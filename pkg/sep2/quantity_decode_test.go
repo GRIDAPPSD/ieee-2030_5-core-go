@@ -153,3 +153,72 @@ func TestPowerFactorComplexAndEmpty(t *testing.T) {
 		})
 	}
 }
+
+// quantityShapeCases are content shapes beyond the bare integer. wantErr is
+// empty where the decode must still succeed (today's behavior).
+func TestQuantityContentShapes(t *testing.T) {
+	cases := []struct {
+		name    string
+		body    string
+		wantErr string
+		wantVal int64
+	}{
+		{"nested element in value", `<multiplier>0</multiplier><value><x>5</x></value>`, "<value>: unexpected child element <x>", 0},
+		{"nested element in multiplier", `<multiplier><x/></multiplier><value>5</value>`, "<multiplier>: unexpected child element <x>", 0},
+		{"text after the children", `<multiplier>0</multiplier><value>5</value>stray`, `unexpected text "stray"`, 0},
+		{"text before the children", `stray<multiplier>0</multiplier><value>5</value>`, `unexpected text "stray"`, 0},
+		{"comment only", `<!-- 16 -->`, "", 0},
+		{"comment between children", `<multiplier>0</multiplier><!-- c --><value>5</value>`, "", 5},
+		{"CDATA bare integer", `<![CDATA[16]]>`, `unexpected text "16"`, 0},
+		{"unknown element with children", `<ext><y>1</y></ext><value>5</value>`, "", 5},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var q sep2.CurrentRMS
+			err := xml.Unmarshal([]byte(`<rating `+quantityNS+`>`+c.body+`</rating>`), &q)
+			if c.wantErr == "" {
+				if err != nil || int64(q.Value) != c.wantVal {
+					t.Fatalf("got value %d err %v, want value %d and nil", q.Value, err, c.wantVal)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), c.wantErr) || !strings.Contains(err.Error(), "<rating>") {
+				t.Fatalf("err %v, want it to contain %q and name <rating>", err, c.wantErr)
+			}
+			if q.Value != 0 {
+				t.Fatalf("value %d stored despite the refusal", q.Value)
+			}
+		})
+	}
+}
+
+func TestBoundedElementRefusesMixedChild(t *testing.T) {
+	var p sep2.PerCent
+	err := xml.Unmarshal([]byte(`<v `+quantityNS+`><x/>5</v>`), &p)
+	if err == nil || !strings.Contains(err.Error(), "PerCent: unexpected child element <x>") || p != 0 {
+		t.Fatalf("got %d, %v, want a refusal naming <x>", p, err)
+	}
+}
+
+func TestPeerTextQuoteIsBounded(t *testing.T) {
+	long := strings.Repeat("a", 100)
+	cases := map[string]error{}
+	var q sep2.CurrentRMS
+	cases["quantity"] = xml.Unmarshal([]byte(`<r `+quantityNS+`>`+long+`</r>`), &q)
+	var f sep2.FixedVar
+	cases["complex element"] = xml.Unmarshal([]byte(`<r `+quantityNS+`>`+long+`</r>`), &f)
+	for name, err := range cases {
+		if err == nil {
+			t.Fatalf("%s: want an error", name)
+		}
+		want := `"` + strings.Repeat("a", 32) + `"...`
+		if !strings.Contains(err.Error(), want) || strings.Contains(err.Error(), strings.Repeat("a", 33)) {
+			t.Errorf("%s: error %q, want the text cut to 32 bytes then ...", name, err)
+		}
+	}
+	var short sep2.CurrentRMS
+	err := xml.Unmarshal([]byte(`<r `+quantityNS+`>16</r>`), &short)
+	if err == nil || !strings.Contains(err.Error(), `"16"`) || strings.Contains(err.Error(), `"..."`) {
+		t.Errorf("short text: %v, want it quoted whole with no ellipsis", err)
+	}
+}

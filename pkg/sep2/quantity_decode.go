@@ -3,33 +3,57 @@ package sep2
 import (
 	"bytes"
 	"encoding/xml"
+	"errors"
 	"fmt"
+	"reflect"
+	"slices"
+	"strings"
+)
+
+// Expected child elements per quantity shape.
+var (
+	mulVal     = []string{"multiplier", "value"}
+	dispMul    = []string{"displacement", "multiplier"}
+	dispExcMul = []string{"displacement", "excitation", "multiplier"}
 )
 
 // decodeQuantity decodes a multiplier-bearing element into dst (a pointer to
-// a method-free copy of the type) and refuses character data directly inside
-// the element; children names the expected child elements for the error. The
-// default decoder reads a bare integer such as <rtgMaxA>16</rtgMaxA> as zero
-// with no error, a silent wrong value. An empty element and the complex form
-// decode as before.
-func decodeQuantity(d *xml.Decoder, start xml.StartElement, typeName, children string, dst any) error {
-	g := &quantityTokens{d: d, pending: &start}
-	if err := xml.NewTokenDecoder(g).Decode(dst); err != nil {
+// a method-free copy of the type). It refuses, through the shared refusals in
+// content_shape.go, character data directly inside the element and a child
+// element inside one of the named simple children; the default decoder reads
+// both as zero with no error. fields are the expected child names, used for
+// the error and to tell a simple child from an unknown one. An empty element
+// and the complex form decode as before.
+func decodeQuantity(d *xml.Decoder, start xml.StartElement, typeName string, fields []string, dst any) error {
+	g := &quantityTokens{d: d, pending: &start, fields: fields}
+	// Decode into a copy so a refused element leaves dst untouched.
+	tmp := reflect.New(reflect.TypeOf(dst).Elem())
+	err := xml.NewTokenDecoder(g).Decode(tmp.Interface())
+	switch {
+	case g.text != nil:
+		return errUnexpectedText(typeName+" element <"+start.Name.Local+">", g.text, "children <"+strings.Join(fields, ">, <")+">")
+	case g.child != "":
+		return fmt.Errorf("sep2: %s element <%s>: <%s>: %w", typeName, start.Name.Local, g.parent, errUnexpectedChild(g.child))
+	case err != nil:
 		return fmt.Errorf("sep2: %s: %w", typeName, err)
 	}
-	if g.text != "" {
-		return fmt.Errorf("sep2: %s: element <%s> has text %q, want %s children", typeName, start.Name.Local, g.text, children)
-	}
+	reflect.ValueOf(dst).Elem().Set(tmp.Elem())
 	return nil
 }
 
-// quantityTokens replays the start element, then forwards d's tokens while
-// recording the first non-blank character data seen at the element's own depth.
+var errQuantityShape = errors.New("wrong content shape")
+
+// quantityTokens replays the start element, then forwards d's tokens until
+// the element's content has the wrong shape, recording what it saw.
 type quantityTokens struct {
 	d       *xml.Decoder
 	pending *xml.StartElement
+	fields  []string
 	depth   int
-	text    string
+	parent  string // the depth-2 element last opened
+	inField bool
+	text    []byte // first non-blank text directly inside the element
+	child   string // first child element inside a named simple child
 }
 
 func (g *quantityTokens) Token() (xml.Token, error) {
@@ -46,11 +70,19 @@ func (g *quantityTokens) Token() (xml.Token, error) {
 	switch t := tok.(type) {
 	case xml.StartElement:
 		g.depth++
+		if g.depth == 2 {
+			g.parent = t.Name.Local
+			g.inField = slices.Contains(g.fields, g.parent)
+		} else if g.depth == 3 && g.inField {
+			g.child = t.Name.Local
+			return nil, errQuantityShape
+		}
 	case xml.EndElement:
 		g.depth--
 	case xml.CharData:
-		if g.depth == 1 && g.text == "" {
-			g.text = string(bytes.TrimSpace(t))
+		if text := bytes.TrimSpace(t); g.depth == 1 && len(text) > 0 {
+			g.text = bytes.Clone(text)
+			return nil, errQuantityShape
 		}
 	}
 	return tok, nil
@@ -59,77 +91,77 @@ func (g *quantityTokens) Token() (xml.Token, error) {
 // UnmarshalXML refuses a bare-integer element instead of reading it as zero.
 func (q *ActivePower) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain ActivePower
-	return decodeQuantity(d, start, "ActivePower", "<multiplier> and <value>", (*plain)(q))
+	return decodeQuantity(d, start, "ActivePower", mulVal, (*plain)(q))
 }
 
 // UnmarshalXML refuses a bare-integer element instead of reading it as zero.
 func (q *ReactivePower) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain ReactivePower
-	return decodeQuantity(d, start, "ReactivePower", "<multiplier> and <value>", (*plain)(q))
+	return decodeQuantity(d, start, "ReactivePower", mulVal, (*plain)(q))
 }
 
 // UnmarshalXML refuses a bare-integer element instead of reading it as zero.
 func (q *ApparentPower) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain ApparentPower
-	return decodeQuantity(d, start, "ApparentPower", "<multiplier> and <value>", (*plain)(q))
+	return decodeQuantity(d, start, "ApparentPower", mulVal, (*plain)(q))
 }
 
 // UnmarshalXML refuses a bare-integer element instead of reading it as zero.
 func (q *VoltageRMS) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain VoltageRMS
-	return decodeQuantity(d, start, "VoltageRMS", "<multiplier> and <value>", (*plain)(q))
+	return decodeQuantity(d, start, "VoltageRMS", mulVal, (*plain)(q))
 }
 
 // UnmarshalXML refuses a bare-integer element instead of reading it as zero.
 func (q *CurrentRMS) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain CurrentRMS
-	return decodeQuantity(d, start, "CurrentRMS", "<multiplier> and <value>", (*plain)(q))
+	return decodeQuantity(d, start, "CurrentRMS", mulVal, (*plain)(q))
 }
 
 // UnmarshalXML refuses a bare-integer element instead of reading it as zero.
 func (q *AmpereHour) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain AmpereHour
-	return decodeQuantity(d, start, "AmpereHour", "<multiplier> and <value>", (*plain)(q))
+	return decodeQuantity(d, start, "AmpereHour", mulVal, (*plain)(q))
 }
 
 // UnmarshalXML refuses a bare-integer element instead of reading it as zero.
 func (q *WattHour) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain WattHour
-	return decodeQuantity(d, start, "WattHour", "<multiplier> and <value>", (*plain)(q))
+	return decodeQuantity(d, start, "WattHour", mulVal, (*plain)(q))
 }
 
 // UnmarshalXML refuses a bare-integer element instead of reading it as zero.
 func (q *ReactiveSusceptance) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain ReactiveSusceptance
-	return decodeQuantity(d, start, "ReactiveSusceptance", "<multiplier> and <value>", (*plain)(q))
+	return decodeQuantity(d, start, "ReactiveSusceptance", mulVal, (*plain)(q))
 }
 
 // UnmarshalXML refuses a bare-integer element instead of reading it as zero.
 func (q *RealEnergy) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain RealEnergy
-	return decodeQuantity(d, start, "RealEnergy", "<multiplier> and <value>", (*plain)(q))
+	return decodeQuantity(d, start, "RealEnergy", mulVal, (*plain)(q))
 }
 
 // UnmarshalXML refuses a bare-integer element instead of reading it as zero.
 func (q *SignedRealEnergy) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain SignedRealEnergy
-	return decodeQuantity(d, start, "SignedRealEnergy", "<multiplier> and <value>", (*plain)(q))
+	return decodeQuantity(d, start, "SignedRealEnergy", mulVal, (*plain)(q))
 }
 
 // UnmarshalXML refuses a bare-integer element instead of reading it as zero.
 func (q *Temperature) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain Temperature
-	return decodeQuantity(d, start, "Temperature", "<multiplier> and <value>", (*plain)(q))
+	return decodeQuantity(d, start, "Temperature", mulVal, (*plain)(q))
 }
 
 // UnmarshalXML refuses a bare-integer element instead of reading it as zero.
 func (q *PowerFactor) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain PowerFactor
-	return decodeQuantity(d, start, "PowerFactor", "<displacement> and <multiplier>", (*plain)(q))
+	return decodeQuantity(d, start, "PowerFactor", dispMul, (*plain)(q))
 }
 
 // UnmarshalXML refuses a bare-integer element instead of reading it as zero.
 func (q *FixedPowerFactor) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	type plain FixedPowerFactor
-	return decodeQuantity(d, start, "FixedPowerFactor", "<displacement>, <excitation> and <multiplier>", (*plain)(q))
+	return decodeQuantity(d, start, "FixedPowerFactor", dispExcMul, (*plain)(q))
 }
