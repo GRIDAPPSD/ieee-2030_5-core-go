@@ -140,13 +140,13 @@ func parseBounded[T int16 | uint16](name, text string, lo, hi int64, narrow narr
 	return narrow(name, n, lo, hi)
 }
 
-// decodeBoundedXML reads element text only. Without that, encoding/xml's
-// default scalar decode skips unrecognized child elements (the pre-fix
-// ActivePower multiplier+value shape) and silently yields a zero value with
-// a nil error.
+// decodeBoundedXML reads element text only, through simpleText: encoding/xml's
+// default scalar decode skips child elements (the pre-fix ActivePower
+// multiplier+value shape, or <v><x/>5</v>) and yields a wrong value with a
+// nil error.
 func decodeBoundedXML[T int16 | uint16](d *xml.Decoder, start xml.StartElement, name string, lo, hi int64, narrow narrowFunc[T]) (T, error) {
-	var text string
-	if err := d.DecodeElement(&text, &start); err != nil {
+	text, err := simpleText(d)
+	if err != nil {
 		return 0, fmt.Errorf("sep2: %s: %w", name, err)
 	}
 	return parseBounded(name, text, lo, hi, narrow)
