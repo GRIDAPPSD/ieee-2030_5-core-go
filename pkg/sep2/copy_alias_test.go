@@ -122,6 +122,7 @@ func TestCopyIndependent(t *testing.T) {
 	assertCopyIndependent[Subscription](t, "Subscription")
 	assertCopyIndependent[UsagePoint](t, "UsagePoint")
 	assertCopyIndependent[MeterReading](t, "MeterReading")
+	assertCopyIndependent[ReadingSet](t, "ReadingSet")
 	assertCopyIndependent[Event](t, "Event")
 	assertCopyIndependent[SubscribableResource](t, "SubscribableResource")
 	assertCopyIndependent[DERControlBase](t, "DERControlBase")
