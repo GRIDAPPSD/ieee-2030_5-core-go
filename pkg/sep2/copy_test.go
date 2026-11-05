@@ -301,9 +301,11 @@ func TestSelfDeviceCopyNil(t *testing.T) {
 
 func TestFSACopy(t *testing.T) {
 	fsa := sep2.FunctionSetAssignments{
-		DERProgramListLink:            &sep2.ListLink{Href: "/derp"},
-		UsagePointListLink:            &sep2.ListLink{Href: "/upt"},
-		DemandResponseProgramListLink: &sep2.ListLink{Href: "/drp"},
+		FunctionSetAssignmentsBase: sep2.FunctionSetAssignmentsBase{
+			DERProgramListLink:            &sep2.ListLink{Href: "/derp"},
+			UsagePointListLink:            &sep2.ListLink{Href: "/upt"},
+			DemandResponseProgramListLink: &sep2.ListLink{Href: "/drp"},
+		},
 	}
 	copied := fsa.Copy()
 	copied.DERProgramListLink.Href = "/changed"

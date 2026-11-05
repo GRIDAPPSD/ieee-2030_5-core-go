@@ -119,8 +119,10 @@ func TestElementOrderMatchesXSD(t *testing.T) {
 		Resource: sep2.Resource{Href: "/dcap"},
 		PollRate: 900,
 		// Base elements
-		DERProgramListLink: &sep2.ListLink{Href: "/dc"},
-		TimeLink:           &sep2.Link{Href: "/tm"},
+		FunctionSetAssignmentsBase: sep2.FunctionSetAssignmentsBase{
+			DERProgramListLink: &sep2.ListLink{Href: "/dc"},
+			TimeLink:           &sep2.Link{Href: "/tm"},
+		},
 		// Extension elements
 		EndDeviceListLink:        &sep2.ListLink{Href: "/edev"},
 		MirrorUsagePointListLink: &sep2.ListLink{Href: "/mup"},
