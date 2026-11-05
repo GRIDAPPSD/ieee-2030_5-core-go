@@ -15,18 +15,20 @@ import (
 // base's Link fields.
 func TestFunctionSetAssignmentsWireOrder(t *testing.T) {
 	fsa := sep2.FunctionSetAssignments{
-		MRID:                          "FSA001",
-		Description:                   "test fsa",
-		CustomerAccountListLink:       &sep2.ListLink{Href: "/ca"},
-		DemandResponseProgramListLink: &sep2.ListLink{Href: "/drp"},
-		DERProgramListLink:            &sep2.ListLink{Href: "/derp"},
-		FileListLink:                  &sep2.ListLink{Href: "/file"},
-		MessagingProgramListLink:      &sep2.ListLink{Href: "/msg"},
-		PrepaymentListLink:            &sep2.ListLink{Href: "/ppy"},
-		ResponseSetListLink:           &sep2.ListLink{Href: "/rsps"},
-		TariffProfileListLink:         &sep2.ListLink{Href: "/tp"},
-		TimeLink:                      &sep2.Link{Href: "/tm"},
-		UsagePointListLink:            &sep2.ListLink{Href: "/upt"},
+		MRID:        "FSA001",
+		Description: "test fsa",
+		FunctionSetAssignmentsBase: sep2.FunctionSetAssignmentsBase{
+			CustomerAccountListLink:       &sep2.ListLink{Href: "/ca"},
+			DemandResponseProgramListLink: &sep2.ListLink{Href: "/drp"},
+			DERProgramListLink:            &sep2.ListLink{Href: "/derp"},
+			FileListLink:                  &sep2.ListLink{Href: "/file"},
+			MessagingProgramListLink:      &sep2.ListLink{Href: "/msg"},
+			PrepaymentListLink:            &sep2.ListLink{Href: "/ppy"},
+			ResponseSetListLink:           &sep2.ListLink{Href: "/rsps"},
+			TariffProfileListLink:         &sep2.ListLink{Href: "/tp"},
+			TimeLink:                      &sep2.Link{Href: "/tm"},
+			UsagePointListLink:            &sep2.ListLink{Href: "/upt"},
+		},
 	}
 
 	data, err := xml.Marshal(&fsa)

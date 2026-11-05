@@ -8,8 +8,8 @@ import "encoding/xml"
 // Field order matches the combined AbstractDevice + EndDevice xsd:sequence
 // (AbstractDevice's own sequence elements come first per xsd:extension
 // composition, then EndDevice's own sequence elements). Every Link element
-// of the sequence is modeled; the non-link elements deviceCategory and
-// postRate are not yet modeled and are omitted.
+// of the sequence is modeled; the non-link element deviceCategory is not yet
+// modeled and is omitted.
 // Schema parsers (e.g., EPRI oeg_client) validate element order strictly.
 type EndDevice struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns EndDevice"`
@@ -57,10 +57,6 @@ func (e EndDevice) Copy() EndDevice {
 	c.XMLName = e.XMLName
 	c.Enabled = clonePtr(e.Enabled)
 	c.SubscribableResource = e.SubscribableResource.Copy()
-	c.RegistrationLink = clonePtr(e.RegistrationLink)
-	c.FlowReservationRequestListLink = clonePtr(e.FlowReservationRequestListLink)
-	c.FlowReservationResponseListLink = clonePtr(e.FlowReservationResponseListLink)
-	c.FunctionSetAssignmentsListLink = clonePtr(e.FunctionSetAssignmentsListLink)
 	c.ConfigurationLink = clonePtr(e.ConfigurationLink)
 	c.DERListLink = clonePtr(e.DERListLink)
 	c.DeviceInformationLink = clonePtr(e.DeviceInformationLink)
@@ -70,6 +66,10 @@ func (e EndDevice) Copy() EndDevice {
 	c.LoadShedAvailabilityListLink = clonePtr(e.LoadShedAvailabilityListLink)
 	c.LogEventListLink = clonePtr(e.LogEventListLink)
 	c.PowerStatusLink = clonePtr(e.PowerStatusLink)
+	c.FlowReservationRequestListLink = clonePtr(e.FlowReservationRequestListLink)
+	c.FlowReservationResponseListLink = clonePtr(e.FlowReservationResponseListLink)
+	c.FunctionSetAssignmentsListLink = clonePtr(e.FunctionSetAssignmentsListLink)
+	c.RegistrationLink = clonePtr(e.RegistrationLink)
 	c.SubscriptionListLink = clonePtr(e.SubscriptionListLink)
 	return c
 }

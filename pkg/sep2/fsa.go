@@ -2,20 +2,12 @@ package sep2
 
 import "encoding/xml"
 
-// FunctionSetAssignments maps function sets to a device.
+// FunctionSetAssignmentsBase holds the ten Link elements that open the
+// xsd:sequence of every type extending FunctionSetAssignmentsBase
+// (DeviceCapability and FunctionSetAssignments). It is embedded so those
+// elements marshal flat, ahead of the extending type's own elements.
 // Spec reference: section 8.6
-//
-// Field order matches the FunctionSetAssignmentsBase + FunctionSetAssignments
-// combined xsd:sequence: FunctionSetAssignmentsBase's own Link fields
-// (CustomerAccountListLink, DemandResponseProgramListLink, DERProgramListLink,
-// FileListLink, MessagingProgramListLink, PrepaymentListLink,
-// ResponseSetListLink, TariffProfileListLink, TimeLink, UsagePointListLink)
-// come FIRST, THEN FunctionSetAssignments' own
-// sequence (mRID, description; version omitted, not yet modeled).
-type FunctionSetAssignments struct {
-	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns FunctionSetAssignments"`
-	Resource
-
+type FunctionSetAssignmentsBase struct {
 	CustomerAccountListLink       *ListLink `xml:"CustomerAccountListLink,omitempty"`
 	DemandResponseProgramListLink *ListLink `xml:"DemandResponseProgramListLink,omitempty"`
 	DERProgramListLink            *ListLink `xml:"DERProgramListLink,omitempty"`
@@ -26,6 +18,34 @@ type FunctionSetAssignments struct {
 	TariffProfileListLink         *ListLink `xml:"TariffProfileListLink,omitempty"`
 	TimeLink                      *Link     `xml:"TimeLink,omitempty"`
 	UsagePointListLink            *ListLink `xml:"UsagePointListLink,omitempty"`
+}
+
+// Copy returns an independent copy.
+func (b FunctionSetAssignmentsBase) Copy() FunctionSetAssignmentsBase {
+	c := b
+	c.CustomerAccountListLink = clonePtr(b.CustomerAccountListLink)
+	c.DemandResponseProgramListLink = clonePtr(b.DemandResponseProgramListLink)
+	c.DERProgramListLink = clonePtr(b.DERProgramListLink)
+	c.FileListLink = clonePtr(b.FileListLink)
+	c.MessagingProgramListLink = clonePtr(b.MessagingProgramListLink)
+	c.PrepaymentListLink = clonePtr(b.PrepaymentListLink)
+	c.ResponseSetListLink = clonePtr(b.ResponseSetListLink)
+	c.TariffProfileListLink = clonePtr(b.TariffProfileListLink)
+	c.TimeLink = clonePtr(b.TimeLink)
+	c.UsagePointListLink = clonePtr(b.UsagePointListLink)
+	return c
+}
+
+// FunctionSetAssignments maps function sets to a device.
+// Spec reference: section 8.6
+//
+// The embedded FunctionSetAssignmentsBase's Link fields come FIRST, THEN
+// FunctionSetAssignments' own sequence (mRID, description; version omitted,
+// not yet modeled).
+type FunctionSetAssignments struct {
+	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns FunctionSetAssignments"`
+	Resource
+	FunctionSetAssignmentsBase
 
 	MRID        string `xml:"mRID,omitempty"`
 	Description string `xml:"description,omitempty"`
@@ -34,16 +54,7 @@ type FunctionSetAssignments struct {
 // Copy returns an independent copy.
 func (f FunctionSetAssignments) Copy() FunctionSetAssignments {
 	c := f
-	c.CustomerAccountListLink = clonePtr(f.CustomerAccountListLink)
-	c.DemandResponseProgramListLink = clonePtr(f.DemandResponseProgramListLink)
-	c.DERProgramListLink = clonePtr(f.DERProgramListLink)
-	c.FileListLink = clonePtr(f.FileListLink)
-	c.MessagingProgramListLink = clonePtr(f.MessagingProgramListLink)
-	c.PrepaymentListLink = clonePtr(f.PrepaymentListLink)
-	c.ResponseSetListLink = clonePtr(f.ResponseSetListLink)
-	c.TariffProfileListLink = clonePtr(f.TariffProfileListLink)
-	c.TimeLink = clonePtr(f.TimeLink)
-	c.UsagePointListLink = clonePtr(f.UsagePointListLink)
+	c.FunctionSetAssignmentsBase = f.FunctionSetAssignmentsBase.Copy()
 	return c
 }
 

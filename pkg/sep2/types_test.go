@@ -12,7 +12,9 @@ func TestDeviceCapabilityMarshalXML(t *testing.T) {
 	dcap := sep2.DeviceCapability{
 		Resource: sep2.Resource{Href: "/dcap"},
 		PollRate: 900,
-		TimeLink: &sep2.Link{Href: "/tm"},
+		FunctionSetAssignmentsBase: sep2.FunctionSetAssignmentsBase{
+			TimeLink: &sep2.Link{Href: "/tm"},
+		},
 		EndDeviceListLink: &sep2.ListLink{
 			Href: "/edev",
 			All:  5,
@@ -54,7 +56,9 @@ func TestDeviceCapabilityOmitsEmptyLinks(t *testing.T) {
 	dcap := sep2.DeviceCapability{
 		Resource: sep2.Resource{Href: "/dcap"},
 		PollRate: 900,
-		TimeLink: &sep2.Link{Href: "/tm"},
+		FunctionSetAssignmentsBase: sep2.FunctionSetAssignmentsBase{
+			TimeLink: &sep2.Link{Href: "/tm"},
+		},
 	}
 
 	data, err := xml.Marshal(&dcap)
@@ -76,7 +80,9 @@ func TestDeviceCapabilityRoundTrip(t *testing.T) {
 	original := sep2.DeviceCapability{
 		Resource: sep2.Resource{Href: "/dcap"},
 		PollRate: 900,
-		TimeLink: &sep2.Link{Href: "/tm"},
+		FunctionSetAssignmentsBase: sep2.FunctionSetAssignmentsBase{
+			TimeLink: &sep2.Link{Href: "/tm"},
+		},
 		EndDeviceListLink: &sep2.ListLink{
 			Href: "/edev",
 			All:  3,
