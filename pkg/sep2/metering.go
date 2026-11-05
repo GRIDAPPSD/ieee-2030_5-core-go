@@ -60,6 +60,39 @@ type MeterReadingList struct {
 	MeterReading []MeterReading `xml:"MeterReading,omitempty"`
 }
 
+// ReadingSet is a set of Readings of the ReadingType named by the parent
+// MeterReading.
+//
+// Field order follows the sep.xsd ReadingSet sequence (sep.xsd:2029): the
+// IdentifiedObject elements mRID, description, version, then ReadingSetBase's
+// timePeriod, then ReadingListLink. MRID and TimePeriod are minOccurs=1, so
+// they carry no omitempty.
+type ReadingSet struct {
+	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns ReadingSet"`
+	Resource
+	MRID        string           `xml:"mRID"`
+	Description string           `xml:"description,omitempty"`
+	Version     *uint16          `xml:"version,omitempty"`
+	TimePeriod  DateTimeInterval `xml:"timePeriod"`
+
+	ReadingListLink *ListLink `xml:"ReadingListLink,omitempty"`
+}
+
+// Copy returns an independent copy.
+func (r ReadingSet) Copy() ReadingSet {
+	c := r
+	c.Version = clonePtr(r.Version)
+	c.ReadingListLink = clonePtr(r.ReadingListLink)
+	return c
+}
+
+// ReadingSetList is a list of ReadingSet resources.
+type ReadingSetList struct {
+	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns ReadingSetList"`
+	ListResource
+	ReadingSet []ReadingSet `xml:"ReadingSet,omitempty"`
+}
+
 // DateTimeInterval represents a time period with start and duration.
 type DateTimeInterval struct {
 	Duration uint32 `xml:"duration"`
