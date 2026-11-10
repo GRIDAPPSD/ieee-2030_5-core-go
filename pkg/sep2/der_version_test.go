@@ -14,9 +14,11 @@ func versionPtr(v uint16) *uint16 { return &v }
 
 func TestDERProgramVersionRoundTrip(t *testing.T) {
 	with := sep2.DERProgram{
-		MRID:                  "PROG001",
-		Description:           "Solar",
-		Version:               versionPtr(7),
+		IdentifiedObject: sep2.IdentifiedObject{
+			MRID:        "PROG001",
+			Description: "Solar",
+			Version:     versionPtr(7),
+		},
 		DefaultDERControlLink: &sep2.Link{Href: "/derp/1/dderc"},
 		Primacy:               10,
 	}
@@ -36,7 +38,7 @@ func TestDERProgramVersionRoundTrip(t *testing.T) {
 		t.Fatalf("Version = %v, want 7", parsed.Version)
 	}
 
-	without := sep2.DERProgram{MRID: "PROG001", Primacy: 10}
+	without := sep2.DERProgram{IdentifiedObject: sep2.IdentifiedObject{MRID: "PROG001"}, Primacy: 10}
 	data, err = xml.Marshal(&without)
 	if err != nil {
 		t.Fatal(err)
@@ -57,8 +59,10 @@ func TestDefaultDERControlVersionRoundTrip(t *testing.T) {
 	connected := true
 	grad := uint16(50)
 	with := sep2.DefaultDERControl{
-		MRID:           "DDC001",
-		Version:        versionPtr(3),
+		IdentifiedObject: sep2.IdentifiedObject{
+			MRID:    "DDC001",
+			Version: versionPtr(3),
+		},
 		DERControlBase: &sep2.DERControlBase{OpModConnect: &connected},
 		SetGradW:       &grad,
 	}
@@ -77,7 +81,7 @@ func TestDefaultDERControlVersionRoundTrip(t *testing.T) {
 		t.Fatalf("Version = %v, want 3", parsed.Version)
 	}
 
-	without := sep2.DefaultDERControl{MRID: "DDC001", DERControlBase: &sep2.DERControlBase{OpModConnect: &connected}}
+	without := sep2.DefaultDERControl{IdentifiedObject: sep2.IdentifiedObject{MRID: "DDC001"}, DERControlBase: &sep2.DERControlBase{OpModConnect: &connected}}
 	data, err = xml.Marshal(&without)
 	if err != nil {
 		t.Fatal(err)
@@ -95,7 +99,7 @@ func TestDefaultDERControlVersionRoundTrip(t *testing.T) {
 }
 
 func TestDERProgramVersionCopyIsDeep(t *testing.T) {
-	orig := sep2.DERProgram{Version: versionPtr(7)}
+	orig := sep2.DERProgram{IdentifiedObject: sep2.IdentifiedObject{Version: versionPtr(7)}}
 	c := orig.Copy()
 	*c.Version = 99
 	if *orig.Version != 7 {
@@ -107,7 +111,7 @@ func TestDERProgramVersionCopyIsDeep(t *testing.T) {
 }
 
 func TestDefaultDERControlVersionCopyIsDeep(t *testing.T) {
-	orig := sep2.DefaultDERControl{Version: versionPtr(3)}
+	orig := sep2.DefaultDERControl{IdentifiedObject: sep2.IdentifiedObject{Version: versionPtr(3)}}
 	c := orig.Copy()
 	*c.Version = 99
 	if *orig.Version != 3 {
@@ -123,15 +127,19 @@ func TestDERVersionSchemaValid(t *testing.T) {
 	for _, v := range []*uint16{nil, versionPtr(0), versionPtr(7), versionPtr(65535)} {
 		xsdgate.AssertValid(t, "DERProgram", &sep2.DERProgram{
 			SubscribableResource: sep2.SubscribableResource{Resource: sep2.Resource{Href: "/derp/1"}},
-			MRID:                 "00000000000000000000000000000001",
-			Description:          "Solar",
-			Version:              v,
+			IdentifiedObject: sep2.IdentifiedObject{
+				MRID:        "00000000000000000000000000000001",
+				Description: "Solar",
+				Version:     v,
+			},
 		})
 		xsdgate.AssertValid(t, "DefaultDERControl", &sep2.DefaultDERControl{
 			SubscribableResource: sep2.SubscribableResource{Resource: sep2.Resource{Href: "/derp/1/dderc"}},
-			MRID:                 "00000000000000000000000000000002",
-			Version:              v,
-			DERControlBase:       &sep2.DERControlBase{OpModConnect: &connected},
+			IdentifiedObject: sep2.IdentifiedObject{
+				MRID:    "00000000000000000000000000000002",
+				Version: v,
+			},
+			DERControlBase: &sep2.DERControlBase{OpModConnect: &connected},
 		})
 	}
 }
@@ -142,7 +150,7 @@ func TestDERVersionBounds(t *testing.T) {
 		v    uint16
 	}{{"zero", 0}, {"max", 65535}} {
 		t.Run(tc.name, func(t *testing.T) {
-			data, err := xml.Marshal(&sep2.DERProgram{Version: versionPtr(tc.v)})
+			data, err := xml.Marshal(&sep2.DERProgram{IdentifiedObject: sep2.IdentifiedObject{Version: versionPtr(tc.v)}})
 			if err != nil {
 				t.Fatal(err)
 			}

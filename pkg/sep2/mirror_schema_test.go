@@ -19,14 +19,16 @@ import (
 func TestMirrorUsagePointElementOrder(t *testing.T) {
 	rate := uint32(300)
 	mup := sep2.MirrorUsagePoint{
-		Resource:            sep2.Resource{Href: "/mup/inv1"},
-		MRID:                "INV001",
-		Description:         "Inverter 1",
+		Resource: sep2.Resource{Href: "/mup/inv1"},
+		IdentifiedObject: sep2.IdentifiedObject{
+			MRID:        "INV001",
+			Description: "Inverter 1",
+		},
 		RoleFlags:           sep2.RoleFlagsValue(9),
 		ServiceCategoryKind: 0,
 		Status:              1,
 		DeviceLFDI:          "ABCDEF0123456789ABCD",
-		MirrorMeterReading:  []sep2.MirrorMeterReading{{MRID: "MMR01"}},
+		MirrorMeterReading:  []sep2.MirrorMeterReading{{IdentifiedObject: sep2.IdentifiedObject{MRID: "MMR01"}}},
 		PostRate:            &rate,
 	}
 
@@ -126,8 +128,10 @@ func TestReadingTypeNoMRID(t *testing.T) {
 	val := int64(5000)
 	mmr := sep2.MirrorMeterReading{
 		Resource: sep2.Resource{Href: "/mup/inv1/mr/1"},
-		MRID:     "MMR01",
-		Reading:  &sep2.Reading{Value: &val},
+		IdentifiedObject: sep2.IdentifiedObject{
+			MRID: "MMR01",
+		},
+		Reading: &sep2.Reading{Value: &val},
 		ReadingType: &sep2.ReadingType{
 			Uom: &uom,
 		},
@@ -164,9 +168,11 @@ func TestMirrorMeterReadingElementOrder(t *testing.T) {
 	val := int64(5000)
 	uom := sep2.UomWatts
 	mmr := sep2.MirrorMeterReading{
-		Resource:       sep2.Resource{Href: "/mup/inv1/mr/1"},
-		MRID:           "MMR01",
-		Description:    "Active Power",
+		Resource: sep2.Resource{Href: "/mup/inv1/mr/1"},
+		IdentifiedObject: sep2.IdentifiedObject{
+			MRID:        "MMR01",
+			Description: "Active Power",
+		},
 		LastUpdateTime: 1700000000,
 		Reading:        &sep2.Reading{Value: &val},
 		ReadingType:    &sep2.ReadingType{Uom: &uom},
@@ -263,11 +269,13 @@ func TestMirrorMeterReadingElementOrderWithMirrorReadingSet(t *testing.T) {
 	val := int64(5000)
 	uom := sep2.UomWatts
 	mmr := sep2.MirrorMeterReading{
-		MRID:           "MMR01",
-		Description:    "Active Power",
+		IdentifiedObject: sep2.IdentifiedObject{
+			MRID:        "MMR01",
+			Description: "Active Power",
+		},
 		LastUpdateTime: 1700000000,
 		MirrorReadingSet: []sep2.MirrorReadingSet{
-			{MRID: "SET-1", TimePeriod: sep2.DateTimeInterval{Duration: 900, Start: 1700000000}},
+			{IdentifiedObject: sep2.IdentifiedObject{MRID: "SET-1"}, TimePeriod: sep2.DateTimeInterval{Duration: 900, Start: 1700000000}},
 		},
 		Reading:     &sep2.Reading{Value: &val},
 		ReadingType: &sep2.ReadingType{Uom: &uom},
@@ -493,9 +501,11 @@ func TestMirrorMeterReadingListRoundTripPreservesMirrorReadingSet(t *testing.T) 
 // resolve to a declared type.
 func TestMirrorUsagePointNoMeterReadingListLink(t *testing.T) {
 	mup := sep2.MirrorUsagePoint{
-		Resource:           sep2.Resource{Href: "/mup/inv1"},
-		MRID:               "INV001",
-		MirrorMeterReading: []sep2.MirrorMeterReading{{MRID: "MMR01"}},
+		Resource: sep2.Resource{Href: "/mup/inv1"},
+		IdentifiedObject: sep2.IdentifiedObject{
+			MRID: "INV001",
+		},
+		MirrorMeterReading: []sep2.MirrorMeterReading{{IdentifiedObject: sep2.IdentifiedObject{MRID: "MMR01"}}},
 	}
 	data, err := xml.Marshal(&mup)
 	if err != nil {

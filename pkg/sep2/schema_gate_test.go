@@ -205,9 +205,11 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 			// has already had.
 			typeName: "MirrorUsagePoint",
 			v: sep2.MirrorUsagePoint{
-				Resource:            sep2.Resource{Href: "/mup/0102030405060708090A0B0C0D0E0F10"},
-				MRID:                "0102030405060708090A0B0C0D0E0F10",
-				Description:         "site meter mirror",
+				Resource: sep2.Resource{Href: "/mup/0102030405060708090A0B0C0D0E0F10"},
+				IdentifiedObject: sep2.IdentifiedObject{
+					MRID:        "0102030405060708090A0B0C0D0E0F10",
+					Description: "site meter mirror",
+				},
 				RoleFlags:           sep2.RoleFlagsValue(9),
 				ServiceCategoryKind: 0,
 				Status:              1,
@@ -218,8 +220,10 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 		{
 			typeName: "MirrorMeterReading",
 			v: sep2.MirrorMeterReading{
-				MRID:           "0102030405060708090A0B0C0D0E0F10",
-				Description:    "site meter",
+				IdentifiedObject: sep2.IdentifiedObject{
+					MRID:        "0102030405060708090A0B0C0D0E0F10",
+					Description: "site meter",
+				},
 				LastUpdateTime: 1500000000,
 				Reading: &sep2.Reading{
 					QualityFlags: &qualityFlags,
@@ -238,12 +242,16 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 			typeName: "MirrorMeterReading",
 			label:    "MirrorMeterReading/MirrorReadingSet",
 			v: sep2.MirrorMeterReading{
-				MRID:           "0102030405060708090A0B0C0D0E0F11",
-				Description:    "site meter interval sets",
+				IdentifiedObject: sep2.IdentifiedObject{
+					MRID:        "0102030405060708090A0B0C0D0E0F11",
+					Description: "site meter interval sets",
+				},
 				LastUpdateTime: 1500000000,
 				MirrorReadingSet: []sep2.MirrorReadingSet{
 					{
-						MRID:       "0102030405060708090A0B0C0D0E0F12",
+						IdentifiedObject: sep2.IdentifiedObject{
+							MRID: "0102030405060708090A0B0C0D0E0F12",
+						},
 						TimePeriod: sep2.DateTimeInterval{Duration: 900, Start: 1500000000},
 						Reading: []sep2.Reading{
 							{Value: &value, LocalID: &localID0},
@@ -251,7 +259,9 @@ func TestSchemaGatePopulatedResources(t *testing.T) {
 						},
 					},
 					{
-						MRID:       "0102030405060708090A0B0C0D0E0F13",
+						IdentifiedObject: sep2.IdentifiedObject{
+							MRID: "0102030405060708090A0B0C0D0E0F13",
+						},
 						TimePeriod: sep2.DateTimeInterval{Duration: 900, Start: 1500000900},
 						Reading: []sep2.Reading{
 							{Value: &value, LocalID: &localID0},
@@ -639,30 +649,25 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 			zero:     sep2.MirrorUsagePoint{},
 			wantStruct: []string{
 				"omitempty-required MirrorUsagePoint.DeviceLFDI",
-				"omitempty-required MirrorUsagePoint.MRID",
 			},
 			wantMarshal: []string{
 				"missing-element MirrorUsagePoint/deviceLFDI",
-				"missing-element MirrorUsagePoint/mRID",
 			},
-			reason: "mRID (from IdentifiedObject) and deviceLFDI are both minOccurs=1 but " +
-				"omitempty. Note the neighbouring roleFlags field already carries a comment " +
-				"explaining precisely this hazard, and was fixed, while these two were missed: " +
-				"exactly the gap a mechanical gate closes.",
+			reason: "deviceLFDI is minOccurs=1 but omitempty. Note the neighbouring roleFlags " +
+				"field already carries a comment explaining precisely this hazard, and was " +
+				"fixed, while this one was missed: exactly the gap a mechanical gate closes.",
 		},
 		{
 			typeName: "UsagePoint",
 			zero:     sep2.UsagePoint{},
 			wantStruct: []string{
-				"omitempty-required UsagePoint.MRID",
 				"omitempty-required UsagePoint.RoleFlags",
 				"unknown-attribute UsagePoint.Subscribable",
 			},
 			wantMarshal: []string{
-				"missing-element UsagePoint/mRID",
 				"missing-element UsagePoint/roleFlags",
 			},
-			reason: "mRID and roleFlags are omitempty on required elements. Separately, the Go " +
+			reason: "roleFlags is omitempty on a required element. Separately, the Go " +
 				"type embeds SubscribableResource, but the schema derives UsagePoint through " +
 				"UsagePointBase -> IdentifiedObject -> Resource, none of which declare the " +
 				"subscribable attribute. The schema has a distinct SubscribableIdentifiedObject " +
@@ -683,13 +688,11 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 			wantStruct: []string{
 				"omitempty-required FlowReservationRequest.EnergyRequested",
 				"omitempty-required FlowReservationRequest.IntervalRequested",
-				"omitempty-required FlowReservationRequest.MRID",
 				"omitempty-required FlowReservationRequest.PowerRequested",
 			},
 			wantMarshal: []string{
 				"missing-element FlowReservationRequest/energyRequested",
 				"missing-element FlowReservationRequest/intervalRequested",
-				"missing-element FlowReservationRequest/mRID",
 				"missing-element FlowReservationRequest/powerRequested",
 			},
 			reason: "every element the schema requires beyond creationTime and RequestStatus is " +
@@ -707,7 +710,6 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 				"omitempty-required FlowReservationResponse.EnergyAvailable",
 				"omitempty-required FlowReservationResponse.EventStatus",
 				"omitempty-required FlowReservationResponse.Interval",
-				"omitempty-required FlowReservationResponse.MRID",
 				"omitempty-required FlowReservationResponse.PowerAvailable",
 				"omitempty-required FlowReservationResponse.Subject",
 			},
@@ -715,7 +717,6 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 				"missing-element FlowReservationResponse/EventStatus",
 				"missing-element FlowReservationResponse/energyAvailable",
 				"missing-element FlowReservationResponse/interval",
-				"missing-element FlowReservationResponse/mRID",
 				"missing-element FlowReservationResponse/powerAvailable",
 				"missing-element FlowReservationResponse/subject",
 			},
@@ -733,12 +734,10 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 			wantStruct: []string{
 				"omitempty-required TextMessage.EventStatus",
 				"omitempty-required TextMessage.Interval",
-				"omitempty-required TextMessage.MRID",
 			},
 			wantMarshal: []string{
 				"missing-element TextMessage/EventStatus",
 				"missing-element TextMessage/interval",
-				"missing-element TextMessage/mRID",
 			},
 			reason: "the omitempty-required defects below remain (not fixed here). The missing " +
 				"EventStatus reflects that nothing on the TextMessage path ever constructs one. " +
@@ -783,9 +782,11 @@ func TestSchemaGateKnownFailures(t *testing.T) {
 func TestSchemaGatePopulatedDERCurve(t *testing.T) {
 	ramp := uint16(600)
 	curve := sep2.DERCurve{
-		Resource:     sep2.Resource{Href: "/derp/0/dc/3"},
-		MRID:         "0102030405060708090A0B0C0D0E0F10",
-		Description:  "volt-var",
+		Resource: sep2.Resource{Href: "/derp/0/dc/3"},
+		IdentifiedObject: sep2.IdentifiedObject{
+			MRID:        "0102030405060708090A0B0C0D0E0F10",
+			Description: "volt-var",
+		},
 		CreationTime: 1341446380,
 		CurveType:    11,
 		CurveData:    []sep2.CurveData{{XValue: 99, YValue: 50}},

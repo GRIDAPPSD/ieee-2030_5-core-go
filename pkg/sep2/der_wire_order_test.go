@@ -132,8 +132,10 @@ func TestDERProgramWireOrder(t *testing.T) {
 		SubscribableResource: sep2.SubscribableResource{
 			Resource: sep2.Resource{Href: "/derp/1"},
 		},
-		MRID:                     "PROG001",
-		Description:              "Solar DER Program",
+		IdentifiedObject: sep2.IdentifiedObject{
+			MRID:        "PROG001",
+			Description: "Solar DER Program",
+		},
 		Primacy:                  10,
 		ActiveDERControlListLink: &sep2.ListLink{Href: "/derp/1/actderc"},
 		DefaultDERControlLink:    &sep2.Link{Href: "/derp/1/dderc"},

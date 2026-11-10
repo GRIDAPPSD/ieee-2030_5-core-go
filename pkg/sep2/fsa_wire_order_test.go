@@ -15,8 +15,10 @@ import (
 // base's Link fields.
 func TestFunctionSetAssignmentsWireOrder(t *testing.T) {
 	fsa := sep2.FunctionSetAssignments{
-		MRID:        "FSA001",
-		Description: "test fsa",
+		IdentifiedObject: sep2.IdentifiedObject{
+			MRID:        "FSA001",
+			Description: "test fsa",
+		},
 		FunctionSetAssignmentsBase: sep2.FunctionSetAssignmentsBase{
 			CustomerAccountListLink:       &sep2.ListLink{Href: "/ca"},
 			DemandResponseProgramListLink: &sep2.ListLink{Href: "/drp"},

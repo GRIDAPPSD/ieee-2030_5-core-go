@@ -28,7 +28,7 @@ func TestUsagePointCopy(t *testing.T) {
 }
 
 func TestUsagePointCopyNilFields(t *testing.T) {
-	upt := sep2.UsagePoint{MRID: "test"}
+	upt := sep2.UsagePoint{IdentifiedObject: sep2.IdentifiedObject{MRID: "test"}}
 	copied := upt.Copy()
 	if copied.MRID != "test" {
 		t.Error("MRID not copied")
@@ -50,7 +50,7 @@ func TestMeterReadingCopy(t *testing.T) {
 }
 
 func TestMeterReadingCopyNilFields(t *testing.T) {
-	mr := sep2.MeterReading{MRID: "test"}
+	mr := sep2.MeterReading{IdentifiedObject: sep2.IdentifiedObject{MRID: "test"}}
 	copied := mr.Copy()
 	if copied.MRID != "test" {
 		t.Error("MRID not copied")
@@ -104,7 +104,7 @@ func TestMirrorUsagePointCopy(t *testing.T) {
 	mup := sep2.MirrorUsagePoint{
 		PostRate: &rate,
 		MirrorMeterReading: []sep2.MirrorMeterReading{
-			{MRID: "READING-1"},
+			{IdentifiedObject: sep2.IdentifiedObject{MRID: "READING-1"}},
 		},
 	}
 	copied := mup.Copy()
@@ -122,10 +122,14 @@ func TestMirrorUsagePointCopy(t *testing.T) {
 func TestMirrorMeterReadingCopyMirrorReadingSet(t *testing.T) {
 	val := int64(9)
 	mmr := sep2.MirrorMeterReading{
-		MRID: "MMR01",
+		IdentifiedObject: sep2.IdentifiedObject{
+			MRID: "MMR01",
+		},
 		MirrorReadingSet: []sep2.MirrorReadingSet{
 			{
-				MRID:       "SET-1",
+				IdentifiedObject: sep2.IdentifiedObject{
+					MRID: "SET-1",
+				},
 				TimePeriod: sep2.DateTimeInterval{Duration: 86400, Start: 1341579365},
 				Reading:    []sep2.Reading{{Value: &val}},
 			},
@@ -316,7 +320,7 @@ func TestFSACopy(t *testing.T) {
 }
 
 func TestFSACopyNil(t *testing.T) {
-	fsa := sep2.FunctionSetAssignments{MRID: "test"}
+	fsa := sep2.FunctionSetAssignments{IdentifiedObject: sep2.IdentifiedObject{MRID: "test"}}
 	copied := fsa.Copy()
 	if copied.MRID != "test" {
 		t.Error("MRID not copied")

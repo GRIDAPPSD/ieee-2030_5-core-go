@@ -95,8 +95,10 @@ func TestDERProgramMarshal(t *testing.T) {
 		SubscribableResource: sep2.SubscribableResource{
 			Resource: sep2.Resource{Href: "/derp/1"},
 		},
-		MRID:                  "PROG001",
-		Description:           "Solar DER Program",
+		IdentifiedObject: sep2.IdentifiedObject{
+			MRID:        "PROG001",
+			Description: "Solar DER Program",
+		},
 		Primacy:               10,
 		DefaultDERControlLink: &sep2.Link{Href: "/derp/1/dderc"},
 		DERControlListLink:    &sep2.ListLink{Href: "/derp/1/derc"},
@@ -151,7 +153,9 @@ func TestDefaultDERControlSetGradWRoundTrip(t *testing.T) {
 		SubscribableResource: sep2.SubscribableResource{
 			Resource: sep2.Resource{Href: "/derp/1/dderc"},
 		},
-		MRID:         "DDERC001",
+		IdentifiedObject: sep2.IdentifiedObject{
+			MRID: "DDERC001",
+		},
 		SetGradW:     &grad,
 		SetSoftGradW: &softGrad,
 	}
@@ -305,7 +309,9 @@ func TestDRLCMarshal(t *testing.T) {
 		SubscribableResource: sep2.SubscribableResource{
 			Resource: sep2.Resource{Href: "/drp/1"},
 		},
-		MRID:    "DRP001",
+		IdentifiedObject: sep2.IdentifiedObject{
+			MRID: "DRP001",
+		},
 		Primacy: 5,
 	}
 
