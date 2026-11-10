@@ -10,10 +10,12 @@ import (
 func sampleReadingSet() sep2.ReadingSet {
 	ver := uint16(3)
 	return sep2.ReadingSet{
-		Resource:        sep2.Resource{Href: "/upt/1/mr/1/rs/1"},
-		MRID:            "0A0000000001",
-		Description:     "hour 1",
-		Version:         &ver,
+		Resource: sep2.Resource{Href: "/upt/1/mr/1/rs/1"},
+		IdentifiedObject: sep2.IdentifiedObject{
+			MRID:        "0A0000000001",
+			Description: "hour 1",
+			Version:     &ver,
+		},
 		TimePeriod:      sep2.DateTimeInterval{Duration: 3600, Start: 1341579365},
 		ReadingListLink: &sep2.ListLink{Href: "/upt/1/mr/1/rs/1/r", All: 4},
 	}

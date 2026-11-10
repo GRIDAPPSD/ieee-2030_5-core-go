@@ -128,7 +128,7 @@ func TestPowerStatusMarshalAndCopy(t *testing.T) {
 }
 
 func TestMessagingProgramMarshalAndCopy(t *testing.T) {
-	mp := sep2.MessagingProgram{MRID: "msg1", Primacy: 1, Locale: "en-US"}
+	mp := sep2.MessagingProgram{IdentifiedObject: sep2.IdentifiedObject{MRID: "msg1"}, Primacy: 1, Locale: "en-US"}
 	mp.Href = "/msg/1"
 	mp.TextMessageListLink = &sep2.ListLink{Href: "/msg/1/tm"}
 
@@ -166,8 +166,9 @@ func TestTextMessageMarshalAndCopy(t *testing.T) {
 func TestFlowReservationRequestMarshalAndCopy(t *testing.T) {
 	energy := sep2.SignedRealEnergy{Value: 5000}
 	frq := sep2.FlowReservationRequest{
-		MRID: "frq1", CreationTime: 1000,
-		EnergyRequested: &energy,
+		IdentifiedObject: sep2.IdentifiedObject{MRID: "frq1"},
+		CreationTime:     1000,
+		EnergyRequested:  &energy,
 	}
 
 	data, err := xml.Marshal(&frq)
@@ -226,7 +227,7 @@ func TestResponseMarshalAndCopy(t *testing.T) {
 }
 
 func TestResponseSetMarshalAndCopy(t *testing.T) {
-	rs := sep2.ResponseSet{MRID: "rsps1", Description: "Test Set"}
+	rs := sep2.ResponseSet{IdentifiedObject: sep2.IdentifiedObject{MRID: "rsps1", Description: "Test Set"}}
 	rs.ResponseListLink = &sep2.ListLink{Href: "/rsps/rsps1/rsp"}
 
 	data, err := xml.Marshal(&rs)

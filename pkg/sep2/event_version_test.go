@@ -71,7 +71,7 @@ func TestEventCopyDoesNotAliasVersion(t *testing.T) {
 	if c.Version == nil || *c.Version != 7 {
 		t.Errorf("copy aliases Version: got %v, want 7", c.Version)
 	}
-	e := sep2.Event{Version: u16(1)}
+	e := sep2.Event{IdentifiedObject: sep2.IdentifiedObject{Version: u16(1)}}
 	ec := e.Copy()
 	*e.Version = 2
 	if *ec.Version != 1 {
@@ -82,7 +82,7 @@ func TestEventCopyDoesNotAliasVersion(t *testing.T) {
 func TestSiblingCopiesDoNotAliasEventPointers(t *testing.T) {
 	mk := func() sep2.Event {
 		rr := sep2.HexBinary8(5)
-		return sep2.Event{Version: u16(7), ResponseRequired: &rr,
+		return sep2.Event{IdentifiedObject: sep2.IdentifiedObject{Version: u16(7)}, ResponseRequired: &rr,
 			EventStatus: &sep2.EventStatus{CurrentStatus: 1},
 			Interval:    &sep2.DateTimeInterval{Duration: 9}}
 	}
