@@ -306,9 +306,7 @@ func TestDERAvailabilityReadingTimeNoOmitempty(t *testing.T) {
 
 func TestDRLCMarshal(t *testing.T) {
 	drp := sep2.DemandResponseProgram{
-		SubscribableResource: sep2.SubscribableResource{
-			Resource: sep2.Resource{Href: "/drp/1"},
-		},
+		Resource: sep2.Resource{Href: "/drp/1"},
 		IdentifiedObject: sep2.IdentifiedObject{
 			MRID: "DRP001",
 		},
