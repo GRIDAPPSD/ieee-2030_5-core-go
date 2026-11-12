@@ -79,6 +79,9 @@ func TestSchemaGateCleanResources(t *testing.T) {
 		// both a regression of the omitempty fix and a future field landing
 		// at the wrong position.
 		{"DERAvailability", sep2.DERAvailability{}},
+		// DemandResponseProgram is gated for GRIDAPPSD/ieee-2030_5-core-go#251,
+		// which put its links and thresholds ahead of primacy.
+		{"DemandResponseProgram", sep2.DemandResponseProgram{}},
 	}
 
 	for _, tc := range tests {
