@@ -36,11 +36,26 @@ type DemandResponseProgramList struct {
 	DemandResponseProgram []DemandResponseProgram `xml:"DemandResponseProgram,omitempty"`
 }
 
-// EndDeviceControl is a demand response control event.
+// EndDeviceControl is a demand response control event. Fields follow the
+// sep.xsd sequence. The two booleans are required and always encoded; a body
+// that omits one decodes to false, but a present one must be a valid
+// xs:boolean.
+//
+// DeviceCategory is required by the schema but stays a pointer: a value type
+// would encode an invented 00000000 for a control that never set it, so the
+// consumer checks presence instead.
 type EndDeviceControl struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns EndDeviceControl"`
 	RandomizableEvent
-	DeviceCategory *DeviceCategoryType `xml:"deviceCategory,omitempty"`
+	ApplianceLoadReduction *ApplianceLoadReduction `xml:"ApplianceLoadReduction,omitempty"`
+	DeviceCategory         *DeviceCategoryType     `xml:"deviceCategory,omitempty"`
+	DRProgramMandatory     Boolean                 `xml:"drProgramMandatory"`
+	DutyCycle              *DutyCycle              `xml:"DutyCycle,omitempty"`
+	LoadShiftForward       Boolean                 `xml:"loadShiftForward"`
+	Offset                 *Offset                 `xml:"Offset,omitempty"`
+	OverrideDuration       *uint16                 `xml:"overrideDuration,omitempty"`
+	SetPoint               *SetPoint               `xml:"SetPoint,omitempty"`
+	TargetReduction        *TargetReduction        `xml:"TargetReduction,omitempty"`
 }
 
 // Copy returns an independent copy.
@@ -50,6 +65,12 @@ func (e EndDeviceControl) Copy() EndDeviceControl {
 	c.DeviceCategory = clonePtr(e.DeviceCategory)
 	c.RandomizeDuration = clonePtr(e.RandomizeDuration)
 	c.RandomizeStart = clonePtr(e.RandomizeStart)
+	c.ApplianceLoadReduction = clonePtr(e.ApplianceLoadReduction)
+	c.DutyCycle = clonePtr(e.DutyCycle)
+	c.Offset = cloneCopyPtr(e.Offset)
+	c.OverrideDuration = clonePtr(e.OverrideDuration)
+	c.SetPoint = cloneCopyPtr(e.SetPoint)
+	c.TargetReduction = clonePtr(e.TargetReduction)
 	return c
 }
 
