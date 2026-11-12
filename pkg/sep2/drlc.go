@@ -4,21 +4,27 @@ import "encoding/xml"
 
 // DemandResponseProgram is a demand response program.
 // Spec reference: section 10.3 (stub: handlers deferred)
+//
+// Field order is the sep.xsd sequence: IdentifiedObject, then the two links
+// and thresholds, then primacy.
 type DemandResponseProgram struct {
 	XMLName xml.Name `xml:"urn:ieee:std:2030.5:ns DemandResponseProgram"`
-	SubscribableResource
+	Resource
 	IdentifiedObject
-	Primacy                        uint8     `xml:"primacy"`
-	ActiveEndDeviceControlListLink *ListLink `xml:"ActiveEndDeviceControlListLink,omitempty"`
-	EndDeviceControlListLink       *ListLink `xml:"EndDeviceControlListLink,omitempty"`
+	ActiveEndDeviceControlListLink           *ListLink    `xml:"ActiveEndDeviceControlListLink,omitempty"`
+	AvailabilityUpdatePercentChangeThreshold *PerCent     `xml:"availabilityUpdatePercentChangeThreshold,omitempty"`
+	AvailabilityUpdatePowerChangeThreshold   *ActivePower `xml:"availabilityUpdatePowerChangeThreshold,omitempty"`
+	EndDeviceControlListLink                 *ListLink    `xml:"EndDeviceControlListLink,omitempty"`
+	Primacy                                  uint8        `xml:"primacy"`
 }
 
 // Copy returns an independent copy.
 func (d DemandResponseProgram) Copy() DemandResponseProgram {
 	c := d
-	c.SubscribableResource = d.SubscribableResource.Copy()
 	c.IdentifiedObject = d.IdentifiedObject.Copy()
 	c.ActiveEndDeviceControlListLink = clonePtr(d.ActiveEndDeviceControlListLink)
+	c.AvailabilityUpdatePercentChangeThreshold = clonePtr(d.AvailabilityUpdatePercentChangeThreshold)
+	c.AvailabilityUpdatePowerChangeThreshold = clonePtr(d.AvailabilityUpdatePowerChangeThreshold)
 	c.EndDeviceControlListLink = clonePtr(d.EndDeviceControlListLink)
 	return c
 }
