@@ -63,6 +63,7 @@ func TestDecodeResponse_AcceptsEveryDeclaredSubtype(t *testing.T) {
 		"FlowReservationResponseResponse",
 		"PriceResponse",
 		"TextResponse",
+		"DrResponse",
 	}
 
 	for _, root := range roots {
@@ -114,11 +115,11 @@ func TestDecodeResponse_NormalizesXMLNameAcrossSubtypes(t *testing.T) {
 		t.Fatalf("DecodeResponse(<DERControlResponse>): %v", err)
 	}
 
-	baseBytes, err := xml.Marshal(&base)
+	baseBytes, err := xml.Marshal(&base.Response)
 	if err != nil {
 		t.Fatalf("marshal base: %v", err)
 	}
-	dercBytes, err := xml.Marshal(&derc)
+	dercBytes, err := xml.Marshal(&derc.Response)
 	if err != nil {
 		t.Fatalf("marshal subtype-sourced: %v", err)
 	}
@@ -157,24 +158,5 @@ func TestDecodeResponse_RejectsForeignRoots(t *testing.T) {
 				t.Errorf("DecodeResponse(%q) = nil error, want the body refused", tc.body)
 			}
 		})
-	}
-}
-
-// TestDecodeResponse_RefusesUnmodelledDrResponse pins the one declared
-// subtype this package does not model. DrResponse extends Response with six
-// DRLC-specific children (sep.xsd:477-491), none of which this package
-// declares, so decoding one into the base would silently discard data the
-// client sent. Refusing it is the fail-closed answer, and it costs nothing
-// today because the router serves no EndDeviceControl for a DrResponse to
-// answer.
-func TestDecodeResponse_RefusesUnmodelledDrResponse(t *testing.T) {
-	t.Parallel()
-
-	_, err := sep2.DecodeResponse([]byte(responseBody("DrResponse", sep2.Namespace)))
-	if err == nil {
-		t.Fatal("DecodeResponse(<DrResponse>) = nil error, want it refused as unmodelled")
-	}
-	if !strings.Contains(err.Error(), "DrResponse") {
-		t.Errorf("error %q does not name DrResponse, so an operator cannot tell what was refused", err)
 	}
 }

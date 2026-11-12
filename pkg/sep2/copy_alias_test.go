@@ -151,6 +151,7 @@ func TestCopyIndependent(t *testing.T) {
 	assertCopyIndependent[FlowReservationResponseResponse](t, "FlowReservationResponseResponse")
 	assertCopyIndependent[PriceResponse](t, "PriceResponse")
 	assertCopyIndependent[TextResponse](t, "TextResponse")
+	assertCopyIndependent[DrResponse](t, "DrResponse")
 	assertCopyIndependent[Notification](t, "Notification", true)
 	assertCopyIndependent[EventStatus](t, "EventStatus")
 	assertCopyIndependent[PowerConfiguration](t, "PowerConfiguration")
