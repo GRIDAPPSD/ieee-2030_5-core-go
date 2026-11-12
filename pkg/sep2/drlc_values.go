@@ -3,14 +3,14 @@ package sep2
 import (
 	"encoding/xml"
 	"fmt"
+	"math"
 	"strings"
 )
 
 // The demand response value types below are children of EndDeviceControl in
 // sep.xsd, in the schema's sequence order. DrResponse shares
 // ApplianceLoadReduction, DutyCycle, Offset and SetPoint; in place of
-// TargetReduction it carries AppliedTargetReduction, which reuses
-// decodeUnitValue.
+// TargetReduction it carries AppliedTargetReduction, the same type.
 
 // Highest defined values; sep.xsd and IEEE 2030.5-2018 reserve the rest.
 const (
@@ -104,6 +104,33 @@ type Offset struct {
 	LoadAdjustmentPercentageOffset *PerCent `xml:"loadAdjustmentPercentageOffset,omitempty"`
 }
 
+// UnmarshalXML refuses an empty, repeated, unknown, foreign-namespace or
+// nested child, and children out of schema order.
+func (o *Offset) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	var v Offset
+	err := decodeOptionalChildren(d, start, "Offset", []string{"coolingOffset", "heatingOffset", "loadAdjustmentPercentageOffset"}, func(name, text string) error {
+		if name == "loadAdjustmentPercentageOffset" {
+			n, err := parseBounded("PerCent", text, 0, maxPerCent, narrowUint16)
+			p := PerCent(n)
+			v.LoadAdjustmentPercentageOffset = &p
+			return err
+		}
+		n, err := parseUint(text, 8)
+		u := uint8(n)
+		if name == "coolingOffset" {
+			v.CoolingOffset = &u
+		} else {
+			v.HeatingOffset = &u
+		}
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	*o = v
+	return nil
+}
+
 // Copy returns an independent copy.
 func (o Offset) Copy() Offset {
 	c := o
@@ -120,12 +147,49 @@ type SetPoint struct {
 	HeatingSetpoint *int16 `xml:"heatingSetpoint,omitempty"`
 }
 
+// UnmarshalXML applies Offset's rules to the two set points.
+func (sp *SetPoint) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	var v SetPoint
+	err := decodeOptionalChildren(d, start, "SetPoint", []string{"coolingSetpoint", "heatingSetpoint"}, func(name, text string) error {
+		n, err := parseBounded(name, text, math.MinInt16, math.MaxInt16, narrowInt16)
+		if name == "coolingSetpoint" {
+			v.CoolingSetpoint = &n
+		} else {
+			v.HeatingSetpoint = &n
+		}
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	*sp = v
+	return nil
+}
+
 // Copy returns an independent copy.
 func (s SetPoint) Copy() SetPoint {
 	c := s
 	c.CoolingSetpoint = clonePtr(s.CoolingSetpoint)
 	c.HeatingSetpoint = clonePtr(s.HeatingSetpoint)
 	return c
+}
+
+// OverrideDuration is the overrideDuration element, a UInt16 number of
+// seconds. An empty element is refused rather than read as 0.
+type OverrideDuration uint16
+
+// UnmarshalXML refuses an empty, nested or out-of-range value.
+func (o *OverrideDuration) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+	text, err := simpleText(d)
+	if err != nil {
+		return fmt.Errorf("sep2: %s: %w", start.Name.Local, err)
+	}
+	n, err := parseUint(text, 16)
+	if err != nil {
+		return fmt.Errorf("sep2: %s: %w", start.Name.Local, err)
+	}
+	*o = OverrideDuration(n)
+	return nil
 }
 
 // TargetReduction is a recommended consumption threshold. Type is UnitType
@@ -148,8 +212,14 @@ func (t *TargetReduction) UnmarshalXML(d *xml.Decoder, start xml.StartElement) e
 	return nil
 }
 
-// decodeUnitValue decodes the type (UnitType) and value (UInt16) pair that
-// TargetReduction and AppliedTargetReduction share.
+// AppliedTargetReduction is the TargetReduction value a device applied
+// (sep.xsd:456-471), carried by DrResponse. It is TargetReduction under the
+// name the schema gives the element; the element name comes from the field tag,
+// so there is one type and one decode rule.
+type AppliedTargetReduction = TargetReduction
+
+// decodeUnitValue decodes the type (UnitType) and value (UInt16) pair of a
+// TargetReduction.
 func decodeUnitValue(d *xml.Decoder, start xml.StartElement, typeName string) (typ uint8, val uint16, err error) {
 	err = decodeChildren(d, start, typeName, []string{"type", "value"}, func(name, text string) error {
 		if name == "value" {

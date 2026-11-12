@@ -9,7 +9,7 @@ import (
 	"github.com/GRIDAPPSD/ieee-2030_5-core-go/pkg/sep2"
 )
 
-const drResponseBody = `<DrResponse xmlns="urn:ieee:std:2030.5:ns">` +
+const drResponseBody = `<DrResponse xmlns="urn:ieee:std:2030.5:ns" href="/rsps/1/rsp/2">` +
 	`<createdDateTime>1785429793</createdDateTime>` +
 	`<endDeviceLFDI>AABBCCDDEEFF00112233445566778899AABBCCDD</endDeviceLFDI>` +
 	`<status>8</status>` +
@@ -29,6 +29,9 @@ func TestDecodeResponse_DrResponseCarriesDRLCValues(t *testing.T) {
 	got, err := sep2.DecodeResponse([]byte(drResponseBody))
 	if err != nil {
 		t.Fatalf("DecodeResponse(<DrResponse>) = %v, want it accepted", err)
+	}
+	if got.Href != "/rsps/1/rsp/2" {
+		t.Errorf("Href = %q, want /rsps/1/rsp/2", got.Href)
 	}
 	if got.EndDeviceLFDI != "AABBCCDDEEFF00112233445566778899AABBCCDD" ||
 		got.Subject != "0123456789ABCDEF0123456789ABCDEF" || got.CreatedDateTime != 1785429793 ||
@@ -60,8 +63,29 @@ func TestDecodeResponse_DrResponseCarriesDRLCValues(t *testing.T) {
 		d.SetPoint.HeatingSetpoint == nil || *d.SetPoint.HeatingSetpoint != 2100 {
 		t.Errorf("SetPoint = %+v, want -2150, 2100", d.SetPoint)
 	}
-	if got.XMLName != (xml.Name{}) {
-		t.Errorf("XMLName = %v, want it cleared", got.XMLName)
+}
+
+// TestDecodeResponse_EveryRootClearsXMLName fails if the clear in
+// DecodeResponse is removed: a <Response> root fills Response.XMLName, so a
+// surviving value shows. A DrResponse root never fills the embedded one, so
+// it is checked on the wire as well: it marshals as a bare <Response>.
+func TestDecodeResponse_EveryRootClearsXMLName(t *testing.T) {
+	t.Parallel()
+	for _, root := range sep2.ResponseRootElements {
+		got, err := sep2.DecodeResponse([]byte(responseBody(root, sep2.Namespace)))
+		if err != nil {
+			t.Fatalf("DecodeResponse(<%s>): %v", root, err)
+		}
+		if got.XMLName != (xml.Name{}) {
+			t.Errorf("<%s>: XMLName = %v, want it cleared", root, got.XMLName)
+		}
+		b, err := xml.Marshal(&got.Response)
+		if err != nil {
+			t.Fatalf("<%s>: marshal: %v", root, err)
+		}
+		if !strings.HasPrefix(string(b), "<Response ") {
+			t.Errorf("<%s>: decoded Response marshals as %s, want a <Response> root", root, b)
+		}
 	}
 }
 
@@ -87,8 +111,13 @@ func TestDecodeResponse_DrResponseWithoutChildren(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeResponse: %v", err)
 	}
-	if got.DRLC == nil || got.DRLC.OverrideDuration != nil || got.DRLC.Offset != nil {
-		t.Errorf("DRLC = %+v, want a non-nil value with every child absent", got.DRLC)
+	if got.DRLC == nil {
+		t.Fatal("DRLC is nil, want a non-nil value with every child absent")
+	}
+	d := got.DRLC
+	if d.ApplianceLoadReduction != nil || d.AppliedTargetReduction != nil || d.DutyCycle != nil ||
+		d.Offset != nil || d.OverrideDuration != nil || d.SetPoint != nil {
+		t.Errorf("DRLC = %+v, want all six children absent", d)
 	}
 }
 

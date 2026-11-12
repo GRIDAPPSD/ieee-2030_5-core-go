@@ -53,9 +53,23 @@ type EndDeviceControl struct {
 	DutyCycle              *DutyCycle              `xml:"DutyCycle,omitempty"`
 	LoadShiftForward       Boolean                 `xml:"loadShiftForward"`
 	Offset                 *Offset                 `xml:"Offset,omitempty"`
-	OverrideDuration       *uint16                 `xml:"overrideDuration,omitempty"`
+	OverrideDuration       *OverrideDuration       `xml:"overrideDuration,omitempty"`
 	SetPoint               *SetPoint               `xml:"SetPoint,omitempty"`
 	TargetReduction        *TargetReduction        `xml:"TargetReduction,omitempty"`
+}
+
+// drlcValues is the DRLC value fields as DrResponseDRLC, whose Copy is the
+// one clone sequence for them. TargetReduction maps to AppliedTargetReduction,
+// the same type under the name DrResponse uses.
+func (e EndDeviceControl) drlcValues() DrResponseDRLC {
+	return DrResponseDRLC{
+		ApplianceLoadReduction: e.ApplianceLoadReduction,
+		AppliedTargetReduction: e.TargetReduction,
+		DutyCycle:              e.DutyCycle,
+		Offset:                 e.Offset,
+		OverrideDuration:       e.OverrideDuration,
+		SetPoint:               e.SetPoint,
+	}
 }
 
 // Copy returns an independent copy.
@@ -65,12 +79,13 @@ func (e EndDeviceControl) Copy() EndDeviceControl {
 	c.DeviceCategory = clonePtr(e.DeviceCategory)
 	c.RandomizeDuration = clonePtr(e.RandomizeDuration)
 	c.RandomizeStart = clonePtr(e.RandomizeStart)
-	c.ApplianceLoadReduction = clonePtr(e.ApplianceLoadReduction)
-	c.DutyCycle = clonePtr(e.DutyCycle)
-	c.Offset = cloneCopyPtr(e.Offset)
-	c.OverrideDuration = clonePtr(e.OverrideDuration)
-	c.SetPoint = cloneCopyPtr(e.SetPoint)
-	c.TargetReduction = clonePtr(e.TargetReduction)
+	v := e.drlcValues().Copy()
+	c.ApplianceLoadReduction = v.ApplianceLoadReduction
+	c.TargetReduction = v.AppliedTargetReduction
+	c.DutyCycle = v.DutyCycle
+	c.Offset = v.Offset
+	c.OverrideDuration = v.OverrideDuration
+	c.SetPoint = v.SetPoint
 	return c
 }
 

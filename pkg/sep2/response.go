@@ -126,26 +126,6 @@ func (t TextResponse) Copy() TextResponse {
 	return c
 }
 
-// AppliedTargetReduction is the TargetReduction value a device applied
-// (sep.xsd:456-471). Both children are required.
-type AppliedTargetReduction struct {
-	Type  uint8  `xml:"type"`
-	Value uint16 `xml:"value"`
-}
-
-// Copy returns an independent copy.
-func (a AppliedTargetReduction) Copy() AppliedTargetReduction { return a }
-
-// UnmarshalXML requires type then value and refuses a reserved UnitType.
-func (a *AppliedTargetReduction) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
-	typ, val, err := decodeUnitValue(d, start, "AppliedTargetReduction")
-	if err != nil {
-		return err
-	}
-	*a = AppliedTargetReduction{Type: typ, Value: val}
-	return nil
-}
-
 // DrResponseDRLC is the demand response part of a DrResponse, in sep.xsd
 // sequence order (sep.xsd:477-491). It reuses the EndDeviceControl value
 // types; a nil field is absent.
@@ -154,11 +134,12 @@ type DrResponseDRLC struct {
 	AppliedTargetReduction *AppliedTargetReduction `xml:"AppliedTargetReduction,omitempty"`
 	DutyCycle              *DutyCycle              `xml:"DutyCycle,omitempty"`
 	Offset                 *Offset                 `xml:"Offset,omitempty"`
-	OverrideDuration       *uint16                 `xml:"overrideDuration,omitempty"`
+	OverrideDuration       *OverrideDuration       `xml:"overrideDuration,omitempty"`
 	SetPoint               *SetPoint               `xml:"SetPoint,omitempty"`
 }
 
-// Copy returns an independent copy.
+// Copy returns an independent copy. It is the one clone sequence for the
+// DRLC value fields; EndDeviceControl.Copy reaches it through drlcValues.
 func (d DrResponseDRLC) Copy() DrResponseDRLC {
 	c := d
 	c.ApplianceLoadReduction = clonePtr(d.ApplianceLoadReduction)
