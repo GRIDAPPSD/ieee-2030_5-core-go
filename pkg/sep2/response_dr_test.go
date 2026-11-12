@@ -146,3 +146,11 @@ func TestDecodeResponse_AppliedTargetReductionRefusesMissingChild(t *testing.T) 
 		}
 	}
 }
+
+func TestDecodeResponse_AppliedTargetReductionRefusesReservedUnitType(t *testing.T) {
+	t.Parallel()
+	body := `<DrResponse xmlns="urn:ieee:std:2030.5:ns"><AppliedTargetReduction><type>13</type><value>12</value></AppliedTargetReduction></DrResponse>`
+	if _, err := sep2.DecodeResponse([]byte(body)); err == nil {
+		t.Error("DecodeResponse = nil error, want a reserved UnitType refused")
+	}
+}

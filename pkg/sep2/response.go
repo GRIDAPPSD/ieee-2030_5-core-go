@@ -136,23 +136,13 @@ type AppliedTargetReduction struct {
 // Copy returns an independent copy.
 func (a AppliedTargetReduction) Copy() AppliedTargetReduction { return a }
 
-// UnmarshalXML refuses a missing type or value rather than decoding it as 0.
+// UnmarshalXML requires type then value and refuses a reserved UnitType.
 func (a *AppliedTargetReduction) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
-	var v AppliedTargetReduction
-	err := decodeChildren(d, start, "AppliedTargetReduction", []string{"type", "value"}, func(name, text string) error {
-		if name == "type" {
-			n, err := parseUint(text, 8)
-			v.Type = uint8(n)
-			return err
-		}
-		n, err := parseUint(text, 16)
-		v.Value = uint16(n)
-		return err
-	})
+	typ, val, err := decodeUnitValue(d, start, "AppliedTargetReduction")
 	if err != nil {
 		return err
 	}
-	*a = v
+	*a = AppliedTargetReduction{Type: typ, Value: val}
 	return nil
 }
 
