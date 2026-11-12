@@ -32,7 +32,8 @@ type DemandResponseProgramList struct {
 
 // EndDeviceControl is a demand response control event. Fields follow the
 // sep.xsd sequence. The two booleans are required and always encoded; a body
-// that omits one decodes to false.
+// that omits one decodes to false, but a present one must be a valid
+// xs:boolean.
 //
 // DeviceCategory is required by the schema but stays a pointer: a value type
 // would encode an invented 00000000 for a control that never set it, so the
@@ -42,9 +43,9 @@ type EndDeviceControl struct {
 	RandomizableEvent
 	ApplianceLoadReduction *ApplianceLoadReduction `xml:"ApplianceLoadReduction,omitempty"`
 	DeviceCategory         *DeviceCategoryType     `xml:"deviceCategory,omitempty"`
-	DRProgramMandatory     bool                    `xml:"drProgramMandatory"`
+	DRProgramMandatory     Boolean                 `xml:"drProgramMandatory"`
 	DutyCycle              *DutyCycle              `xml:"DutyCycle,omitempty"`
-	LoadShiftForward       bool                    `xml:"loadShiftForward"`
+	LoadShiftForward       Boolean                 `xml:"loadShiftForward"`
 	Offset                 *Offset                 `xml:"Offset,omitempty"`
 	OverrideDuration       *uint16                 `xml:"overrideDuration,omitempty"`
 	SetPoint               *SetPoint               `xml:"SetPoint,omitempty"`
